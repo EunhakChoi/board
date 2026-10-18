@@ -273,10 +273,180 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Comments with their threads, oldest first */
+        get: operations["listComments"];
+        put?: never;
+        /** Comment on an element of the latest capture (by point or selector) */
+        post: operations["addComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/comments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        /** One comment with its thread */
+        get: operations["getComment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/comments/{id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply in the thread */
+        post: operations["replyComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/comments/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve, with an optional note */
+        post: operations["resolveComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/comments/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen, with an optional note */
+        post: operations["reopenComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/comments/{id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        /** The capture the comment was made on (JPEG); the anchor box marks the element */
+        get: operations["commentSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Person: {
+            id: string;
+            name: string;
+        };
+        Anchor: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            chain: string[];
+            sel: string;
+            tag: string;
+            text: string;
+            src?: string;
+            /** @description The element is gone from the latest capture; the box is where it last was */
+            detached: boolean;
+        };
+        Comment: {
+            id: number;
+            /** @enum {string} */
+            kind: "screen" | "story";
+            target: string;
+            /** @enum {string} */
+            theme: "light" | "dark";
+            anchor: components["schemas"]["Anchor"];
+            body: string;
+            author: components["schemas"]["Person"];
+            /** @enum {string} */
+            status: "open" | "resolved";
+            createdCommit: string;
+            resolvedCommit: string | null;
+            /** @description Send it back with replies, resolves and reopens */
+            rev: number;
+            createdAt: string;
+            updatedAt: string;
+            replies: {
+                id: number;
+                author: components["schemas"]["Person"];
+                body: string;
+                /** @enum {string} */
+                kind: "reply" | "resolve" | "reopen";
+                createdAt: string;
+            }[];
+        };
+        AnswerInput: {
+            /** @description The comment revision you saw */
+            rev: number;
+            /** @description Required for a reply, optional note for resolve and reopen */
+            body?: string;
+        };
         RenderInput: {
             /** @description `main` (default), `v<number>` or a commit id */
             rev?: string;
@@ -420,6 +590,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description Someone wrote to it since you read it; `detail.rev` is its revision now */
+        Changed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Not possible yet (the preview is still building); try again shortly */
         Pending: {
             headers: {
@@ -487,6 +666,7 @@ export interface components {
         };
     };
     parameters: {
+        CommentId: number;
         CaptureKind: "screen" | "story";
         /** @description Screen or story id */
         CaptureTarget: string;
@@ -929,6 +1109,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Element"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listComments: {
+        parameters: {
+            query?: {
+                status?: "open" | "resolved" | "all";
+                kind?: "screen" | "story";
+                target?: string;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        comments: components["schemas"]["Comment"][];
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "screen" | "story";
+                    target: string;
+                    /** @enum {string} */
+                    theme?: "light" | "dark";
+                    at: {
+                        x: number;
+                        y: number;
+                    } | {
+                        selector: string;
+                    };
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The new comment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The comment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    replyComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerInput"];
+            };
+        };
+        responses: {
+            /** @description The comment after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Changed"];
+        };
+    };
+    resolveComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerInput"];
+            };
+        };
+        responses: {
+            /** @description The comment after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Changed"];
+        };
+    };
+    reopenComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerInput"];
+            };
+        };
+        responses: {
+            /** @description The comment after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Changed"];
+        };
+    };
+    commentSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
                 };
             };
             404: components["responses"]["NotFound"];

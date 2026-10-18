@@ -1,6 +1,7 @@
 //! SQLite persistence for people, access, branches, comments and jobs.
 
 mod captures;
+mod comments;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -10,6 +11,7 @@ use board_model::{Origin, Project, Version, VersionKind, Visibility};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use captures::CaptureStore;
+pub use comments::CommentStore;
 
 /// Schema migrations, applied in order. `PRAGMA user_version` records how many have run.
 /// Never edit a released migration; append a new one.
@@ -17,6 +19,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_settings.sql"),
     include_str!("migrations/0002_projects.sql"),
     include_str!("migrations/0003_captures.sql"),
+    include_str!("migrations/0004_comments.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.

@@ -135,6 +135,108 @@ pub fn valid_path(path: &str) -> bool {
             .all(|part| !part.is_empty() && part != "." && part != ".." && part != ".git")
 }
 
+/// Who wrote something, as shown next to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Person {
+    /// `local`, a user id, or `guest:<id>`.
+    pub id: String,
+    pub name: String,
+}
+
+impl Actor {
+    pub fn person(&self) -> Person {
+        match self {
+            Self::Local => Person {
+                id: "local".into(),
+                name: self.name().to_owned(),
+            },
+            Self::User { id, name, .. } => Person {
+                id: id.clone(),
+                name: name.clone(),
+            },
+            Self::Guest { id, name, .. } => Person {
+                id: format!("guest:{id}"),
+                name: name.clone(),
+            },
+        }
+    }
+}
+
+/// What a comment points at: an element of a capture (box in CSS pixels of the capture).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Anchor {
+    pub x: i64,
+    pub y: i64,
+    pub w: i64,
+    pub h: i64,
+    /// Component names, outermost first.
+    #[serde(default)]
+    pub chain: Vec<String>,
+    #[serde(default)]
+    pub sel: String,
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
+    pub text: String,
+    /// `path:line:col` of the JSX that made the element.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub src: Option<String>,
+    /// The element is gone from the latest capture; the box is where it last was.
+    #[serde(default)]
+    pub detached: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommentStatus {
+    Open,
+    Resolved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplyKind {
+    Reply,
+    Resolve,
+    Reopen,
+}
+
+/// A comment on a screen or story, with its thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: u64,
+    /// `screen` or `story`.
+    pub kind: String,
+    pub target: String,
+    /// The theme of the capture it was made on.
+    pub theme: String,
+    pub anchor: Anchor,
+    pub body: String,
+    pub author: Person,
+    pub status: CommentStatus,
+    /// Commit of the capture the comment was made on.
+    pub created_commit: String,
+    /// `main` when it was resolved.
+    pub resolved_commit: Option<String>,
+    /// Bumped by every reply, resolve and reopen; writers send the one they saw.
+    pub rev: u32,
+    pub created_at: String,
+    pub updated_at: String,
+    pub replies: Vec<Reply>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reply {
+    pub id: u64,
+    pub author: Person,
+    pub body: String,
+    pub kind: ReplyKind,
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

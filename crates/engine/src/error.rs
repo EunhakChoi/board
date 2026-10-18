@@ -19,6 +19,8 @@ pub enum EngineError {
     Unavailable(String),
     /// Not possible yet (a build still running); try again later.
     Pending(String),
+    /// Someone wrote to it since the caller read it; this is its revision now.
+    Changed(u32),
     Store(StoreError),
 }
 
@@ -48,6 +50,10 @@ impl std::fmt::Display for EngineError {
             Self::Exists(what) => write!(f, "{what} already exists"),
             Self::Conflict { head } => write!(f, "main moved to {head}; pull and try again"),
             Self::Unavailable(message) => write!(f, "unavailable: {message}"),
+            Self::Changed(rev) => write!(
+                f,
+                "changed meanwhile (now at revision {rev}); read it again"
+            ),
             Self::Store(error) => write!(f, "storage error: {error}"),
         }
     }

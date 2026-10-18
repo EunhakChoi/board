@@ -6,7 +6,7 @@ mod secret;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use board_db::{CaptureStore, Db};
+use board_db::{CaptureStore, CommentStore, Db};
 use board_engine::{Engine, Ports, PreviewSettings};
 use board_render_client::RenderClient;
 use board_store::GitStore;
@@ -40,7 +40,11 @@ async fn run(config: Config) -> Result<(), String> {
     let ports = Ports {
         settings: db.clone(),
         records: db.clone(),
-        captures: Arc::new(CaptureStore::new(db, config.data_dir().join("captures"))),
+        captures: Arc::new(CaptureStore::new(
+            db.clone(),
+            config.data_dir().join("captures"),
+        )),
+        comments: Arc::new(CommentStore::new(db, config.data_dir().join("comments"))),
         renderer: Arc::new(RenderClient::new(
             &config.render_url,
             config.render_token.clone(),
