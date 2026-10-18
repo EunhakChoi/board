@@ -15,6 +15,7 @@ tags:
   - name: system
   - name: auth
   - name: projects
+  - name: captures
 paths:
   /api/health:
     get:
@@ -294,8 +295,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/projects/{key}/check:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [captures]
+      operationId: checkProject
+      summary: Open screens and stories of a revision and report problems (nothing is stored)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenderInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/RenderResults"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Pending"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/projects/{key}/captures:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [captures]
+      operationId: listCaptures
+      summary: Stored captures, each marked stale when main moved in a way that can change it
+      responses:
+        "200":
+          description: Captures
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [captures]
+                properties:
+                  captures:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Capture"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [captures]
+      operationId: captureProject
+      summary: Capture screens and stories of a revision; already captured at that commit = skipped
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenderInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/RenderResults"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Pending"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/projects/{key}/captures/{kind}/{target}/{theme}/image:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CaptureKind"
+      - $ref: "#/components/parameters/CaptureTarget"
+      - $ref: "#/components/parameters/Theme"
+    get:
+      tags: [captures]
+      operationId: captureImage
+      summary: The capture's picture
+      responses:
+        "200":
+          description: JPEG
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/captures/{kind}/{target}/{theme}/elements:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CaptureKind"
+      - $ref: "#/components/parameters/CaptureTarget"
+      - $ref: "#/components/parameters/Theme"
+    get:
+      tags: [captures]
+      operationId: captureElements
+      summary: The capture's element map
+      responses:
+        "200":
+          description: Elements worth pointing at, in document order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Element"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    CaptureKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [screen, story]
+    CaptureTarget:
+      name: target
+      in: path
+      required: true
+      description: Screen or story id
+      schema:
+        type: string
+    Theme:
+      name: theme
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [light, dark]
     ProjectKey:
       name: key
       in: path
@@ -304,6 +434,30 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
   responses:
+    Pending:
+      description: Not possible yet (the preview is still building); try again shortly
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: A service board needs (board-workspace, board-render) is not running
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RenderResults:
+      description: One result per target and theme, in request order
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [results]
+            properties:
+              results:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RenderResult"
     Invalid:
       description: Bad input
       content:
@@ -329,6 +483,110 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    RenderInput:
+      type: object
+      additionalProperties: false
+      properties:
+        rev:
+          type: string
+          description: "`main` (default), `v<number>` or a commit id"
+        targets:
+          type: array
+          description: Screen or story ids; empty = all
+          items:
+            type: string
+        themes:
+          type: array
+          description: Default `light`
+          items:
+            type: string
+            enum: [light, dark]
+        force:
+          type: boolean
+          description: Capture only. Render again although already captured at this commit
+    RenderResult:
+      type: object
+      required: [kind, target, theme, issues, captured]
+      properties:
+        kind:
+          type: string
+          enum: [screen, story]
+        target:
+          type: string
+        theme:
+          type: string
+          enum: [light, dark]
+        ready:
+          type: string
+          description: "`true` or `error`; absent when the page never got ready"
+        issues:
+          type: array
+          description: Page errors, console errors, missing mocks
+          items:
+            type: string
+        captured:
+          type: boolean
+          description: Capture only. False when the stored capture was already at this commit
+    Capture:
+      type: object
+      required: [kind, target, theme, commit, width, height, issues, sources, capturedAt, stale]
+      properties:
+        kind:
+          type: string
+          enum: [screen, story]
+        target:
+          type: string
+        theme:
+          type: string
+          enum: [light, dark]
+        commit:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        issues:
+          type: array
+          items:
+            type: string
+        sources:
+          type: array
+          description: Source files the rendered elements came from, relative to the app
+          items:
+            type: string
+        capturedAt:
+          type: string
+        stale:
+          type: boolean
+    Element:
+      type: object
+      required: [x, y, w, h, chain, sel, tag, text]
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+        w:
+          type: integer
+        h:
+          type: integer
+        chain:
+          type: array
+          description: Component names, outermost first
+          items:
+            type: string
+        sel:
+          type: string
+        tag:
+          type: string
+        text:
+          type: string
+        src:
+          type: string
+          description: "`path:line:col` of the JSX that made the element"
+        slot:
+          type: string
+          description: shadcn `data-slot`
     Preview:
       type: object
       required: [commit, state, steps, error]

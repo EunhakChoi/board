@@ -19,6 +19,8 @@ use crate::{Build, BuildState, BuiltFile, Engine, EngineError};
 pub struct PreviewSettings {
     /// Public origin of the preview listener, e.g. `http://127.0.0.1:5281` (no trailing slash).
     pub origin: String,
+    /// The same listener as `board-render` reaches it (differs inside docker).
+    pub render_origin: String,
     /// Key for preview tokens. Kept by the server, never sent anywhere.
     pub secret: [u8; 32],
     /// How long a token is valid.
@@ -69,7 +71,7 @@ impl Engine {
         let ready = build.state == BuildState::Ready;
         Ok(Preview {
             base_url: ready.then(|| format!("{}{}", settings.origin, base_path(key, &commit))),
-            token: ready.then(|| sign(settings, key, &commit, now() + settings.ttl_secs)),
+            token: ready.then(|| token(settings, key, &commit)),
             commit,
             build,
         })
@@ -91,11 +93,16 @@ impl Engine {
         Ok(self.ports.workspace.file(key, commit, path)?)
     }
 
-    fn preview_settings(&self) -> Result<&PreviewSettings, EngineError> {
+    pub(crate) fn preview_settings(&self) -> Result<&PreviewSettings, EngineError> {
         self.preview
             .as_deref()
             .ok_or_else(|| EngineError::Unavailable("previews are not configured".into()))
     }
+}
+
+/// A fresh token for (`key`, `commit`).
+pub(crate) fn token(settings: &PreviewSettings, key: &str, commit: &str) -> String {
+    sign(settings, key, commit, now() + settings.ttl_secs)
 }
 
 /// Path prefix a commit's build is served under.
@@ -147,6 +154,7 @@ mod tests {
     fn settings() -> PreviewSettings {
         PreviewSettings {
             origin: "http://127.0.0.1:5281".into(),
+            render_origin: "http://127.0.0.1:5281".into(),
             secret: [7; 32],
             ttl_secs: 3600,
         }

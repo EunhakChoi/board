@@ -2,6 +2,7 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
+mod captures;
 mod error;
 mod preview;
 mod projects;
@@ -31,6 +32,17 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/projects/{key}/versions"),
     ("get", "/api/projects/{key}/diff"),
     ("get", "/api/projects/{key}/preview"),
+    ("post", "/api/projects/{key}/check"),
+    ("get", "/api/projects/{key}/captures"),
+    ("post", "/api/projects/{key}/captures"),
+    (
+        "get",
+        "/api/projects/{key}/captures/{kind}/{target}/{theme}/image",
+    ),
+    (
+        "get",
+        "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements",
+    ),
 ];
 
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
@@ -49,6 +61,19 @@ pub fn router(engine: Engine) -> Router {
         .route("/api/projects/{key}/versions", get(projects::versions))
         .route("/api/projects/{key}/diff", get(projects::diff))
         .route("/api/projects/{key}/preview", get(preview::status))
+        .route("/api/projects/{key}/check", post(captures::check))
+        .route(
+            "/api/projects/{key}/captures",
+            get(captures::list).post(captures::capture),
+        )
+        .route(
+            "/api/projects/{key}/captures/{kind}/{target}/{theme}/image",
+            get(captures::image),
+        )
+        .route(
+            "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements",
+            get(captures::elements),
+        )
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .fallback(not_found)
         .with_state(engine)

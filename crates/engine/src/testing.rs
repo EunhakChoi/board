@@ -6,44 +6,179 @@ use std::sync::{Arc, Mutex};
 use board_model::{Project, Version, VersionKind};
 
 use crate::{
-    Author, Build, BuildState, BuiltFile, Change, ChangeKind, Engine, FileChange, Ports,
-    PreviewSettings, ProjectStore, Records, Settings, StoreError, Workspace, WorkspaceError,
+    Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind, Engine,
+    FileChange, Ports, PreviewSettings, ProjectStore, Records, RenderJob, Renderer, Settings, Shot,
+    StoreError, Workspace, WorkspaceError,
 };
 
+/// The fakes behind an engine, for tests that steer or inspect them.
+#[derive(Clone)]
+pub struct Fakes {
+    pub workspace: Arc<MemoryWorkspace>,
+    pub renderer: Arc<MemoryRenderer>,
+}
+
 pub fn engine() -> Engine {
-    engine_with(Arc::new(MemoryWorkspace::default()))
+    engine_with(&fakes())
 }
 
 pub fn engine_with_preview(settings: PreviewSettings) -> (Engine, Arc<MemoryWorkspace>) {
-    let workspace = Arc::new(MemoryWorkspace::default());
-    (
-        engine_with(workspace.clone()).with_preview(settings),
-        workspace,
-    )
+    let fakes = fakes();
+    (engine_with(&fakes).with_preview(settings), fakes.workspace)
 }
 
-fn engine_with(workspace: Arc<MemoryWorkspace>) -> Engine {
+/// An engine with previews on (`render_origin` = `http://render.internal`).
+pub fn engine_with_fakes() -> (Engine, Fakes) {
+    let fakes = fakes();
+    let engine = engine_with(&fakes).with_preview(PreviewSettings {
+        origin: "http://preview.test".into(),
+        render_origin: "http://render.internal".into(),
+        secret: [1; 32],
+        ttl_secs: 600,
+    });
+    (engine, fakes)
+}
+
+pub fn file(path: &str, content: &str) -> FileChange {
+    FileChange {
+        path: path.into(),
+        content: Some(content.as_bytes().to_vec()),
+        executable: false,
+    }
+}
+
+fn fakes() -> Fakes {
+    Fakes {
+        workspace: Arc::new(MemoryWorkspace::default()),
+        renderer: Arc::new(MemoryRenderer::default()),
+    }
+}
+
+fn engine_with(fakes: &Fakes) -> Engine {
     Engine::new(
         Ports {
             settings: Arc::new(MemorySettings::default()),
             records: Arc::new(MemoryRecords::default()),
             store: Arc::new(MemoryStore::default()),
-            workspace,
+            workspace: fakes.workspace.clone(),
+            renderer: fakes.renderer.clone(),
+            captures: Arc::new(MemoryCaptures::default()),
         },
         true,
     )
+}
+
+/// Records jobs. Screens render ready; with an image, the picture is `jpeg:<target>` and the
+/// element map points at `src/<target>.tsx:3:5`.
+#[derive(Default)]
+pub struct MemoryRenderer(Mutex<Vec<RenderJob>>);
+
+impl MemoryRenderer {
+    pub fn jobs(&self) -> Vec<RenderJob> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl Renderer for MemoryRenderer {
+    fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError> {
+        self.0.lock().unwrap().push(job.clone());
+        let target = job
+            .url
+            .split(['?', '&'])
+            .find_map(|p| {
+                p.strip_prefix("screen=")
+                    .or_else(|| p.strip_prefix("story="))
+            })
+            .unwrap_or_default()
+            .to_owned();
+        Ok(Shot {
+            ready: Some("true".into()),
+            issues: Vec::new(),
+            image: job.image.map(|_| format!("jpeg:{target}").into_bytes()),
+            elements: job.map.then(
+                || serde_json::json!([{ "tag": "main", "src": format!("src/{target}.tsx:3:5") }]),
+            ),
+        })
+    }
+}
+
+type CaptureKey = (String, String, String, String);
+type StoredCapture = (Capture, Vec<u8>, serde_json::Value);
+
+#[derive(Default)]
+struct MemoryCaptures(Mutex<BTreeMap<CaptureKey, StoredCapture>>);
+
+impl Captures for MemoryCaptures {
+    fn put(
+        &self,
+        project: &str,
+        capture: &Capture,
+        image: &[u8],
+        elements: &serde_json::Value,
+    ) -> Result<(), StoreError> {
+        let key = (
+            project.to_owned(),
+            capture.kind.clone(),
+            capture.target.clone(),
+            capture.theme.clone(),
+        );
+        self.0
+            .lock()
+            .unwrap()
+            .insert(key, (capture.clone(), image.to_vec(), elements.clone()));
+        Ok(())
+    }
+    fn list(&self, project: &str) -> Result<Vec<Capture>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k.0 == project)
+            .map(|(_, v)| v.0.clone())
+            .collect())
+    }
+    fn image(
+        &self,
+        project: &str,
+        kind: &str,
+        target: &str,
+        theme: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let key = (project.into(), kind.into(), target.into(), theme.into());
+        Ok(self.0.lock().unwrap().get(&key).map(|v| v.1.clone()))
+    }
+    fn elements(
+        &self,
+        project: &str,
+        kind: &str,
+        target: &str,
+        theme: &str,
+    ) -> Result<Option<serde_json::Value>, StoreError> {
+        let key = (project.into(), kind.into(), target.into(), theme.into());
+        Ok(self.0.lock().unwrap().get(&key).map(|v| v.2.clone()))
+    }
 }
 
 /// Builds stay queued until a test calls [`MemoryWorkspace::finish`].
 #[derive(Default)]
 pub struct MemoryWorkspace {
     builds: Mutex<HashMap<(String, String), Build>>,
+    files: Mutex<HashMap<String, Vec<u8>>>,
     starts: Mutex<usize>,
 }
 
 impl MemoryWorkspace {
     pub fn starts(&self) -> usize {
         *self.starts.lock().unwrap()
+    }
+
+    /// Makes `path` part of every build.
+    pub fn serve(&self, path: &str, content: &str) {
+        self.files
+            .lock()
+            .unwrap()
+            .insert(path.into(), content.as_bytes().to_vec());
     }
 
     pub fn finish(&self, state: BuildState) {
@@ -90,9 +225,13 @@ impl Workspace for MemoryWorkspace {
         &self,
         _project: &str,
         _commit: &str,
-        _path: &str,
+        path: &str,
     ) -> Result<Option<BuiltFile>, WorkspaceError> {
-        Ok(None)
+        Ok(self.files.lock().unwrap().get(path).map(|body| BuiltFile {
+            content_type: "application/octet-stream".into(),
+            cache_control: "no-cache".into(),
+            body: body.clone(),
+        }))
     }
 }
 
@@ -240,6 +379,10 @@ impl ProjectStore for MemoryStore {
             return Ok(repo.tags.get(&number).cloned());
         }
         Ok(repo.commits.contains_key(rev).then(|| rev.to_owned()))
+    }
+    fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        let repos = self.0.lock().unwrap();
+        Ok(repos[project].commits[commit].get(path).cloned())
     }
     fn archive(&self, _project: &str, commit: &str) -> Result<Vec<u8>, StoreError> {
         Ok(commit.as_bytes().to_vec())

@@ -17,6 +17,8 @@ pub enum EngineError {
     },
     /// A service the command needs is down or not configured.
     Unavailable(String),
+    /// Not possible yet (a build still running); try again later.
+    Pending(String),
     Store(StoreError),
 }
 
@@ -42,7 +44,7 @@ impl std::fmt::Display for EngineError {
         match self {
             Self::Forbidden => f.write_str("not allowed"),
             Self::NotFound(what) => write!(f, "{what} not found"),
-            Self::Invalid(message) => f.write_str(message),
+            Self::Invalid(message) | Self::Pending(message) => f.write_str(message),
             Self::Exists(what) => write!(f, "{what} already exists"),
             Self::Conflict { head } => write!(f, "main moved to {head}; pull and try again"),
             Self::Unavailable(message) => write!(f, "unavailable: {message}"),

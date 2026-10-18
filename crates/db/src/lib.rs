@@ -1,5 +1,7 @@
 //! SQLite persistence for people, access, branches, comments and jobs.
 
+mod captures;
+
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -7,11 +9,14 @@ use board_engine::{Records, Settings, StoreError};
 use board_model::{Origin, Project, Version, VersionKind, Visibility};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
+pub use captures::CaptureStore;
+
 /// Schema migrations, applied in order. `PRAGMA user_version` records how many have run.
 /// Never edit a released migration; append a new one.
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_settings.sql"),
     include_str!("migrations/0002_projects.sql"),
+    include_str!("migrations/0003_captures.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.
@@ -50,7 +55,7 @@ impl Db {
         user_version(&*self.lock()?)
     }
 
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StoreError> {
+    pub(crate) fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StoreError> {
         self.conn
             .lock()
             .map_err(|_| StoreError("database lock poisoned".into()))

@@ -100,6 +100,18 @@ impl ProjectStore for GitStore {
         Ok(self.git(project).rev_parse(&format!("{name}^{{commit}}")))
     }
 
+    fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        let object = format!("{commit}:{path}");
+        let git = self.git(project);
+        // `cat-file -t` fails for a missing path; only blobs are files.
+        match git.run(&["cat-file", "-t", &object], None) {
+            Ok(kind) if kind.trim_ascii() == b"blob" => {
+                git.run(&["cat-file", "blob", &object], None).map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn archive(&self, project: &str, commit: &str) -> Result<Vec<u8>, StoreError> {
         self.git(project)
             .run(&["archive", "--format=tar.gz", commit], None)
@@ -331,6 +343,12 @@ mod tests {
             Some(c1.as_str())
         );
         assert_eq!(store.resolve("web", "v9").unwrap(), None);
+        assert_eq!(
+            store.read("web", &c1, "dir/b file.txt").unwrap().as_deref(),
+            Some(&b"2"[..])
+        );
+        assert_eq!(store.read("web", &c2, "a.txt").unwrap(), None, "deleted");
+        assert_eq!(store.read("web", &c1, "dir").unwrap(), None, "a tree");
         assert_eq!(store.resolve("web", "--help").unwrap(), None);
 
         let changes = store.diff("web", &c1, &c2).unwrap();

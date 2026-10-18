@@ -8,9 +8,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use board_db::Db;
+use board_db::{CaptureStore, Db};
 use board_engine::{
-    Build, BuildState, BuiltFile, Engine, Ports, PreviewSettings, Workspace, WorkspaceError,
+    Build, BuildState, BuiltFile, Engine, Ports, PreviewSettings, RenderJob, Renderer, Shot,
+    Workspace, WorkspaceError,
 };
 use board_store::GitStore;
 use http_body_util::BodyExt;
@@ -29,9 +30,11 @@ fn engine(local_mode: bool) -> Engine {
     Engine::new(
         Ports {
             settings: db.clone(),
-            records: db,
-            store: Arc::new(GitStore::new(root)),
+            records: db.clone(),
+            store: Arc::new(GitStore::new(root.join("projects"))),
             workspace: Arc::new(ReadyWorkspace),
+            renderer: Arc::new(FakeRenderer),
+            captures: Arc::new(CaptureStore::new(db, root.join("captures"))),
         },
         local_mode,
     )
@@ -61,17 +64,46 @@ impl Workspace for ReadyWorkspace {
         })
     }
     fn file(&self, _: &str, _: &str, path: &str) -> Result<Option<BuiltFile>, WorkspaceError> {
-        Ok((path == ".board/frame.html").then(|| BuiltFile {
+        let body: &[u8] = match path {
+            ".board/frame.html" => b"<!doctype html>",
+            ".board/manifest.json" => {
+                br#"{"manifestVersion":1,"screens":[{"id":"home","size":{"w":800,"h":600}}],"stories":[]}"#
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(BuiltFile {
             content_type: "text/html; charset=utf-8".into(),
             cache_control: "no-cache".into(),
-            body: b"<!doctype html>".to_vec(),
+            body: body.to_vec(),
         }))
+    }
+}
+
+/// Every page is ready; dark pages report a missing mock.
+struct FakeRenderer;
+
+impl Renderer for FakeRenderer {
+    fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError> {
+        let issues = if job.url.contains("theme=dark") {
+            vec!["[board] missing mock GET /api/x".to_owned()]
+        } else {
+            Vec::new()
+        };
+        Ok(Shot {
+            ready: Some("true".into()),
+            issues,
+            image: job.image.map(|_| b"\xff\xd8jpeg".to_vec()),
+            elements: job
+                .map
+                .then(|| json!([{ "x": 0, "y": 0, "w": 10, "h": 10, "chain": ["Home"], "sel": "body", "tag": "main", "text": "", "src": "src/home.tsx:1:1" }])),
+        })
     }
 }
 
 fn preview_settings() -> PreviewSettings {
     PreviewSettings {
         origin: "http://127.0.0.1:5281".into(),
+        render_origin: "http://127.0.0.1:5281".into(),
         secret: [3; 32],
         ttl_secs: 600,
     }
@@ -339,4 +371,66 @@ async fn preview_without_settings_is_unavailable() {
     let (status, body) = call(engine, "/api/projects/web/preview").await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["code"], "unavailable");
+}
+
+#[tokio::test]
+async fn check_capture_and_read_back() {
+    let engine = engine(true).with_preview(preview_settings());
+    post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+
+    let (status, checked) = post(
+        engine.clone(),
+        "/api/projects/web/check",
+        &json!({ "themes": ["light", "dark"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{checked}");
+    assert_eq!(checked["results"][0]["issues"], json!([]));
+    assert_eq!(
+        checked["results"][1]["issues"][0],
+        "[board] missing mock GET /api/x"
+    );
+
+    let (status, captured) = post(engine.clone(), "/api/projects/web/captures", &json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{captured}");
+    assert_eq!(captured["results"][0]["captured"], true);
+    let (_, again) = post(engine.clone(), "/api/projects/web/captures", &json!({})).await;
+    assert_eq!(again["results"][0]["captured"], false);
+
+    let (status, list) = call(engine.clone(), "/api/projects/web/captures").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["captures"][0]["target"], "home");
+    assert_eq!(list["captures"][0]["stale"], false);
+    assert_eq!(list["captures"][0]["sources"], json!(["src/home.tsx"]));
+
+    let (status, image, _) = send(
+        engine.clone(),
+        Request::get("/api/projects/web/captures/screen/home/light/image")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(image.starts_with(&[0xff, 0xd8]));
+    let (status, elements) = call(
+        engine.clone(),
+        "/api/projects/web/captures/screen/home/light/elements",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(elements[0]["chain"], json!(["Home"]));
+    let (status, _) = call(
+        engine.clone(),
+        "/api/projects/web/captures/screen/home/dark/image",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, body) = post(
+        engine,
+        "/api/projects/web/check",
+        &json!({ "targets": ["ghost"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
