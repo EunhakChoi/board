@@ -3,6 +3,7 @@
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
 mod error;
+mod preview;
 mod projects;
 
 use axum::extract::DefaultBodyLimit;
@@ -15,6 +16,7 @@ use board_model::{Actor, Role, VERSION};
 use serde::Serialize;
 
 pub use error::ApiError;
+pub use preview::{PreviewOrigin, preview_router};
 
 /// Routes that exist, as `(method, path)`. Checked against the contract in tests.
 pub const ROUTES: &[(&str, &str)] = &[
@@ -28,6 +30,7 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("post", "/api/projects/{key}/push"),
     ("get", "/api/projects/{key}/versions"),
     ("get", "/api/projects/{key}/diff"),
+    ("get", "/api/projects/{key}/preview"),
 ];
 
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
@@ -45,6 +48,7 @@ pub fn router(engine: Engine) -> Router {
         .route("/api/projects/{key}/push", post(projects::push))
         .route("/api/projects/{key}/versions", get(projects::versions))
         .route("/api/projects/{key}/diff", get(projects::diff))
+        .route("/api/projects/{key}/preview", get(preview::status))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .fallback(not_found)
         .with_state(engine)

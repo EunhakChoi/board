@@ -9,7 +9,9 @@ use axum::http::{Request, StatusCode};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use board_db::Db;
-use board_engine::{Engine, Ports};
+use board_engine::{
+    Build, BuildState, BuiltFile, Engine, Ports, PreviewSettings, Workspace, WorkspaceError,
+};
 use board_store::GitStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -29,9 +31,50 @@ fn engine(local_mode: bool) -> Engine {
             settings: db.clone(),
             records: db,
             store: Arc::new(GitStore::new(root)),
+            workspace: Arc::new(ReadyWorkspace),
         },
         local_mode,
     )
+}
+
+/// Every build is ready at once and has one page.
+struct ReadyWorkspace;
+
+impl Workspace for ReadyWorkspace {
+    fn build(&self, _: &str, _: &str) -> Result<Option<Build>, WorkspaceError> {
+        Ok(None)
+    }
+    fn start_build(
+        &self,
+        _: &str,
+        _: &str,
+        base: &str,
+        source: Vec<u8>,
+        _: bool,
+    ) -> Result<Build, WorkspaceError> {
+        assert!(base.starts_with('/') && base.ends_with('/'));
+        assert!(source.starts_with(&[0x1f, 0x8b]), "gzip source");
+        Ok(Build {
+            state: BuildState::Ready,
+            steps: Vec::new(),
+            error: String::new(),
+        })
+    }
+    fn file(&self, _: &str, _: &str, path: &str) -> Result<Option<BuiltFile>, WorkspaceError> {
+        Ok((path == ".board/frame.html").then(|| BuiltFile {
+            content_type: "text/html; charset=utf-8".into(),
+            cache_control: "no-cache".into(),
+            body: b"<!doctype html>".to_vec(),
+        }))
+    }
+}
+
+fn preview_settings() -> PreviewSettings {
+    PreviewSettings {
+        origin: "http://127.0.0.1:5281".into(),
+        secret: [3; 32],
+        ttl_secs: 600,
+    }
 }
 
 async fn send(engine: Engine, request: Request<Body>) -> (StatusCode, Vec<u8>, Option<String>) {
@@ -212,4 +255,88 @@ fn routes_match_the_contract() {
         .map(|(m, p)| ((*m).to_owned(), (*p).to_owned()))
         .collect();
     assert_eq!(routed, documented);
+}
+
+#[tokio::test]
+async fn preview_builds_and_serves_with_a_scoped_token() {
+    let engine = engine(true).with_preview(preview_settings());
+    let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, preview) = call(engine.clone(), "/api/projects/web/preview").await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["state"], "ready");
+    let commit = preview["commit"].as_str().unwrap().to_owned();
+    assert_eq!(
+        preview["baseUrl"],
+        format!("http://127.0.0.1:5281/web/{commit}/")
+    );
+    let token = preview["token"].as_str().unwrap().to_owned();
+
+    let origin = board_api::PreviewOrigin {
+        frame_ancestors: vec!["http://localhost:5280".into()],
+    };
+    let open = |path: String, cookie: Option<String>| {
+        let router = board_api::preview_router(engine.clone(), &origin);
+        let mut request = Request::get(path);
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", cookie);
+        }
+        router.oneshot(request.body(Body::empty()).unwrap())
+    };
+
+    let page = open(format!("/web/{commit}/.board/frame.html?t={token}"), None)
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let headers = page.headers();
+    let cookie = headers["set-cookie"].to_str().unwrap().to_owned();
+    assert!(
+        cookie.starts_with(&format!("board_preview={token}; Path=/web/{commit}/;")),
+        "{cookie}"
+    );
+    assert!(cookie.contains("HttpOnly") && cookie.contains("Partitioned"));
+    assert_eq!(
+        headers["content-security-policy"],
+        "frame-ancestors http://localhost:5280"
+    );
+    assert_eq!(headers["referrer-policy"], "no-referrer");
+
+    // Later requests carry the cookie instead of the token.
+    let with_cookie = open(
+        format!("/web/{commit}/.board/frame.html"),
+        Some(format!("other=1; board_preview={token}")),
+    )
+    .await
+    .unwrap();
+    assert_eq!(with_cookie.status(), StatusCode::OK);
+    assert!(with_cookie.headers().get("set-cookie").is_none());
+    let missing = open(
+        format!("/web/{commit}/nope.js"),
+        Some(format!("board_preview={token}")),
+    )
+    .await
+    .unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+    // No token, a token for another commit, or the API on the preview origin: refused.
+    let bare = open(format!("/web/{commit}/.board/frame.html"), None)
+        .await
+        .unwrap();
+    assert_eq!(bare.status(), StatusCode::FORBIDDEN);
+    let other = "0".repeat(40);
+    let wrong = open(format!("/web/{other}/.board/frame.html?t={token}"), None)
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
+    let api = open("/api/projects".into(), None).await.unwrap();
+    assert_eq!(api.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn preview_without_settings_is_unavailable() {
+    let engine = engine(true);
+    post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    let (status, body) = call(engine, "/api/projects/web/preview").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["code"], "unavailable");
 }

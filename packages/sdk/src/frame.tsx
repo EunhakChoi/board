@@ -41,11 +41,15 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     const page = project.pages.find((p) => p.id === screen?.page);
     const handlers = [...(screen.mocks ?? []), ...(project.mocks ?? [])];
     const worker = setupWorker(...handlers);
-    // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope follow it.
+    // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope
+    // follow it. In a cross-site iframe the browser fetches the worker script without the preview
+    // cookie, so the access token rides along in its URL.
     const base = import.meta.env.BASE_URL;
+    const token = params.get("t");
+    const url = `${base}mockServiceWorker.js${token ? `?t=${encodeURIComponent(token)}` : ""}`;
     await worker.start({
       quiet: true,
-      serviceWorker: { url: `${base}mockServiceWorker.js`, options: { scope: base } },
+      serviceWorker: { url, options: { scope: base } },
       onUnhandledRequest(request, print) {
         const url = new URL(request.url);
         // Only API calls count; the page's own assets are not mocks.

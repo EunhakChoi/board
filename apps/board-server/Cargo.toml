@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 axum.workspace = true
+getrandom.workspace = true
 tokio.workspace = true
 board-model = { path = "../../crates/model" }
 board-engine = { path = "../../crates/engine" }
@@ -15,6 +16,7 @@ board-store = { path = "../../crates/store" }
 board-db = { path = "../../crates/db" }
 board-collab = { path = "../../crates/collab" }
 board-api = { path = "../../crates/api" }
+board-workspace-client = { path = "../../crates/workspace-client" }
 
 [lints]
 workspace = true

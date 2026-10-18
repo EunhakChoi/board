@@ -176,7 +176,12 @@ impl Engine {
         Ok(self.ports.store.diff(key, &from, &to)?)
     }
 
-    fn visible(&self, actor: &Actor, key: &str, command: Command) -> Result<Project, EngineError> {
+    pub(crate) fn visible(
+        &self,
+        actor: &Actor,
+        key: &str,
+        command: Command,
+    ) -> Result<Project, EngineError> {
         let project = self
             .ports
             .records
@@ -192,7 +197,7 @@ impl Engine {
         Ok(project)
     }
 
-    fn resolve(&self, key: &str, rev: &str) -> Result<String, EngineError> {
+    pub(crate) fn resolve(&self, key: &str, rev: &str) -> Result<String, EngineError> {
         self.ports
             .store
             .resolve(key, rev)?

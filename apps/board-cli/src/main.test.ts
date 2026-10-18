@@ -29,9 +29,15 @@ before(async () => {
   assert.ok(existsSync(SERVER_BIN), `build board-server first (${SERVER_BIN})`);
   work = mkdtempSync(join(tmpdir(), "board-cli-"));
   const port = await freePort();
+  const previewPort = await freePort();
   url = `http://127.0.0.1:${port}`;
   server = spawn(SERVER_BIN, [], {
-    env: { ...process.env, BOARD_HOME: join(work, "home"), BOARD_BIND: `127.0.0.1:${port}` },
+    env: {
+      ...process.env,
+      BOARD_HOME: join(work, "home"),
+      BOARD_BIND: `127.0.0.1:${port}`,
+      BOARD_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
+    },
     stdio: "ignore",
   });
   for (let i = 0; i < 100; i++) {

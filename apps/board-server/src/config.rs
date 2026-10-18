@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 
 /// Default address: loopback only, which means local mode.
 const DEFAULT_BIND: &str = "127.0.0.1:5280";
+/// Default preview origin: same machine, other port. The tool is opened as `localhost`, previews as
+/// `127.0.0.1`, so the two never share cookies.
+const DEFAULT_PREVIEW_BIND: &str = "127.0.0.1:5281";
+const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -14,6 +18,15 @@ pub struct Config {
     pub bind: SocketAddr,
     /// `--public`: reachable from other machines, sign-in required.
     pub public: bool,
+    /// Preview listener (`BOARD_PREVIEW_BIND`).
+    pub preview_bind: SocketAddr,
+    /// Preview origin as browsers reach it (`BOARD_PREVIEW_URL`, default `http://<preview bind>`).
+    pub preview_url: String,
+    /// `board-workspace` (`BOARD_WORKSPACE_URL`) and the token it expects (`BOARD_WORKSPACE_TOKEN`).
+    pub workspace_url: String,
+    pub workspace_token: Option<String>,
+    /// The tool's address as browsers reach it (`BOARD_PUBLIC_URL`), e.g. behind a tunnel.
+    pub public_url: Option<String>,
 }
 
 impl Config {
@@ -43,16 +56,76 @@ impl Config {
         let bind: SocketAddr = bind_text.parse().map_err(|_| {
             format!("BOARD_BIND {bind_text:?} is not an address like 127.0.0.1:5280")
         })?;
-        if !public && !bind.ip().is_loopback() {
+        let preview_text =
+            env("BOARD_PREVIEW_BIND").unwrap_or_else(|| DEFAULT_PREVIEW_BIND.to_owned());
+        let preview_bind: SocketAddr = preview_text.parse().map_err(|_| {
+            format!("BOARD_PREVIEW_BIND {preview_text:?} is not an address like 127.0.0.1:5281")
+        })?;
+        for addr in [bind, preview_bind] {
+            if !public && !addr.ip().is_loopback() {
+                return Err(format!(
+                    "{addr} is reachable from other machines; pass --public to require sign-in"
+                ));
+            }
+        }
+        if preview_bind == bind {
+            return Err("BOARD_PREVIEW_BIND must differ from BOARD_BIND".to_owned());
+        }
+        let preview_url = env("BOARD_PREVIEW_URL")
+            .unwrap_or_else(|| format!("http://{preview_bind}"))
+            .trim_end_matches('/')
+            .to_owned();
+        if !(preview_url.starts_with("http://") || preview_url.starts_with("https://")) {
             return Err(format!(
-                "{bind} is reachable from other machines; pass --public to require sign-in"
+                "BOARD_PREVIEW_URL {preview_url:?} must be an http(s) URL"
             ));
+        }
+        let workspace_url =
+            env("BOARD_WORKSPACE_URL").unwrap_or_else(|| DEFAULT_WORKSPACE_URL.to_owned());
+        let workspace_token = env("BOARD_WORKSPACE_TOKEN").filter(|t| !t.is_empty());
+        let public_url = env("BOARD_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned());
+        if let Some(url) = &public_url
+            && !(url.starts_with("http://") || url.starts_with("https://"))
+        {
+            return Err(format!("BOARD_PUBLIC_URL {url:?} must be an http(s) URL"));
         }
         if public {
             // Sign-in (OIDC) lands in P1. Until then a public server would be open to anyone.
             return Err("--public needs sign-in, which is not available yet".to_owned());
         }
-        Ok(Self { home, bind, public })
+        Ok(Self {
+            home,
+            bind,
+            public,
+            preview_bind,
+            preview_url,
+            workspace_url,
+            workspace_token,
+            public_url,
+        })
+    }
+
+    /// Origins the tool is opened at, which may frame previews.
+    pub fn tool_origins(&self) -> Vec<String> {
+        if let Some(url) = &self.public_url {
+            return vec![url.clone()];
+        }
+        let port = self.bind.port();
+        if self.bind.ip().is_loopback() {
+            vec![
+                format!("http://localhost:{port}"),
+                format!("http://127.0.0.1:{port}"),
+            ]
+        } else {
+            vec![format!("http://{}", self.bind)]
+        }
+    }
+
+    /// Where people open the tool.
+    pub fn tool_url(&self) -> String {
+        self.public_url
+            .clone()
+            .unwrap_or_else(|| format!("http://localhost:{}", self.bind.port()))
     }
 
     /// Local mode: loopback only and not public. Every request acts as the built-in admin.
@@ -87,6 +160,44 @@ mod tests {
         assert_eq!(config.bind, DEFAULT_BIND.parse().unwrap());
         assert!(config.local_mode());
         assert_eq!(config.data_dir(), PathBuf::from("/home/me/.board/data"));
+        assert_eq!(config.preview_bind, DEFAULT_PREVIEW_BIND.parse().unwrap());
+        assert_eq!(config.preview_url, "http://127.0.0.1:5281");
+        assert_eq!(config.workspace_url, DEFAULT_WORKSPACE_URL);
+        assert_eq!(config.workspace_token, None);
+        assert_eq!(
+            config.tool_origins(),
+            ["http://localhost:5280", "http://127.0.0.1:5280"]
+        );
+    }
+
+    #[test]
+    fn preview_settings() {
+        let config = config(
+            &[],
+            &[
+                ("HOME", "/h"),
+                ("BOARD_PREVIEW_BIND", "127.0.0.1:6001"),
+                ("BOARD_PREVIEW_URL", "https://preview.example.com/"),
+                ("BOARD_WORKSPACE_TOKEN", "s"),
+                ("BOARD_PUBLIC_URL", "https://board.example.com/"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(config.tool_url(), "https://board.example.com");
+        assert_eq!(config.tool_origins(), ["https://board.example.com"]);
+        assert_eq!(config.preview_bind.port(), 6001);
+        assert_eq!(config.preview_url, "https://preview.example.com");
+        assert_eq!(config.workspace_token.as_deref(), Some("s"));
+        let same = [("HOME", "/h"), ("BOARD_PREVIEW_BIND", "127.0.0.1:5280")];
+        assert!(config_err(&same).contains("differ"));
+        let open = [("HOME", "/h"), ("BOARD_PREVIEW_BIND", "0.0.0.0:5281")];
+        assert!(config_err(&open).contains("--public"));
+        let url = [("HOME", "/h"), ("BOARD_PREVIEW_URL", "preview")];
+        assert!(config_err(&url).contains("http"));
+    }
+
+    fn config_err(env: &[(&str, &str)]) -> String {
+        config(&[], env).unwrap_err()
     }
 
     #[test]

@@ -93,3 +93,73 @@ pub trait ProjectStore: Send + Sync {
     /// Paths that differ from `from` to `to`.
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError>;
 }
+
+/// Where a static build of one commit is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BuildState {
+    Queued,
+    Running,
+    Ready,
+    Failed,
+}
+
+/// One step of a build (extract, install, typecheck, lint, build).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildStep {
+    pub name: String,
+    /// `ok`, `failed` or `skipped`.
+    pub state: String,
+    pub duration_ms: u64,
+    pub detail: String,
+}
+
+/// A static build of one commit, as `board-workspace` reports it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Build {
+    pub state: BuildState,
+    pub steps: Vec<BuildStep>,
+    pub error: String,
+}
+
+/// A built file, ready to send to the preview origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuiltFile {
+    pub content_type: String,
+    pub cache_control: String,
+    pub body: Vec<u8>,
+}
+
+/// Why `board-workspace` could not answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceError {
+    /// Not running or not reachable.
+    Unavailable(String),
+    /// Answered with something unexpected.
+    Failed(String),
+}
+
+/// `board-workspace`: installs, checks and builds commits (`apps/board-workspace`).
+pub trait Workspace: Send + Sync {
+    /// The build of `commit`, if one was started.
+    fn build(&self, project: &str, commit: &str) -> Result<Option<Build>, WorkspaceError>;
+    /// Starts building `commit` from `source` (gzipped tar of its files), served under `base`.
+    /// Returns the current build unchanged when one exists, unless it failed and `retry` is set.
+    fn start_build(
+        &self,
+        project: &str,
+        commit: &str,
+        base: &str,
+        source: Vec<u8>,
+        retry: bool,
+    ) -> Result<Build, WorkspaceError>;
+    /// A file of a ready build; `None` when there is no such file.
+    fn file(
+        &self,
+        project: &str,
+        commit: &str,
+        path: &str,
+    ) -> Result<Option<BuiltFile>, WorkspaceError>;
+}
