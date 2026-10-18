@@ -1,5 +1,6 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod captures;
 mod error;
 pub mod policy;
 mod ports;
@@ -8,10 +9,12 @@ mod projects;
 
 use std::sync::Arc;
 
+pub use captures::{CaptureStatus, RenderResult, THEMES};
 pub use error::EngineError;
 pub use ports::{
-    Author, Build, BuildState, BuildStep, BuiltFile, Change, ChangeKind, FileChange, ProjectStore,
-    Records, Settings, StoreError, Workspace, WorkspaceError,
+    Author, Build, BuildState, BuildStep, BuiltFile, Capture, Captures, Change, ChangeKind,
+    FileChange, ImageKind, ProjectStore, Records, RenderJob, Renderer, Settings, Shot, StoreError,
+    Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
@@ -23,6 +26,8 @@ pub struct Ports {
     pub records: Arc<dyn Records>,
     pub store: Arc<dyn ProjectStore>,
     pub workspace: Arc<dyn Workspace>,
+    pub renderer: Arc<dyn Renderer>,
+    pub captures: Arc<dyn Captures>,
 }
 
 impl std::fmt::Debug for Ports {

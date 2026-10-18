@@ -17,6 +17,7 @@ board-db = { path = "../../crates/db" }
 board-collab = { path = "../../crates/collab" }
 board-api = { path = "../../crates/api" }
 board-workspace-client = { path = "../../crates/workspace-client" }
+board-render-client = { path = "../../crates/render-client" }
 
 [lints]
 workspace = true

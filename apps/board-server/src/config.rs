@@ -9,6 +9,7 @@ const DEFAULT_BIND: &str = "127.0.0.1:5280";
 /// `127.0.0.1`, so the two never share cookies.
 const DEFAULT_PREVIEW_BIND: &str = "127.0.0.1:5281";
 const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
+const DEFAULT_RENDER_URL: &str = "http://127.0.0.1:5283";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -25,6 +26,12 @@ pub struct Config {
     /// `board-workspace` (`BOARD_WORKSPACE_URL`) and the token it expects (`BOARD_WORKSPACE_TOKEN`).
     pub workspace_url: String,
     pub workspace_token: Option<String>,
+    /// `board-render` (`BOARD_RENDER_URL`) and its token (`BOARD_RENDER_TOKEN`).
+    pub render_url: String,
+    pub render_token: Option<String>,
+    /// The preview origin as `board-render` reaches it (`BOARD_RENDER_PREVIEW_URL`, default
+    /// `preview_url`; differs inside docker).
+    pub render_preview_url: String,
     /// The tool's address as browsers reach it (`BOARD_PUBLIC_URL`), e.g. behind a tunnel.
     pub public_url: Option<String>,
 }
@@ -83,6 +90,12 @@ impl Config {
         let workspace_url =
             env("BOARD_WORKSPACE_URL").unwrap_or_else(|| DEFAULT_WORKSPACE_URL.to_owned());
         let workspace_token = env("BOARD_WORKSPACE_TOKEN").filter(|t| !t.is_empty());
+        let render_url = env("BOARD_RENDER_URL").unwrap_or_else(|| DEFAULT_RENDER_URL.to_owned());
+        let render_token = env("BOARD_RENDER_TOKEN").filter(|t| !t.is_empty());
+        let render_preview_url = env("BOARD_RENDER_PREVIEW_URL").map_or_else(
+            || preview_url.clone(),
+            |u| u.trim_end_matches('/').to_owned(),
+        );
         let public_url = env("BOARD_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned());
         if let Some(url) = &public_url
             && !(url.starts_with("http://") || url.starts_with("https://"))
@@ -101,6 +114,9 @@ impl Config {
             preview_url,
             workspace_url,
             workspace_token,
+            render_url,
+            render_token,
+            render_preview_url,
             public_url,
         })
     }
@@ -164,6 +180,8 @@ mod tests {
         assert_eq!(config.preview_url, "http://127.0.0.1:5281");
         assert_eq!(config.workspace_url, DEFAULT_WORKSPACE_URL);
         assert_eq!(config.workspace_token, None);
+        assert_eq!(config.render_url, DEFAULT_RENDER_URL);
+        assert_eq!(config.render_preview_url, "http://127.0.0.1:5281");
         assert_eq!(
             config.tool_origins(),
             ["http://localhost:5280", "http://127.0.0.1:5280"]

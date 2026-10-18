@@ -88,6 +88,8 @@ pub trait ProjectStore: Send + Sync {
     fn tag_version(&self, project: &str, number: u32, commit: &str) -> Result<(), StoreError>;
     /// Resolves `main`, `v<number>` or a commit id to a commit id.
     fn resolve(&self, project: &str, rev: &str) -> Result<Option<String>, StoreError>;
+    /// One file of `commit`, or `None` when it does not exist.
+    fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError>;
     /// The files of `commit` as a gzipped tar.
     fn archive(&self, project: &str, commit: &str) -> Result<Vec<u8>, StoreError>;
     /// Paths that differ from `from` to `to`.
@@ -162,4 +164,84 @@ pub trait Workspace: Send + Sync {
         commit: &str,
         path: &str,
     ) -> Result<Option<BuiltFile>, WorkspaceError>;
+}
+
+/// Picture format of a render.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageKind {
+    Jpeg,
+    Png,
+}
+
+/// One page for `board-render` to open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderJob {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
+    /// `None` = check only.
+    pub image: Option<ImageKind>,
+    /// Collect the element map.
+    pub map: bool,
+}
+
+/// What `board-render` saw.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Shot {
+    /// `data-board-ready` (`true` / `error`), `None` when the page never got ready.
+    pub ready: Option<String>,
+    pub issues: Vec<String>,
+    pub image: Option<Vec<u8>>,
+    /// Element map: `[{x, y, w, h, chain, sel, tag, text, src?, slot?}]`.
+    pub elements: Option<serde_json::Value>,
+}
+
+/// `board-render`: Chromium screenshots and checks (`apps/board-render`).
+pub trait Renderer: Send + Sync {
+    fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError>;
+}
+
+/// A stored capture of one screen or story in one theme (the latest one).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Capture {
+    /// `screen` or `story`.
+    pub kind: String,
+    pub target: String,
+    /// `light` or `dark`.
+    pub theme: String,
+    pub commit: String,
+    pub width: u32,
+    pub height: u32,
+    pub issues: Vec<String>,
+    /// Source files the rendered elements came from (`data-src`, relative to the app).
+    pub sources: Vec<String>,
+    pub captured_at: String,
+}
+
+/// Where captures live: metadata plus the image and element map files.
+pub trait Captures: Send + Sync {
+    /// Stores `capture`, replacing the previous one for the same (kind, target, theme).
+    fn put(
+        &self,
+        project: &str,
+        capture: &Capture,
+        image: &[u8],
+        elements: &serde_json::Value,
+    ) -> Result<(), StoreError>;
+    fn list(&self, project: &str) -> Result<Vec<Capture>, StoreError>;
+    fn image(
+        &self,
+        project: &str,
+        kind: &str,
+        target: &str,
+        theme: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError>;
+    fn elements(
+        &self,
+        project: &str,
+        kind: &str,
+        target: &str,
+        theme: &str,
+    ) -> Result<Option<serde_json::Value>, StoreError>;
 }

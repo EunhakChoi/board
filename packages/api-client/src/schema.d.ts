@@ -188,10 +188,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open screens and stories of a revision and report problems (nothing is stored) */
+        post: operations["checkProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Stored captures, each marked stale when main moved in a way that can change it */
+        get: operations["listCaptures"];
+        put?: never;
+        /** Capture screens and stories of a revision; already captured at that commit = skipped */
+        post: operations["captureProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/captures/{kind}/{target}/{theme}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                kind: components["parameters"]["CaptureKind"];
+                /** @description Screen or story id */
+                target: components["parameters"]["CaptureTarget"];
+                theme: components["parameters"]["Theme"];
+            };
+            cookie?: never;
+        };
+        /** The capture's picture */
+        get: operations["captureImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                kind: components["parameters"]["CaptureKind"];
+                /** @description Screen or story id */
+                target: components["parameters"]["CaptureTarget"];
+                theme: components["parameters"]["Theme"];
+            };
+            cookie?: never;
+        };
+        /** The capture's element map */
+        get: operations["captureElements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RenderInput: {
+            /** @description `main` (default), `v<number>` or a commit id */
+            rev?: string;
+            /** @description Screen or story ids; empty = all */
+            targets?: string[];
+            /** @description Default `light` */
+            themes?: ("light" | "dark")[];
+            /** @description Capture only. Render again although already captured at this commit */
+            force?: boolean;
+        };
+        RenderResult: {
+            /** @enum {string} */
+            kind: "screen" | "story";
+            target: string;
+            /** @enum {string} */
+            theme: "light" | "dark";
+            /** @description `true` or `error`; absent when the page never got ready */
+            ready?: string;
+            /** @description Page errors, console errors, missing mocks */
+            issues: string[];
+            /** @description Capture only. False when the stored capture was already at this commit */
+            captured: boolean;
+        };
+        Capture: {
+            /** @enum {string} */
+            kind: "screen" | "story";
+            target: string;
+            /** @enum {string} */
+            theme: "light" | "dark";
+            commit: string;
+            width: number;
+            height: number;
+            issues: string[];
+            /** @description Source files the rendered elements came from, relative to the app */
+            sources: string[];
+            capturedAt: string;
+            stale: boolean;
+        };
+        Element: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            /** @description Component names, outermost first */
+            chain: string[];
+            sel: string;
+            tag: string;
+            text: string;
+            /** @description `path:line:col` of the JSX that made the element */
+            src?: string;
+            /** @description shadcn `data-slot` */
+            slot?: string;
+        };
         Preview: {
             commit: string;
             /** @enum {string} */
@@ -282,6 +420,35 @@ export interface components {
         };
     };
     responses: {
+        /** @description Not possible yet (the preview is still building); try again shortly */
+        Pending: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description A service board needs (board-workspace, board-render) is not running */
+        Unavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description One result per target and theme, in request order */
+        RenderResults: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    results: components["schemas"]["RenderResult"][];
+                };
+            };
+        };
         /** @description Bad input */
         Invalid: {
             headers: {
@@ -320,6 +487,10 @@ export interface components {
         };
     };
     parameters: {
+        CaptureKind: "screen" | "story";
+        /** @description Screen or story id */
+        CaptureTarget: string;
+        Theme: "light" | "dark";
         ProjectKey: string;
     };
     requestBodies: never;
@@ -638,6 +809,129 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    checkProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RenderResults"];
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Pending"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listCaptures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Captures */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        captures: components["schemas"]["Capture"][];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    captureProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RenderResults"];
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Pending"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    captureImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                kind: components["parameters"]["CaptureKind"];
+                /** @description Screen or story id */
+                target: components["parameters"]["CaptureTarget"];
+                theme: components["parameters"]["Theme"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    captureElements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                kind: components["parameters"]["CaptureKind"];
+                /** @description Screen or story id */
+                target: components["parameters"]["CaptureTarget"];
+                theme: components["parameters"]["Theme"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Elements worth pointing at, in document order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Element"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }

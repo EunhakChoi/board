@@ -6,8 +6,9 @@ mod secret;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use board_db::Db;
+use board_db::{CaptureStore, Db};
 use board_engine::{Engine, Ports, PreviewSettings};
+use board_render_client::RenderClient;
 use board_store::GitStore;
 use board_workspace_client::WorkspaceClient;
 
@@ -38,7 +39,12 @@ async fn run(config: Config) -> Result<(), String> {
     let db = Arc::new(Db::open(&config.data_dir().join("board.db")).map_err(|e| e.to_string())?);
     let ports = Ports {
         settings: db.clone(),
-        records: db,
+        records: db.clone(),
+        captures: Arc::new(CaptureStore::new(db, config.data_dir().join("captures"))),
+        renderer: Arc::new(RenderClient::new(
+            &config.render_url,
+            config.render_token.clone(),
+        )),
         store: Arc::new(GitStore::new(config.data_dir().join("projects"))),
         workspace: Arc::new(WorkspaceClient::new(
             &config.workspace_url,
@@ -47,6 +53,7 @@ async fn run(config: Config) -> Result<(), String> {
     };
     let engine = Engine::new(ports, config.local_mode()).with_preview(PreviewSettings {
         origin: config.preview_url.clone(),
+        render_origin: config.render_preview_url.clone(),
         secret,
         ttl_secs: PREVIEW_TOKEN_SECS,
     });
