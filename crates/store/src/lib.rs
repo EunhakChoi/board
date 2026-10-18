@@ -36,6 +36,17 @@ impl GitStore {
 }
 
 impl ProjectStore for GitStore {
+    fn remove(&self, project: &str) -> Result<(), StoreError> {
+        if !board_model::Project::valid_key(project) {
+            return Err(StoreError(format!("bad project key {project:?}")));
+        }
+        let dir = self.root.join(project);
+        match std::fs::remove_dir_all(&dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(err(e)),
+            _ => Ok(()),
+        }
+    }
+
     fn create(&self, project: &str) -> Result<(), StoreError> {
         let dir = self.repo(project);
         if dir.exists() {
@@ -383,6 +394,21 @@ mod tests {
 
         let archive = store.archive("web", &c2).unwrap();
         assert_eq!(&archive[..2], &[0x1f, 0x8b], "gzip magic");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn removes_a_project_so_its_key_starts_over() {
+        let (store, root) = store("remove");
+        store.create("web").unwrap();
+        store
+            .commit_main("web", None, &[write("a.txt", "1")], &author(), "first")
+            .unwrap();
+        store.remove("web").unwrap();
+        store.remove("web").unwrap();
+        assert!(store.remove("../x").is_err());
+        store.create("web").unwrap();
+        assert_eq!(store.head("web").unwrap(), None);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -115,6 +115,15 @@ impl Settings for Db {
 }
 
 impl Records for Db {
+    fn delete_project(&self, key: &str) -> Result<bool, StoreError> {
+        // Versions, captures, comments and replies go with it (ON DELETE CASCADE).
+        let deleted = self
+            .lock()?
+            .execute("DELETE FROM projects WHERE key = ?1", params![key])
+            .map_err(err)?;
+        Ok(deleted == 1)
+    }
+
     fn insert_project(&self, project: &Project) -> Result<bool, StoreError> {
         let inserted = self
             .lock()?
@@ -232,6 +241,14 @@ fn parse<T: serde::de::DeserializeOwned>(row: &Row<'_>, index: usize) -> rusqlit
     })
 }
 
+/// Deletes a directory tree; a missing one is fine.
+pub(crate) fn remove_dir(dir: &Path) -> Result<(), StoreError> {
+    match std::fs::remove_dir_all(dir) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
+}
+
 fn err(error: impl std::fmt::Display) -> StoreError {
     StoreError(error.to_string())
 }
@@ -319,6 +336,10 @@ mod tests {
             db.add_version("nope", "c", VersionKind::Push, "Me", "")
                 .is_err()
         );
+        assert!(db.delete_project("a").unwrap());
+        assert!(!db.delete_project("a").unwrap());
+        assert_eq!(db.versions("a").unwrap(), Vec::new());
+        assert_eq!(db.versions("b").unwrap().len(), 1);
     }
 
     #[test]

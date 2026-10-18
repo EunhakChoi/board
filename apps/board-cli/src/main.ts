@@ -140,6 +140,11 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       if (themes.length !== 1) throw new commands.CliError(t("cli.error.oneTheme", {}, locale));
       return themes[0] as Theme;
     };
+    // Help never runs a command (`board import --help` used to import the current folder).
+    if (args.flags.has("--help") || args.flags.has("-h")) {
+      out(t("cli.usage", {}, locale));
+      return 0;
+    }
     switch (command) {
       case "setup":
         return await system.setup(ctx, args.flags.has("--yes"));
@@ -212,6 +217,10 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       case "projects":
         await commands.projects(ctx);
         break;
+      case "delete":
+        if (!rest[0]) throw new commands.CliError(t("cli.usage.delete", {}, locale));
+        await commands.deleteProject(ctx, rest[0], args.flags.has("--yes"));
+        break;
       case "import":
         await commands.importProject(ctx, {
           path: rest[0] ?? ".",
@@ -240,7 +249,7 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         break;
       default:
         out(t("cli.usage", {}, locale));
-        return command === undefined || args.flags.has("--help") ? 0 : 1;
+        return command === undefined ? 0 : 1;
     }
     return 0;
   } catch (error) {

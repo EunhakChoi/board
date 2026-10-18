@@ -37,6 +37,8 @@ pub trait Records: Send + Sync {
     ) -> Result<Version, StoreError>;
     /// Newest first.
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError>;
+    /// Removes a project with its versions, captures and comments. False when there was none.
+    fn delete_project(&self, key: &str) -> Result<bool, StoreError>;
 }
 
 /// Who a commit is attributed to.
@@ -72,6 +74,8 @@ pub enum ChangeKind {
 pub trait ProjectStore: Send + Sync {
     /// Creates the empty repository for `project`.
     fn create(&self, project: &str) -> Result<(), StoreError>;
+    /// Deletes the project's history; nothing to delete is fine.
+    fn remove(&self, project: &str) -> Result<(), StoreError>;
     /// The commit `main` points at, or `None` before the first commit.
     fn head(&self, project: &str) -> Result<Option<String>, StoreError>;
     /// Commits `changes` on top of `parent` (`None` = first commit) and moves `main` there, but only
@@ -254,6 +258,8 @@ pub trait Captures: Send + Sync {
         target: &str,
         theme: &str,
     ) -> Result<Option<serde_json::Value>, StoreError>;
+    /// Deletes every capture file of `project` (its rows go with the project).
+    fn remove_project(&self, project: &str) -> Result<(), StoreError>;
 }
 
 /// A comment to store.
@@ -306,4 +312,6 @@ pub trait Comments: Send + Sync {
         anchor: &board_model::Anchor,
     ) -> Result<(), StoreError>;
     fn snapshot(&self, project: &str, id: u64) -> Result<Option<Vec<u8>>, StoreError>;
+    /// Deletes every snapshot file of `project` (its rows go with the project).
+    fn remove_project(&self, project: &str) -> Result<(), StoreError>;
 }

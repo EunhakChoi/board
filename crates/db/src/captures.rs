@@ -7,7 +7,7 @@ use std::sync::Arc;
 use board_engine::{Capture, Captures, StoreError};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{Db, err};
+use crate::{Db, err, remove_dir};
 
 /// [`Captures`] over the board database and a directory for the files.
 #[derive(Debug, Clone)]
@@ -74,6 +74,13 @@ fn read(path: &PathBuf) -> Result<Option<Vec<u8>>, StoreError> {
 }
 
 impl Captures for CaptureStore {
+    fn remove_project(&self, project: &str) -> Result<(), StoreError> {
+        if !id(project) {
+            return Err(StoreError(format!("bad project key {project:?}")));
+        }
+        remove_dir(&self.dir.join(project))
+    }
+
     fn put(
         &self,
         project: &str,
@@ -263,6 +270,13 @@ mod tests {
                 .put("web", &capture, b"x", &serde_json::Value::Null)
                 .is_err()
         );
+
+        // Deleting the project drops its rows (cascade) and its files.
+        store.db.delete_project("web").unwrap();
+        store.remove_project("web").unwrap();
+        assert_eq!(store.list("web").unwrap(), Vec::new());
+        assert!(!dir.join("web").exists());
+        assert!(store.remove_project("../x").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

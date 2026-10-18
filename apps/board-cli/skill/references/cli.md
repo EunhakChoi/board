@@ -17,6 +17,7 @@ are in) and `--server <url>` (default `BOARD_URL` or `http://127.0.0.1:5280`).
 | Command | Does |
 |---|---|
 | `board projects` | Lists projects |
+| `board delete <project> [--yes]` | Deletes a project with its versions, captures and comments (no undo; asks for the key). Only when the user asks |
 | `board init <key> [dir] [--template recommended]` | Creates a project from a template and checks it out |
 | `board import [path] [--key k] [--include dir]… [--dry-run]` | Imports an existing app (and the workspace packages it uses) |
 | `board checkout <project> [dir] [--rev vN]` | Downloads a project into a folder |
