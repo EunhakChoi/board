@@ -8,6 +8,15 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
 
+[workspace.dependencies]
+axum = "0.8.9"
+http-body-util = "0.1.5"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal", "sync"] }
+tower = { version = "0.5.3", features = ["util"] }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"
