@@ -1,5 +1,6 @@
 // Settings from environment variables.
 
+import { readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ export interface Config {
   home: string;
   host: string;
   port: number;
-  /** Bearer token board-server sends (`BOARD_WORKSPACE_TOKEN`). Required off loopback. */
+  /** Bearer token board-server sends (`BOARD_WORKSPACE_TOKEN`, or the file `BOARD_WORKSPACE_TOKEN_FILE`). Required off loopback. */
   token: string | undefined;
   /** Builds running at once (`BOARD_WORKSPACE_JOBS`, default 2). */
   jobs: number;
@@ -28,7 +29,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
   if (!host || !isIP(host) || !Number.isInteger(port) || port > 65535) {
     throw new Error(`BOARD_WORKSPACE_BIND "${bind}" is not an address like ${DEFAULT_BIND}`);
   }
-  const token = env.BOARD_WORKSPACE_TOKEN || undefined;
+  const token = secret(env, "BOARD_WORKSPACE_TOKEN");
   if (!token && !loopback(host)) {
     throw new Error(`${bind} is reachable from other machines; set BOARD_WORKSPACE_TOKEN`);
   }
@@ -36,6 +37,15 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
   if (!Number.isInteger(jobs) || jobs < 1)
     throw new Error("BOARD_WORKSPACE_JOBS must be a positive integer");
   return { home, host, port, token, jobs, maxUploadBytes: 512 * 1024 * 1024 };
+}
+
+/** A secret from `NAME`, or from the file `NAME_FILE` names (docker secrets, shared volumes). */
+function secret(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name];
+  if (value) return value;
+  const file = env[`${name}_FILE`];
+  if (!file) return undefined;
+  return readFileSync(file, "utf8").trim() || undefined;
 }
 
 function loopback(host: string): boolean {

@@ -3,12 +3,13 @@
 //! - `GET  /health`
 //! - `POST /v1/render`: page URL → image · element map · resources · problems (bearer token)
 //!
-//! Settings: `BOARD_RENDER_BIND` (default `127.0.0.1:5283`), `BOARD_RENDER_TOKEN` (required off
+//! Settings: `BOARD_RENDER_BIND` (default `127.0.0.1:5283`), `BOARD_RENDER_TOKEN` or `BOARD_RENDER_TOKEN_FILE` (required off
 //! loopback), `BOARD_RENDER_JOBS` (pages at once, default 4), `BOARD_CHROMIUM` (browser binary),
-//! `BOARD_RENDER_SECURE_ORIGINS` (comma-separated http origins to treat as secure, for service
-//! workers when the preview origin is not localhost).
+//! `BOARD_RENDER_FORWARD` (`127.0.0.1:5281=server:5281`: reach a preview origin on another host
+//! through loopback, see `forward.rs`).
 
 mod chrome;
+mod forward;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ struct Config {
     token: Option<String>,
     jobs: usize,
     chrome: PathBuf,
-    secure_origins: Vec<String>,
+    forwards: Vec<forward::Forward>,
 }
 
 fn config(env: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
@@ -39,7 +40,19 @@ fn config(env: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
     let bind: SocketAddr = text
         .parse()
         .map_err(|_| format!("BOARD_RENDER_BIND {text:?} is not an address like 127.0.0.1:5283"))?;
-    let token = env("BOARD_RENDER_TOKEN").filter(|t| !t.is_empty());
+    let token = match env("BOARD_RENDER_TOKEN").filter(|t| !t.is_empty()) {
+        Some(token) => Some(token),
+        None => match env("BOARD_RENDER_TOKEN_FILE") {
+            Some(file) => Some(
+                std::fs::read_to_string(&file)
+                    .map_err(|e| format!("BOARD_RENDER_TOKEN_FILE {file:?}: {e}"))?
+                    .trim()
+                    .to_owned(),
+            )
+            .filter(|t| !t.is_empty()),
+            None => None,
+        },
+    };
     if token.is_none() && !bind.ip().is_loopback() {
         return Err(format!(
             "{bind} is reachable from other machines; set BOARD_RENDER_TOKEN"
@@ -54,21 +67,13 @@ fn config(env: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
         None => 4,
     };
     let chrome = env("BOARD_CHROMIUM").map_or_else(|| find_chromium(env("HOME")), PathBuf::from);
-    let secure_origins = env("BOARD_RENDER_SECURE_ORIGINS")
-        .map(|s| {
-            s.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+    let forwards = forward::parse(&env("BOARD_RENDER_FORWARD").unwrap_or_default())?;
     Ok(Config {
         bind,
         token,
         jobs,
         chrome,
-        secure_origins,
+        forwards,
     })
 }
 
@@ -166,8 +171,13 @@ async fn main() -> ExitCode {
     };
     let chrome = Arc::new(Chrome::new(ChromeOptions {
         executable: config.chrome.clone(),
-        secure_origins: config.secure_origins.clone(),
     }));
+    for forward in config.forwards.clone() {
+        if let Err(message) = forward::start(forward).await {
+            eprintln!("board-render: {message}");
+            return ExitCode::FAILURE;
+        }
+    }
     let state = AppState {
         chrome: chrome.clone(),
         slots: Arc::new(Semaphore::new(config.jobs)),
@@ -241,21 +251,27 @@ mod tests {
         let open = cfg(&[
             ("BOARD_RENDER_BIND", "0.0.0.0:5283"),
             ("BOARD_RENDER_TOKEN", "t"),
-            (
-                "BOARD_RENDER_SECURE_ORIGINS",
-                "http://server:5281, http://x",
-            ),
+            ("BOARD_RENDER_FORWARD", "127.0.0.1:5281=server:5281"),
         ])
         .unwrap();
-        assert_eq!(open.secure_origins, ["http://server:5281", "http://x"]);
+        assert_eq!(open.forwards[0].target, "server:5281");
         assert!(cfg(&[("BOARD_RENDER_JOBS", "0")]).is_err());
+
+        let file = std::env::temp_dir().join(format!("board-render-token-{}", std::process::id()));
+        std::fs::write(&file, "from-file\n").unwrap();
+        let from_file = cfg(&[
+            ("BOARD_RENDER_BIND", "0.0.0.0:5283"),
+            ("BOARD_RENDER_TOKEN_FILE", file.to_str().unwrap()),
+        ])
+        .unwrap();
+        assert_eq!(from_file.token.as_deref(), Some("from-file"));
+        std::fs::remove_file(file).unwrap();
     }
 
     fn app(token: Option<&str>) -> Router {
         router(AppState {
             chrome: Arc::new(Chrome::new(ChromeOptions {
                 executable: PathBuf::from("/nonexistent/chrome"),
-                secure_origins: Vec::new(),
             })),
             slots: Arc::new(Semaphore::new(1)),
             token: token.map(str::to_owned),
@@ -310,10 +326,7 @@ mod tests {
             eprintln!("skipped: no Chromium ({})", executable.display());
             return;
         }
-        let chrome = Chrome::new(ChromeOptions {
-            executable,
-            secure_origins: Vec::new(),
-        });
+        let chrome = Chrome::new(ChromeOptions { executable });
         let addr = page_server().await;
         let request = |path: &str, ready_ms: u64| RenderRequest {
             url: format!("http://{addr}{path}"),

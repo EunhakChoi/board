@@ -129,7 +129,7 @@
   "cli.setup.noAgents": "Claude Code · Codex 없음. 나중에 `board skill install` 로 설치.",
   "cli.setup.next": "다음: 새 프로젝트는 `board init <key>`, 기존 앱은 `board import <경로>`.",
   "cli.skill.installed": "{agent} 용 board skill 을 {dir} 에 설치함",
-  "cli.doctor.node": "board 는 Node.js 22.18 이상 필요.",
+  "cli.doctor.node": "board 는 Node.js 24 이상 필요.",
   "cli.doctor.git": "git 설치 필요.",
   "cli.doctor.serve": "시작: `board serve` (또는 `docker compose up`).",
   "cli.doctor.sameHost": "미리보기는 다른 host 여야 함 (예: localhost 와 127.0.0.1) — 도구 cookie 를 읽지 못하게. BOARD_PUBLIC_URL / BOARD_PREVIEW_URL 설정.",

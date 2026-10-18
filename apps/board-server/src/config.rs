@@ -19,6 +19,9 @@ pub struct Config {
     pub bind: SocketAddr,
     /// `--public`: reachable from other machines, sign-in required.
     pub public: bool,
+    /// `BOARD_CONTAINER=true`: listening on every container address is still local mode. Only for
+    /// containers whose ports are published on the host's loopback (`127.0.0.1:5280:5280`).
+    pub container: bool,
     /// Preview listener (`BOARD_PREVIEW_BIND`).
     pub preview_bind: SocketAddr,
     /// Preview origin as browsers reach it (`BOARD_PREVIEW_URL`, default `http://<preview bind>`).
@@ -72,8 +75,9 @@ impl Config {
         let preview_bind: SocketAddr = preview_text.parse().map_err(|_| {
             format!("BOARD_PREVIEW_BIND {preview_text:?} is not an address like 127.0.0.1:5281")
         })?;
+        let container = flag(env("BOARD_CONTAINER").as_deref());
         for addr in [bind, preview_bind] {
-            if !public && !addr.ip().is_loopback() {
+            if !public && !container && !addr.ip().is_loopback() {
                 return Err(format!(
                     "{addr} is reachable from other machines; pass --public to require sign-in"
                 ));
@@ -93,9 +97,9 @@ impl Config {
         }
         let workspace_url =
             env("BOARD_WORKSPACE_URL").unwrap_or_else(|| DEFAULT_WORKSPACE_URL.to_owned());
-        let workspace_token = env("BOARD_WORKSPACE_TOKEN").filter(|t| !t.is_empty());
+        let workspace_token = secret(&env, "BOARD_WORKSPACE_TOKEN")?;
         let render_url = env("BOARD_RENDER_URL").unwrap_or_else(|| DEFAULT_RENDER_URL.to_owned());
-        let render_token = env("BOARD_RENDER_TOKEN").filter(|t| !t.is_empty());
+        let render_token = secret(&env, "BOARD_RENDER_TOKEN")?;
         let render_preview_url = env("BOARD_RENDER_PREVIEW_URL").map_or_else(
             || preview_url.clone(),
             |u| u.trim_end_matches('/').to_owned(),
@@ -121,6 +125,7 @@ impl Config {
             home,
             bind,
             public,
+            container,
             preview_bind,
             preview_url,
             workspace_url,
@@ -159,12 +164,31 @@ impl Config {
 
     /// Local mode: loopback only and not public. Every request acts as the built-in admin.
     pub fn local_mode(&self) -> bool {
-        !self.public && self.bind.ip().is_loopback()
+        !self.public && (self.container || self.bind.ip().is_loopback())
     }
 
     pub fn data_dir(&self) -> PathBuf {
         self.home.join("data")
     }
+}
+
+fn flag(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("true" | "1" | "yes" | "on"))
+}
+
+/// A secret from `NAME`, or from the file `NAME_FILE` names (docker secrets, shared volumes).
+fn secret(env: &impl Fn(&str) -> Option<String>, name: &str) -> Result<Option<String>, String> {
+    if let Some(value) = env(name).filter(|v| !v.is_empty()) {
+        return Ok(Some(value));
+    }
+    let Some(file) = env(&format!("{name}_FILE")) else {
+        return Ok(None);
+    };
+    let value = std::fs::read_to_string(&file)
+        .map_err(|e| format!("{name}_FILE {file:?}: {e}"))?
+        .trim()
+        .to_owned();
+    Ok((!value.is_empty()).then_some(value))
 }
 
 /// `share/board/web` next to an installed binary, or `apps/board-web/dist` when run from a checkout
@@ -212,6 +236,32 @@ mod tests {
             config.tool_origins(),
             ["http://localhost:5280", "http://127.0.0.1:5280"]
         );
+    }
+
+    #[test]
+    fn containers_listen_everywhere_in_local_mode() {
+        let dir = std::env::temp_dir().join(format!("board-config-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let token = dir.join("token");
+        std::fs::write(&token, "abc\n").unwrap();
+        let token = token.to_str().unwrap();
+        let env = [
+            ("HOME", "/h"),
+            ("BOARD_BIND", "0.0.0.0:5280"),
+            ("BOARD_PREVIEW_BIND", "0.0.0.0:5281"),
+            ("BOARD_WORKSPACE_TOKEN_FILE", token),
+            ("BOARD_RENDER_TOKEN_FILE", token),
+        ];
+        assert!(config(&[], &env).unwrap_err().contains("--public"));
+        let config = config(
+            &[],
+            &[env.as_slice(), &[("BOARD_CONTAINER", "true")]].concat(),
+        )
+        .unwrap();
+        assert!(config.local_mode());
+        assert_eq!(config.workspace_token.as_deref(), Some("abc"));
+        assert_eq!(config.render_token.as_deref(), Some("abc"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

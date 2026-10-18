@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { readConfig } from "./config.ts";
 
@@ -28,4 +31,16 @@ test("needs a token off loopback and checks values", () => {
     /not an address/,
   );
   assert.throws(() => readConfig({ HOME: "/h", BOARD_WORKSPACE_JOBS: "0" }), /positive/);
+});
+
+test("reads the token from a file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "board-config-"));
+  writeFileSync(join(dir, "token"), "secret\n");
+  const config = readConfig({
+    HOME: "/h",
+    BOARD_WORKSPACE_BIND: "0.0.0.0:5282",
+    BOARD_WORKSPACE_TOKEN_FILE: join(dir, "token"),
+  });
+  assert.equal(config.token, "secret");
+  rmSync(dir, { recursive: true });
 });

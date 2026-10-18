@@ -1,0 +1,10 @@
+.git
+target
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+.data
+.env
+docs/design
+docs/domain-stories
