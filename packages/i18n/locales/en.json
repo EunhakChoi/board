@@ -1,4 +1,20 @@
 {
   "cli.version": "board {version}",
-  "cli.usage": "Usage: board <command> [options]"
+  "cli.usage": "Usage: board <command> [options]\n\nCommands:\n  projects                       List projects\n  import [path] [--key k] [--title t] [--include dir]... [--dry-run]\n                                 Import an app (and the workspace packages it uses) as a project\n  checkout <project> [dir] [--rev main|vN]\n                                 Download a project into a folder\n  push [-m message]              Send changes in this checkout as a new version\n  pull                           Update this checkout to the latest version\n  versions [-p project]          List versions\n  diff <from> [to] [-p project]  List paths changed between versions\n\nOptions: --server <url> (or BOARD_URL), --json, --version",
+  "cli.usage.checkout": "Usage: board checkout <project> [dir] [--rev main|vN]",
+  "cli.usage.diff": "Usage: board diff <from> [to] [-p project]",
+  "cli.projects.none": "No projects yet. Import one with `board import <path>`.",
+  "cli.import.plan": "Would import {count} files as project {key} from {source}:",
+  "cli.import.done": "Imported {count} files as project {key} (version 1).",
+  "cli.checkout.done": "Checked out {project} at {commit} into {dir}",
+  "cli.push.nothing": "Nothing to push: no changes since the last version.",
+  "cli.push.done": "Pushed {count} changed files as version {version}.",
+  "cli.push.conflict": "Someone pushed first. Commit or set aside your changes, run `board pull`, then push again.",
+  "cli.pull.dirty": "This checkout has unpushed changes. Push them first.",
+  "cli.pull.upToDate": "Already at the latest version.",
+  "cli.pull.done": "Updated to {commit}.",
+  "cli.error.noProject": "Which project? Pass -p <project> or run inside a checkout.",
+  "cli.error.noCheckout": "Not inside a checkout. Run `board checkout <project>` first.",
+  "cli.error.notEmpty": "{dir} is not empty.",
+  "cli.error.unreachable": "Cannot reach the board server. Is it running? (set BOARD_URL or --server)"
 }

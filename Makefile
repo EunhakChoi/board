@@ -29,6 +29,7 @@ test-rust:
 	$(CARGO) test --workspace
 
 test-ts:
+	$(CARGO) build --quiet -p board-server
 	$(PNPM) -r --if-present run test
 
 check: lint typecheck test

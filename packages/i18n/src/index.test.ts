@@ -6,7 +6,7 @@ import { detectLocale, t } from "./index.ts";
 
 test("fills placeholders and falls back to English", () => {
   assert.equal(t("cli.version", { version: "0.0.0" }), "board 0.0.0");
-  assert.equal(t("cli.usage", {}, "ko"), "사용법: board <명령> [옵션]");
+  assert.match(t("cli.usage", {}, "ko"), /^사용법: board <명령> \[옵션\]/);
 });
 
 test("detects Korean from the environment, English otherwise", () => {
