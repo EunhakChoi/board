@@ -6,7 +6,8 @@
 // It works in dev and in preview builds (`BOARD_PREVIEW=1`, set by board-workspace). A plain
 // `vite build` of the app is left untouched, so the product's own build never carries board parts.
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { type Plugin, type ResolvedConfig, runnerImport } from "vite";
 import { type ProjectDef, toManifest } from "./project.ts";
@@ -23,6 +24,35 @@ export interface BoardPluginOptions {
 
 export const MANIFEST_PATH = ".board/manifest.json";
 
+/** The MSW service worker the frame registers, at the root of the build. */
+export const WORKER_FILE = "mockServiceWorker.js";
+
+/** Board-only static files (mock images, fixtures), served at the root next to the app's own. */
+export const BOARD_PUBLIC = ".board/public";
+
+/** Files under `dir`, as paths relative to it with `/` separators. */
+function filesUnder(dir: string, prefix = ""): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    const rel = prefix ? `${prefix}/${name}` : name;
+    return statSync(path).isDirectory() ? filesUnder(path, rel) : [rel];
+  });
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".js": "text/javascript",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+};
+
 /** Set by board-workspace for preview builds. */
 export const PREVIEW_ENV = "BOARD_PREVIEW";
 
@@ -35,6 +65,34 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     if (options.project) return join(config.root, options.project);
     const tsx = join(config.root, ".board/project.tsx");
     return existsSync(tsx) ? tsx : join(config.root, ".board/project.ts");
+  };
+
+  // The project's own copy in `public/` wins; otherwise the one from its msw package is served.
+  const worker = (): string | undefined => {
+    if (config.publicDir && existsSync(join(config.publicDir, WORKER_FILE))) return undefined;
+    try {
+      return readFileSync(
+        createRequire(join(config.root, "package.json")).resolve(`msw/${WORKER_FILE}`),
+        "utf8",
+      );
+    } catch {
+      return undefined;
+    }
+  };
+
+  // Absolute paths to public files, which need the base prefix under a preview path.
+  const publicFiles = new Map<string, boolean>();
+  const isPublic = (url: string): boolean => {
+    if (!url.startsWith("/") || url.startsWith("//") || url.length > 300) return false;
+    const path = (url.split(/[?#]/)[0] as string).slice(1);
+    if (!path || path.includes("..")) return false;
+    let known = publicFiles.get(path);
+    if (known === undefined) {
+      const dirs = [config.publicDir, join(config.root, BOARD_PUBLIC)].filter(Boolean) as string[];
+      known = dirs.some((dir) => existsSync(join(dir, path)) && statSync(join(dir, path)).isFile());
+      publicFiles.set(path, known);
+    }
+    return known;
   };
 
   const manifest: Plugin = {
@@ -59,9 +117,35 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     configResolved(resolved) {
       config = resolved;
     },
+    generateBundle() {
+      const source = worker();
+      if (source) this.emitFile({ type: "asset", fileName: WORKER_FILE, source });
+      const extra = join(config.root, BOARD_PUBLIC);
+      for (const file of filesUnder(extra)) {
+        this.emitFile({ type: "asset", fileName: file, source: readFileSync(join(extra, file)) });
+      }
+    },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const path = (req.url ?? "").split("?")[0];
+        if (path === `${config.base}${WORKER_FILE}`) {
+          const source = worker();
+          if (!source) return next();
+          res.setHeader("content-type", "text/javascript");
+          res.end(source);
+          return;
+        }
+        if (path?.startsWith(config.base)) {
+          const rel = decodeURIComponent(path.slice(config.base.length));
+          const file = resolve(config.root, BOARD_PUBLIC, rel);
+          const extra = resolve(config.root, BOARD_PUBLIC);
+          if (rel && file.startsWith(extra + sep) && existsSync(file) && statSync(file).isFile()) {
+            const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
+            res.setHeader("content-type", CONTENT_TYPES[ext] ?? "application/octet-stream");
+            res.end(readFileSync(file));
+            return;
+          }
+        }
         if (path !== `${config.base}${MANIFEST_PATH}`) return next();
         try {
           const module = await server.ssrLoadModule(projectPath());
@@ -94,13 +178,15 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     apply,
     enforce: "pre",
     transform(code, id) {
-      if (options.sourceLocations === false) return null;
       const file = id.split("?")[0] as string;
-      if (!/\.[jt]sx$/.test(file) || file.includes(`${sep}node_modules${sep}`)) return null;
+      if (!/\.[mc]?[jt]sx?$/.test(file) || file.includes(`${sep}node_modules${sep}`)) return null;
       const rel = relative(config.root, file).split(sep).join("/");
       // Only the app's own code: not dependencies outside the root, not board's frame files.
       if (rel.startsWith("..") || rel.startsWith(".board/")) return null;
-      return addSourceLocations(code, rel) ?? null;
+      const locations = options.sourceLocations !== false && /x$/.test(file);
+      const rebase = config.base !== "/";
+      if (!locations && !rebase) return null;
+      return addSourceLocations(code, rel, { locations, ...(rebase ? { isPublic } : {}) }) ?? null;
     },
   };
 

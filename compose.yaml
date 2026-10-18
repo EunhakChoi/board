@@ -79,6 +79,8 @@ services:
       # Previews as http://127.0.0.1:5281 (a trusted origin: the preview cookie and the mock
       # service worker need one), relayed to the server.
       BOARD_RENDER_FORWARD: 127.0.0.1:5281=server:5281
+      # Time zone the rendered screens show dates in.
+      TZ: ${BOARD_TZ:-UTC}
     shm_size: 1gb
     volumes:
       - secrets:/secrets:ro

@@ -6,6 +6,7 @@ import {
   type CheckoutState,
   commitBase,
   findCheckout,
+  git,
   initBase,
   localChanges,
   unpack,
@@ -211,10 +212,9 @@ export async function pull(ctx: Context): Promise<void> {
     say(ctx, "cli.pull.upToDate");
     return;
   }
-  // Replace tracked files with the new main, keeping .git, .board and ignored files.
-  for (const entry of readdirSync(dir)) {
-    if (entry !== ".git" && entry !== ".board")
-      rmSync(join(dir, entry), { recursive: true, force: true });
+  // Replace the base's files with the new main. Ignored files (node_modules, build output) stay.
+  for (const path of git(dir, ["ls-files", "-z"]).toString().split("\0").filter(Boolean)) {
+    rmSync(join(dir, path), { force: true });
   }
   unpack(dir, archive);
   writeState(dir, { ...state, base: commit });

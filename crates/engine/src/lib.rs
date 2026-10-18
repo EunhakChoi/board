@@ -12,7 +12,7 @@ mod sheet;
 
 use std::sync::Arc;
 
-pub use captures::{CaptureStatus, RenderResult, THEMES};
+pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
 pub use ports::{

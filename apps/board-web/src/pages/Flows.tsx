@@ -34,6 +34,7 @@ export function Flows() {
                 {t("web.flows.play")}
               </Button>
             </div>
+            {flow.note && <p className="max-w-3xl text-sm text-muted-foreground">{flow.note}</p>}
             <ol className="flex items-start gap-4 overflow-x-auto pb-2">
               {flow.steps.map((step, index) => {
                 const size = cardSize(sizeOf(step.id), 160);
@@ -71,6 +72,9 @@ export function Flows() {
                         <span className="text-muted-foreground">{index + 1}. </span>
                         {step.title}
                       </span>
+                      {step.note && !step.planned && (
+                        <span className="text-xs text-muted-foreground">{step.note}</span>
+                      )}
                     </div>
                   </li>
                 );

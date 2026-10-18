@@ -167,6 +167,14 @@ test("import, checkout, push, pull, versions and diff", async () => {
   assert.match(behind, /main {5}v2 \w+ {2}newer than this checkout/);
   assert.match(behind, /changes {2}1\n {2}M apps\/web\/src\/page\.tsx$/);
   assert.match((await board(["status"], a)).out, /main {5}v2 \w+\nchanges {2}0$/);
+
+  // A pull replaces the files of the base and leaves ignored ones (node_modules) alone.
+  write(c, { "node_modules/kept.js": "" });
+  rmSync(join(a, "apps/web/src/page.tsx"));
+  assert.equal((await board(["push", "-m", "drop page"], a)).code, 0);
+  assert.match((await board(["pull"], c)).out, /Updated to/);
+  assert.ok(existsSync(join(c, "node_modules/kept.js")));
+  assert.ok(!existsSync(join(c, "apps/web/src/page.tsx")));
 });
 
 test("init creates a project from a template and checks it out", async () => {

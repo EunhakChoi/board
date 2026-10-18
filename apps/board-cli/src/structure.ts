@@ -263,12 +263,15 @@ export async function flow(
 
 function printFlow(ctx: Context, f: Flow, caps: Capture[]): void {
   ctx.out(`flow ${f.id} — ${f.title}`);
+  if (f.note) ctx.out(`  ${f.note}`);
   for (const line of table(
     f.steps.map((s, i) => [
       `${i + 1}.`,
       s.id,
       s.title,
-      s.planned ? `planned${s.note ? `: ${s.note}` : ""}` : captureState(caps, "screen", s.id),
+      s.planned
+        ? `planned${s.note ? `: ${s.note}` : ""}`
+        : `${captureState(caps, "screen", s.id)}${s.note ? `  (${s.note})` : ""}`,
     ]),
   ))
     ctx.out(`  ${line}`);
@@ -388,6 +391,7 @@ export async function show(ctx: Context, project: string, id: string, out?: stri
       const screens = m.screens.filter((s) => s.page === p.id);
       return emit(ctx, { type: "page", ...p, screens: screens.map((s) => s.id) }, () => {
         ctx.out(`page ${p.id} — ${p.title} (${p.route})`);
+        if (p.note) ctx.out(`  ${p.note}`);
         for (const line of table(
           screens.map((s) => [s.id, s.title, captureState(caps, "screen", s.id)]),
         ))

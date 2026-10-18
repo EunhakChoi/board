@@ -3,7 +3,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Schemas } from "@board/api-client";
+import type { ApiError, Schemas } from "@board/api-client";
 import { t } from "@board/i18n";
 import { type Context, client } from "./commands.ts";
 import { fail, manifest, plural, type Theme, targetOf, whenBuilt } from "./data.ts";
@@ -24,33 +24,62 @@ function problems(r: Result): string[] {
   return [r.ready ? `ready: ${r.ready}` : "never got ready"];
 }
 
-function print(ctx: Context, results: Result[], verb: (r: Result) => string): number {
-  let failed = 0;
-  for (const r of results) {
-    const found = problems(r);
-    if (found.length) failed++;
-    ctx.out(`${found.length ? "FAIL" : "ok  "}  ${r.kind} ${r.target} (${r.theme})${verb(r)}`);
-    for (const issue of found) ctx.out(`        ${issue}`);
-  }
+/** Targets per request: long runs go in batches, so results show as they come. */
+const BATCH = 12;
+
+function line(ctx: Context, r: Result, verb: string): boolean {
+  const found = problems(r);
+  ctx.out(`${found.length ? "FAIL" : "ok  "}  ${r.kind} ${r.target} (${r.theme})${verb}`);
+  for (const issue of found) ctx.out(`        ${issue}`);
+  return found.length > 0;
+}
+
+function summary(ctx: Context, failed: number, total: number): number {
   ctx.out(
     failed
-      ? t("cli.render.failed", { count: String(failed), total: String(results.length) }, ctx.locale)
-      : t("cli.render.ok", { total: plural(results.length, "page") }, ctx.locale),
+      ? t("cli.render.failed", { count: String(failed), total: String(total) }, ctx.locale)
+      : t("cli.render.ok", { total: plural(total, "page") }, ctx.locale),
   );
   return failed ? 1 : 0;
 }
 
-async function body(ctx: Context, project: string, options: RenderOptions) {
-  // Name targets by id; checking the id here gives a clearer error than the server's.
-  if (options.targets.length) {
-    const m = await manifest(ctx, project);
-    for (const id of options.targets) targetOf(ctx, m, id);
+/** The named targets (checked against the manifest), or every screen and story. */
+async function targets(ctx: Context, project: string, options: RenderOptions): Promise<string[]> {
+  const m = await manifest(ctx, project);
+  if (options.targets.length === 0) return [...m.screens, ...m.stories].map((x) => x.id);
+  for (const id of options.targets) targetOf(ctx, m, id);
+  return options.targets;
+}
+
+type Results = { commit: string; results: Result[] };
+type Call = (input: {
+  rev?: string;
+  targets: string[];
+  themes: Theme[];
+}) => Promise<{ data?: Results; error?: ApiError }>;
+
+/** Runs `call` over the targets in batches, all at the commit the first batch used. */
+async function batches(
+  ctx: Context,
+  project: string,
+  options: RenderOptions,
+  call: Call,
+  each: (r: Result) => void,
+): Promise<Results> {
+  const ids = await targets(ctx, project, options);
+  let rev = options.rev;
+  let commit = "";
+  const results: Result[] = [];
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const data = await whenBuilt(ctx, project, () =>
+      call({ ...(rev ? { rev } : {}), targets: ids.slice(i, i + BATCH), themes: options.themes }),
+    );
+    commit = data.commit;
+    rev ??= data.commit;
+    for (const r of data.results) each(r);
+    results.push(...data.results);
   }
-  return {
-    ...(options.rev ? { rev: options.rev } : {}),
-    targets: options.targets,
-    themes: options.themes,
-  };
+  return { commit, results };
 }
 
 export async function check(
@@ -58,18 +87,21 @@ export async function check(
   project: string,
   options: RenderOptions,
 ): Promise<number> {
-  const input = await body(ctx, project, options);
-  const data = await whenBuilt(ctx, project, () =>
-    client(ctx).POST("/api/projects/{key}/check", {
-      params: { path: { key: project } },
-      body: input,
-    }),
+  let failed = 0;
+  const data = await batches(
+    ctx,
+    project,
+    options,
+    (body) =>
+      client(ctx).POST("/api/projects/{key}/check", { params: { path: { key: project } }, body }),
+    (r) => {
+      if (!ctx.json && line(ctx, r, "")) failed++;
+      else if (problems(r).length) failed++;
+    },
   );
-  if (ctx.json) {
-    ctx.out(JSON.stringify(data, null, 2));
-    return data.results.some((r) => problems(r).length) ? 1 : 0;
-  }
-  return print(ctx, data.results, () => "");
+  if (ctx.json) ctx.out(JSON.stringify(data, null, 2));
+  else summary(ctx, failed, data.results.length);
+  return failed ? 1 : 0;
 }
 
 export async function capture(
@@ -77,19 +109,24 @@ export async function capture(
   project: string,
   options: RenderOptions,
 ): Promise<number> {
-  const input = {
-    ...(await body(ctx, project, options)),
-    ...(options.force ? { force: true } : {}),
-  };
-  const data = await whenBuilt(ctx, project, () =>
-    client(ctx).POST("/api/projects/{key}/captures", {
-      params: { path: { key: project } },
-      body: input,
-    }),
-  );
+  let failed = 0;
+  const dir = options.out ? resolve(ctx.cwd, options.out) : undefined;
   const saved: string[] = [];
-  if (options.out) {
-    const dir = resolve(ctx.cwd, options.out);
+  const data = await batches(
+    ctx,
+    project,
+    options,
+    (body) =>
+      client(ctx).POST("/api/projects/{key}/captures", {
+        params: { path: { key: project } },
+        body: { ...body, ...(options.force ? { force: true } : {}) },
+      }),
+    (r) => {
+      if (!ctx.json && line(ctx, r, r.captured ? "" : "  unchanged")) failed++;
+      else if (problems(r).length) failed++;
+    },
+  );
+  if (dir) {
     mkdirSync(dir, { recursive: true });
     for (const r of data.results) {
       const { data: image, error } = await client(ctx).GET(
@@ -107,9 +144,9 @@ export async function capture(
   }
   if (ctx.json) {
     ctx.out(JSON.stringify({ ...data, saved }, null, 2));
-    return data.results.some((r) => problems(r).length) ? 1 : 0;
+    return failed ? 1 : 0;
   }
-  const code = print(ctx, data.results, (r) => (r.captured ? "" : "  unchanged"));
+  summary(ctx, failed, data.results.length);
   for (const file of saved) ctx.out(file);
-  return code;
+  return failed ? 1 : 0;
 }

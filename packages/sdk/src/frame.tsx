@@ -39,29 +39,18 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     screen = project.screens.find((s) => s.id === screenId);
     if (!screen) return fail(container, `unknown screen "${screenId}"`);
     const page = project.pages.find((p) => p.id === screen?.page);
-    const handlers = [...(screen.mocks ?? []), ...(project.mocks ?? [])];
-    const worker = setupWorker(...handlers);
-    // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope
-    // follow it. In a cross-site iframe the browser fetches the worker script without the preview
-    // cookie, so the access token rides along in its URL.
-    const base = import.meta.env.BASE_URL;
-    const token = params.get("t");
-    const url = `${base}mockServiceWorker.js${token ? `?t=${encodeURIComponent(token)}` : ""}`;
-    await worker.start({
-      quiet: true,
-      serviceWorker: { url, options: { scope: base } },
-      onUnhandledRequest(request, print) {
-        const url = new URL(request.url);
-        // Only API calls count; the page's own assets are not mocks.
-        if (url.origin === location.origin && /\.\w+$/.test(url.pathname)) return;
-        console.warn(`${MISSING_MOCK} ${request.method} ${url.pathname}${url.search}`);
-        print.warning();
-      },
-    });
+    await startMocks([...(screen.mocks ?? []), ...(project.mocks ?? [])], params.get("t"));
+    if (screen.query) {
+      const url = new URL(location.href);
+      for (const [key, value] of Object.entries(screen.query)) url.searchParams.set(key, value);
+      history.replaceState(history.state, "", url);
+    }
     node = options.renderScreen(screen, screen.route ?? page?.route ?? "/");
   } else if (storyId) {
     const story = project.stories?.find((s) => s.id === storyId);
     if (!story) return fail(container, `unknown story "${storyId}"`);
+    const handlers = [...(story.mocks ?? []), ...(project.mocks ?? [])];
+    if (handlers.length > 0) await startMocks(handlers, params.get("t"));
     node = (options.wrapStory ?? ((n) => n))(story.render());
   } else {
     return fail(container, "pass ?screen=<id> or ?story=<id>");
@@ -74,6 +63,26 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     await settle();
   }
   document.documentElement.dataset.boardReady = "true";
+}
+
+async function startMocks(handlers: RequestHandler[], token: string | null): Promise<void> {
+  const worker = setupWorker(...handlers);
+  // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope
+  // follow it. In a cross-site iframe the browser fetches the worker script without the preview
+  // cookie, so the access token rides along in its URL.
+  const base = import.meta.env.BASE_URL;
+  const url = `${base}mockServiceWorker.js${token ? `?t=${encodeURIComponent(token)}` : ""}`;
+  await worker.start({
+    quiet: true,
+    serviceWorker: { url, options: { scope: base } },
+    onUnhandledRequest(request, print) {
+      const url = new URL(request.url);
+      // Only API calls count; the page's own assets are not mocks.
+      if (url.origin === location.origin && /\.\w+$/.test(url.pathname)) return;
+      console.warn(`${MISSING_MOCK} ${request.method} ${url.pathname}${url.search}`);
+      print.warning();
+    },
+  });
 }
 
 function fail(container: HTMLElement, message: string): void {
@@ -92,8 +101,12 @@ async function settle(): Promise<void> {
 function setupKit(root: HTMLElement): SetupKit {
   const find = async (selector: string, text?: string): Promise<HTMLElement> => {
     for (let i = 0; i < 100; i++) {
-      const match = [...root.querySelectorAll<HTMLElement>(selector)].find(
-        (el) => text === undefined || el.textContent?.trim() === text,
+      // Overlays (dialogs, menus) render outside the app root, so search the whole document.
+      const match = [...document.querySelectorAll<HTMLElement>(selector)].find(
+        (el) =>
+          text === undefined ||
+          el.textContent?.replace(/\s+/g, " ").trim() === text ||
+          el.getAttribute("aria-label") === text,
       );
       if (match) return match;
       await new Promise((r) => setTimeout(r, 50));
@@ -104,13 +117,21 @@ function setupKit(root: HTMLElement): SetupKit {
     root,
     find,
     async click(selector, text) {
-      (await find(selector, text)).click();
+      const el = await find(selector, text);
+      // Radix triggers (Select, DropdownMenu) open on pointerdown: send what a real click sends.
+      const init = { bubbles: true, cancelable: true, button: 0, pointerType: "mouse" };
+      el.dispatchEvent(new PointerEvent("pointerdown", init));
+      el.dispatchEvent(new MouseEvent("mousedown", init));
+      el.dispatchEvent(new PointerEvent("pointerup", init));
+      el.dispatchEvent(new MouseEvent("mouseup", init));
+      el.click();
     },
     async fill(selector, value) {
       const input = (await find(selector)) as HTMLInputElement;
       const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
       setter?.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
     },
     wait: (ms) => new Promise((r) => setTimeout(r, ms)),
   };

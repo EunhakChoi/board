@@ -63,9 +63,21 @@ Rules (checked when the project loads):
 - Connections and non-planned flow steps name screens. Kinds: `click` (default), `auto`, `error`.
 - A planned step (`{ id, title, note? }`) is a screen that does not exist yet. Adding a screen with
   that id turns it into a real step.
+- A flow step object whose id is an existing screen stays a real step with its own `title` / `note`.
+- Pages and flows take an optional `note`, shown in the web tool and the CLI.
+- A screen's `query` (`"?tab=runs"`) is set on the URL before it renders.
 - `setup(kit)`: `kit.click(selector, text?)`, `kit.fill(selector, value)`, `kit.find(selector, text?)`,
-  `kit.wait(ms)`. Selectors are CSS; text matches exactly after trimming.
-- Stories are grouped by `component` in the Components view.
+  `kit.wait(ms)`. Selectors are CSS, searched in the whole document (dialogs in portals too); text
+  matches the trimmed text or the `aria-label`.
+- Stories are grouped by `component` in the Components view. A story's `mocks` start MSW like a
+  screen's.
+
+## Static files
+
+Files in `.board/public/` are served at the root of the frame (dev and preview builds), next to
+the app's own `public/`. The MSW worker comes from the `msw` package unless the app ships its own
+`mockServiceWorker.js`. Previews are served under a sub path, so string literals naming a public
+file (`"/logo.png"`) are rewritten to `import.meta.env.BASE_URL` at build time.
 
 ## frame.tsx
 

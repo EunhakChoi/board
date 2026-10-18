@@ -45,3 +45,30 @@ test("parses a location back", () => {
   });
   assert.equal(parseSourceLocation("nope"), undefined);
 });
+
+test("points absolute public paths at the build's base", () => {
+  const code = [
+    'import logo from "/logo.png";',
+    'type Path = "/logo.png";',
+    'export const A = () => <img src="/logo.png" alt="" />;',
+    'export const B = { icon: "/logo.png", "/logo.png": 1, other: "/api/x" };',
+  ].join("\n");
+  const result = addSourceLocations(code, "src/a.tsx", {
+    locations: false,
+    isPublic: (url) => url === "/logo.png",
+  });
+  assert.ok(result);
+  assert.match(result.code, /^import logo from "\/logo.png";/);
+  assert.match(result.code, /type Path = "\/logo.png";/);
+  assert.match(result.code, /<img src=\{import\.meta\.env\.BASE_URL \+ "logo\.png"\} alt="" \/>/);
+  assert.match(
+    result.code,
+    /icon: \(import\.meta\.env\.BASE_URL \+ "logo\.png"\), "\/logo\.png": 1/,
+  );
+  assert.match(result.code, /other: "\/api\/x"/);
+  assert.doesNotMatch(result.code, /data-src/);
+  assert.equal(
+    addSourceLocations('const a = "/x.png";', "a.ts", { isPublic: () => false }),
+    undefined,
+  );
+});

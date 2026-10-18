@@ -9,9 +9,34 @@
     "./vite": "./src/vite.ts",
     "./source": "./src/source.ts"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/project.d.ts",
+        "default": "./dist/project.js"
+      },
+      "./frame": {
+        "types": "./dist/frame.d.ts",
+        "default": "./dist/frame.js"
+      },
+      "./vite": {
+        "types": "./dist/vite.d.ts",
+        "default": "./dist/vite.js"
+      },
+      "./source": {
+        "types": "./dist/source.d.ts",
+        "default": "./dist/source.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "node --test 'src/**/*.test.ts'"
+    "test": "node --test 'src/**/*.test.ts'",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
     "@babel/parser": "7.29.9",

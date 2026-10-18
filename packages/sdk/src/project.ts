@@ -15,6 +15,8 @@ export interface PageDef {
   id: string;
   route: string;
   title: string;
+  /** What the page is for, shown next to it. */
+  note?: string;
 }
 
 /** One state of a page, rendered with mock data. */
@@ -27,13 +29,18 @@ export interface ScreenDef<Mock = unknown> {
   route?: string;
   /** Viewport; defaults to the project's `screenSize`. */
   size?: Size;
+  /** Query parameters the screen reads from `window.location` (e.g. an error after a redirect). */
+  query?: Record<string, string>;
   /** Request handlers for this screen, tried before the project's `mocks`. */
   mocks?: Mock[];
   /** Interactions that bring the screen into its state (click a tab, fill a form). */
   setup?: (kit: SetupKit) => Promise<void>;
 }
 
-/** Helpers a screen's `setup` gets. Selectors are CSS; text matches are exact after trimming. */
+/**
+ * Helpers a screen's `setup` gets. Selectors are CSS over the whole document (dialogs and menus
+ * render outside the app root); text matches the trimmed text or the `aria-label` exactly.
+ */
 export interface SetupKit {
   root: HTMLElement;
   find(selector: string, text?: string): Promise<HTMLElement>;
@@ -50,24 +57,31 @@ export interface ConnectionDef {
   kind?: ConnectionKind;
 }
 
-/** A step of a flow: an existing screen id, or a planned screen that does not exist yet. */
+/**
+ * A step of a flow: a screen id, or `{ id, title, note? }` — a planned screen that does not exist
+ * yet, or an existing screen with a title and note for this step.
+ */
 export type FlowStepDef = string | { id: string; title: string; note?: string };
 
 /** The order a user goes through a feature (Figma prototype flow). */
 export interface FlowDef {
   id: string;
   title: string;
+  /** What the user is trying to do, shown with the flow. */
+  note?: string;
   steps: FlowStepDef[];
 }
 
 /** One state of a component (Storybook meaning), shown in the Components view. */
-export interface StoryDef<Node = unknown> {
+export interface StoryDef<Node = unknown, Mock = unknown> {
   id: string;
   /** Component name, e.g. `Button`. Stories of one component are grouped. */
   component: string;
   title: string;
   render: () => Node;
   size?: Size;
+  /** Request handlers for components that fetch, tried before the project's `mocks`. */
+  mocks?: Mock[];
 }
 
 export interface ProjectDef<Mock = unknown, Node = unknown> {
@@ -76,7 +90,7 @@ export interface ProjectDef<Mock = unknown, Node = unknown> {
   screens: ScreenDef<Mock>[];
   connections?: ConnectionDef[];
   flows?: FlowDef[];
-  stories?: StoryDef<Node>[];
+  stories?: StoryDef<Node, Mock>[];
   /** Handlers every screen falls back to. */
   mocks?: Mock[];
   /** Default screen viewport. */
@@ -141,14 +155,6 @@ export function validate(project: ProjectDef): string[] {
   }
   for (const flow of project.flows ?? []) {
     if (flow.steps.length === 0) problems.push(`flow "${flow.id}" has no steps`);
-    for (const step of flow.steps) {
-      // A string that is not a screen is a planned step; planned objects must not shadow screens.
-      if (typeof step !== "string" && screens.has(step.id)) {
-        problems.push(
-          `flow "${flow.id}" plans "${step.id}", which already is a screen; use the id string`,
-        );
-      }
-    }
   }
   if (project.screenSize && !validSize(project.screenSize))
     problems.push("screenSize must be positive");
@@ -163,7 +169,7 @@ function validSize(size: Size): boolean {
 export interface Manifest {
   manifestVersion: 1;
   title: string;
-  pages: PageDef[];
+  pages: Required<PageDef>[];
   screens: {
     id: string;
     page: string;
@@ -177,6 +183,7 @@ export interface Manifest {
   flows: {
     id: string;
     title: string;
+    note: string;
     steps: { id: string; title: string; note: string; planned: boolean }[];
   }[];
   stories: { id: string; component: string; title: string; size: Size }[];
@@ -189,7 +196,12 @@ export function toManifest(project: ProjectDef): Manifest {
   return {
     manifestVersion: 1,
     title: project.title,
-    pages: project.pages.map(({ id, route, title }) => ({ id, route, title })),
+    pages: project.pages.map(({ id, route, title, note }) => ({
+      id,
+      route,
+      title,
+      note: note ?? "",
+    })),
     screens: project.screens.map((s) => ({
       id: s.id,
       page: s.page,
@@ -208,6 +220,7 @@ export function toManifest(project: ProjectDef): Manifest {
     flows: (project.flows ?? []).map((f) => ({
       id: f.id,
       title: f.title,
+      note: f.note ?? "",
       steps: f.steps.map((step) =>
         typeof step === "string"
           ? {
@@ -216,7 +229,12 @@ export function toManifest(project: ProjectDef): Manifest {
               note: "",
               planned: !screenTitle.has(step),
             }
-          : { id: step.id, title: step.title, note: step.note ?? "", planned: true },
+          : {
+              id: step.id,
+              title: step.title,
+              note: step.note ?? "",
+              planned: !screenTitle.has(step.id),
+            },
       ),
     })),
     stories: (project.stories ?? []).map((s) => ({
