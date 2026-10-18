@@ -14,6 +14,7 @@ servers:
 tags:
   - name: system
   - name: auth
+  - name: projects
 paths:
   /api/health:
     get:
@@ -53,8 +54,237 @@ paths:
                 $ref: "#/components/schemas/Me"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: Projects the caller can see
+      responses:
+        "200":
+          description: Projects, by key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [projects]
+      operationId: createProject
+      summary: Create a project, empty or from imported files (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProject"
+      responses:
+        "201":
+          description: The project and its first version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project, version]
+                properties:
+                  project:
+                    $ref: "#/components/schemas/Project"
+                  version:
+                    $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A project with that key exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/projects/{key}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: getProject
+      responses:
+        "200":
+          description: The project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/checkout:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: checkoutProject
+      summary: The project files at a revision, as a gzipped tar
+      parameters:
+        - name: rev
+          in: query
+          description: "`main` (default), `v<number>` or a commit id"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Gzipped tar of the files
+          headers:
+            X-Board-Commit:
+              description: Commit id of the archive
+              schema:
+                type: string
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/push:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [projects]
+      operationId: pushProject
+      summary: Commit changed files on top of `base` and record a version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base, files]
+              additionalProperties: false
+              properties:
+                base:
+                  type: string
+                  description: Commit the changes were made on (from checkout)
+                message:
+                  type: string
+                files:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FileInput"
+      responses:
+        "201":
+          description: The new version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "`main` moved since `base`; `detail.head` is the current commit"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/projects/{key}/versions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: listVersions
+      responses:
+        "200":
+          description: Versions of main, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Version"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/diff:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: diffProject
+      summary: Paths changed between two revisions
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: Defaults to `main`
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Changed paths
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changes]
+                properties:
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      required: [path, kind]
+                      properties:
+                        path:
+                          type: string
+                        kind:
+                          type: string
+                          enum: [added, modified, deleted]
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    ProjectKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
   responses:
+    Invalid:
+      description: Bad input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Not allowed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found (or hidden from the caller)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Not signed in
       content:
@@ -112,3 +342,75 @@ components:
         localMode:
           type: boolean
           description: True while the server only listens on localhost and needs no sign-in
+    Project:
+      type: object
+      required: [key, title, visibility, origin, createdAt]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        visibility:
+          type: string
+          enum: [team, private]
+        origin:
+          type: string
+          enum: [empty, template, import]
+        createdAt:
+          type: string
+          format: date-time
+    Version:
+      type: object
+      required: [number, commit, kind, actor, note, createdAt]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        commit:
+          type: string
+        kind:
+          type: string
+          enum: [initial, import, push, merge, restore]
+        actor:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FileInput:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Relative, `/`-separated, no `..`, not inside `.git`
+        content:
+          type: string
+          contentEncoding: base64
+          description: File bytes in base64. Absent means delete (push only).
+        executable:
+          type: boolean
+    CreateProject:
+      type: object
+      required: [key]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+        title:
+          type: string
+        import:
+          type: object
+          required: [source, files]
+          additionalProperties: false
+          properties:
+            source:
+              type: string
+              description: Where the files came from, shown on version 1
+            files:
+              type: array
+              items:
+                $ref: "#/components/schemas/FileInput"

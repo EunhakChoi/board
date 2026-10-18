@@ -1,31 +1,36 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod error;
 pub mod policy;
+mod ports;
+mod projects;
 
 use std::sync::Arc;
 
-/// Settings and other key-value state kept by the database.
-pub trait Settings: Send + Sync {
-    fn get(&self, key: &str) -> Result<Option<String>, StoreError>;
-    fn set(&self, key: &str, value: &str) -> Result<(), StoreError>;
+pub use error::EngineError;
+pub use ports::{
+    Author, Change, ChangeKind, FileChange, ProjectStore, Records, Settings, StoreError,
+};
+pub use projects::{Checkout, Import};
+
+/// Everything the engine needs from the outside world.
+#[derive(Clone)]
+pub struct Ports {
+    pub settings: Arc<dyn Settings>,
+    pub records: Arc<dyn Records>,
+    pub store: Arc<dyn ProjectStore>,
 }
 
-/// A storage failure, with enough text to log. Callers map it to a 500.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoreError(pub String);
-
-impl std::fmt::Display for StoreError {
+impl std::fmt::Debug for Ports {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        f.debug_struct("Ports").finish_non_exhaustive()
     }
 }
-
-impl std::error::Error for StoreError {}
 
 /// Runs commands. One instance per server, shared by every request.
 #[derive(Clone)]
 pub struct Engine {
-    settings: Arc<dyn Settings>,
+    ports: Ports,
     local_mode: bool,
 }
 
@@ -38,11 +43,8 @@ impl std::fmt::Debug for Engine {
 }
 
 impl Engine {
-    pub fn new(settings: Arc<dyn Settings>, local_mode: bool) -> Self {
-        Self {
-            settings,
-            local_mode,
-        }
+    pub fn new(ports: Ports, local_mode: bool) -> Self {
+        Self { ports, local_mode }
     }
 
     /// True while the server only listens on localhost: every request acts as the built-in admin.
@@ -52,38 +54,26 @@ impl Engine {
 
     /// The latest released version, if an update check has recorded one.
     pub fn latest_version(&self) -> Result<Option<String>, StoreError> {
-        self.settings.get(LATEST_VERSION)
+        self.ports.settings.get(LATEST_VERSION)
     }
 
     pub fn record_latest_version(&self, version: &str) -> Result<(), StoreError> {
-        self.settings.set(LATEST_VERSION, version)
+        self.ports.settings.set(LATEST_VERSION, version)
     }
 }
 
 const LATEST_VERSION: &str = "update.latest";
 
 #[cfg(test)]
+pub(crate) mod testing;
+
+#[cfg(test)]
 mod tests {
-    use super::*;
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    #[derive(Default)]
-    struct Memory(Mutex<HashMap<String, String>>);
-
-    impl Settings for Memory {
-        fn get(&self, key: &str) -> Result<Option<String>, StoreError> {
-            Ok(self.0.lock().unwrap().get(key).cloned())
-        }
-        fn set(&self, key: &str, value: &str) -> Result<(), StoreError> {
-            self.0.lock().unwrap().insert(key.into(), value.into());
-            Ok(())
-        }
-    }
+    use crate::testing::engine;
 
     #[test]
     fn latest_version_round_trips() {
-        let engine = Engine::new(Arc::new(Memory::default()), true);
+        let engine = engine();
         assert_eq!(engine.latest_version(), Ok(None));
         engine.record_latest_version("1.2.3").unwrap();
         assert_eq!(engine.latest_version(), Ok(Some("1.2.3".into())));

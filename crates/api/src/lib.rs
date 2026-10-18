@@ -3,10 +3,12 @@
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
 mod error;
+mod projects;
 
+use axum::extract::DefaultBodyLimit;
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use board_engine::Engine;
 use board_model::{Actor, Role, VERSION};
@@ -19,7 +21,17 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/health"),
     ("get", "/api/version"),
     ("get", "/api/auth/me"),
+    ("get", "/api/projects"),
+    ("post", "/api/projects"),
+    ("get", "/api/projects/{key}"),
+    ("get", "/api/projects/{key}/checkout"),
+    ("post", "/api/projects/{key}/push"),
+    ("get", "/api/projects/{key}/versions"),
+    ("get", "/api/projects/{key}/diff"),
 ];
+
+/// Largest request body: imports and pushes carry whole files (base64 in JSON).
+const MAX_BODY: usize = 512 * 1024 * 1024;
 
 /// The board API router.
 pub fn router(engine: Engine) -> Router {
@@ -27,6 +39,13 @@ pub fn router(engine: Engine) -> Router {
         .route("/api/health", get(health))
         .route("/api/version", get(version))
         .route("/api/auth/me", get(me))
+        .route("/api/projects", get(projects::list).post(projects::create))
+        .route("/api/projects/{key}", get(projects::get))
+        .route("/api/projects/{key}/checkout", get(projects::checkout))
+        .route("/api/projects/{key}/push", post(projects::push))
+        .route("/api/projects/{key}/versions", get(projects::versions))
+        .route("/api/projects/{key}/diff", get(projects::diff))
+        .layer(DefaultBodyLimit::max(MAX_BODY))
         .fallback(not_found)
         .with_state(engine)
 }

@@ -55,6 +55,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects the caller can see */
+        get: operations["listProjects"];
+        put?: never;
+        /** Create a project, empty or from imported files (admin) */
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** The project files at a revision, as a gzipped tar */
+        get: operations["checkoutProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit changed files on top of `base` and record a version */
+        post: operations["pushProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get: operations["listVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Paths changed between two revisions */
+        get: operations["diffProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -91,8 +202,71 @@ export interface components {
             /** @description True while the server only listens on localhost and needs no sign-in */
             localMode: boolean;
         };
+        Project: {
+            key: string;
+            title: string;
+            /** @enum {string} */
+            visibility: "team" | "private";
+            /** @enum {string} */
+            origin: "empty" | "template" | "import";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        Version: {
+            number: number;
+            commit: string;
+            /** @enum {string} */
+            kind: "initial" | "import" | "push" | "merge" | "restore";
+            actor: string;
+            note: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        FileInput: {
+            /** @description Relative, `/`-separated, no `..`, not inside `.git` */
+            path: string;
+            /** @description File bytes in base64. Absent means delete (push only). */
+            content?: string;
+            executable?: boolean;
+        };
+        CreateProject: {
+            key: string;
+            title?: string;
+            import?: {
+                /** @description Where the files came from, shown on version 1 */
+                source: string;
+                files: components["schemas"]["FileInput"][];
+            };
+        };
     };
     responses: {
+        /** @description Bad input */
+        Invalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Not allowed */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Not found (or hidden from the caller) */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Not signed in */
         Unauthorized: {
             headers: {
@@ -103,7 +277,9 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        ProjectKey: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -169,6 +345,220 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Projects, by key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        projects: components["schemas"]["Project"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProject"];
+            };
+        };
+        responses: {
+            /** @description The project and its first version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        project: components["schemas"]["Project"];
+                        version: components["schemas"]["Version"];
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description A project with that key exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The project */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    checkoutProject: {
+        parameters: {
+            query?: {
+                /** @description `main` (default), `v<number>` or a commit id */
+                rev?: string;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gzipped tar of the files */
+            200: {
+                headers: {
+                    /** @description Commit id of the archive */
+                    "X-Board-Commit"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    pushProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Commit the changes were made on (from checkout) */
+                    base: string;
+                    message?: string;
+                    files: components["schemas"]["FileInput"][];
+                };
+            };
+        };
+        responses: {
+            /** @description The new version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `main` moved since `base`; `detail.head` is the current commit */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Versions of main, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        versions: components["schemas"]["Version"][];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    diffProject: {
+        parameters: {
+            query: {
+                from: string;
+                /** @description Defaults to `main` */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Changed paths */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        changes: {
+                            path: string;
+                            /** @enum {string} */
+                            kind: "added" | "modified" | "deleted";
+                        }[];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }
