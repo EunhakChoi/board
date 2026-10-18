@@ -1,7 +1,7 @@
 CARGO ?= $(shell command -v cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 PNPM ?= pnpm
 
-.PHONY: setup gen-api lint format typecheck test test-rust test-ts check
+.PHONY: setup gen-api lint format typecheck test test-rust test-ts check e2e
 
 setup:
 	$(PNPM) install --frozen-lockfile
@@ -13,6 +13,7 @@ gen-api:
 lint:
 	$(CARGO) xtask layers
 	$(PNPM) exec biome check --error-on-warnings .
+	$(PNPM) -r --if-present run lint
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 
@@ -33,3 +34,9 @@ test-ts:
 	$(PNPM) -r --if-present run test
 
 check: lint typecheck test
+
+# The web tool against the real stack (needs a Playwright Chromium: `pnpm --filter board-web exec playwright install chromium chromium-headless-shell`).
+e2e:
+	$(CARGO) build --quiet -p board-server -p board-render
+	$(PNPM) --filter board-web run build
+	$(PNPM) --filter board-web run e2e
