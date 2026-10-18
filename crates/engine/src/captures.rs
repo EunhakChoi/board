@@ -529,7 +529,7 @@ mod tests {
         assert!(jobs.iter().all(|j| j.image.is_none()));
         let story = jobs
             .iter()
-            .find(|j| j.url.contains("story=button"))
+            .find(|j| j.url.contains("story=button") && j.url.contains("theme=light"))
             .unwrap();
         assert_eq!((story.width, story.height), (200, 100));
         assert!(story.url.starts_with("http://render.internal/shop/"));
