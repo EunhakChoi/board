@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: board API
+  version: 0.0.0
+  description: >
+    HTTP contract between board-server and its clients (board-web, board-cli).
+    Every route lives under /api. Errors share one shape (Error).
+    Change this file first, then run `make gen-api`.
+  license:
+    name: MIT OR Apache-2.0
+    identifier: MIT OR Apache-2.0
+servers:
+  - url: http://127.0.0.1:5280
+tags:
+  - name: system
+  - name: auth
+paths:
+  /api/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: The server is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/version:
+    get:
+      tags: [system]
+      operationId: getVersion
+      summary: Running version and the latest release, when update checks are on
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Who is calling. In local mode this is the built-in admin.
+      responses:
+        "200":
+          description: The calling actor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  responses:
+    Unauthorized:
+      description: Not signed in
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code, e.g. `unauthorized`, `conflict`, `not_found`
+        message:
+          type: string
+          description: Human-readable message in English
+        detail:
+          description: Extra context; shape depends on `code` (a 409 carries the current state)
+    Health:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    VersionInfo:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: string
+          example: 0.0.0
+        latest:
+          type: [string, "null"]
+          description: Latest released version; null when unknown or update checks are off
+    Role:
+      type: string
+      enum: [admin, editor, commenter, viewer]
+    Me:
+      type: object
+      required: [kind, name, role, localMode]
+      properties:
+        kind:
+          type: string
+          enum: [user, guest, local]
+          description: "`local` is the built-in admin of local mode (no sign-in)"
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        localMode:
+          type: boolean
+          description: True while the server only listens on localhost and needs no sign-in

@@ -12,7 +12,7 @@ by a team (comments, proposals, versions). Pre-alpha.
 ## Rules
 
 - `make check` (lint + typecheck + test) must pass before you finish.
-- Clients call the server only through `@board/api-client`; change `contracts/openapi.yaml` first.
+- Clients call the server only through `@board/api-client`. Change `contracts/openapi.yaml` first, then run `make gen-api` and commit the generated `schema.d.ts`.
 - Every user-facing string goes through `@board/i18n`. English is the default; keep `ko.json` keys a subset of `en.json`.
 - `board-render`, `board-workspace` and `board-agent` take orders from `board-server` only.
 - Every action is a command in `board-engine`; the web tool, CLI, MCP and agents call the same commands.

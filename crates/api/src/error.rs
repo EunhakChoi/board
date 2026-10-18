@@ -1,0 +1,70 @@
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use board_engine::StoreError;
+use serde::Serialize;
+
+/// The one error shape of the API (`Error` in the contract).
+#[derive(Debug)]
+pub struct ApiError {
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+    detail: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct Body<'a> {
+    code: &'a str,
+    message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<&'a serde_json::Value>,
+}
+
+impl ApiError {
+    pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+            detail: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_detail(mut self, detail: serde_json::Value) -> Self {
+        self.detail = Some(detail);
+        self
+    }
+
+    pub fn unauthorized() -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", "Sign in first")
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, "not_found", message)
+    }
+}
+
+impl From<StoreError> for ApiError {
+    fn from(error: StoreError) -> Self {
+        // The message stays in the log; clients get a generic one.
+        eprintln!("board-server: storage error: {error}");
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "Internal error",
+        )
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = Body {
+            code: self.code,
+            message: &self.message,
+            detail: self.detail.as_ref(),
+        };
+        (self.status, Json(body)).into_response()
+    }
+}
