@@ -1,0 +1,14 @@
+{
+  "name": "board-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "board-workspace": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test --test-concurrency=1 'src/**/*.test.ts'"
+  }
+}
