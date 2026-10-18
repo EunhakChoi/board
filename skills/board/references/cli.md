@@ -1,7 +1,8 @@
 # board CLI reference
 
 All commands accept `--json` (machine-readable output), `-p <project>` (default: the checkout you
-are in) and `--server <url>` (default `BOARD_URL` or `http://127.0.0.1:5280`).
+are in) and `--server <url>` (default: the checkout's server, else `BOARD_URL`, else
+`http://127.0.0.1:5280`).
 
 ## Get started
 

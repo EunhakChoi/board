@@ -5,3 +5,6 @@ dist/
 .env
 test-results/
 playwright-report/
+
+# skill-creator eval runs
+skills/*-workspace/

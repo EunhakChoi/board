@@ -1,0 +1,23 @@
+{
+  "skill_name": "board",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "board 에 디자이너가 남긴 comment 있는지 보고 처리해줘. 작업 폴더는 {dir}",
+      "expected_output": "Reads the open comment and its snapshot, renames the 'Open' filter to 'Active' in the app, updates anything that depended on the old label (the tasks-open screen's setup), pushes, checks and captures the affected screens, looks at the capture, and resolves the comment with a note naming the version.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "{dir} 의 tasks 화면에 '완료 항목 숨기기' 토글 추가해줘. 팀이 board 에서 리뷰할 수 있게 화면이랑 흐름까지 정리해줘.",
+      "expected_output": "Adds the toggle to the app, adds board screens for the new states (with mocks / setup), connections and a flow, pushes, runs check and capture, looks at the pictures, and reports board url links.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "{app} 에 있는 notes-app 을 board 에 올려서 팀이 화면을 리뷰할 수 있게 해줘. project key 는 {key}. board server 는 http://127.0.0.1:5480 이고 board repo 는 /data/patent/board 에 있어. 작업 폴더는 {wd} 에 만들어.",
+      "expected_output": "Imports the app, adds .board/ with its own package.json (vendored SDK, msw), vite config reusing the app's, frame, project with a few screens and mocks, leaves the app's package.json and lockfile untouched, pushes, checks (all good) and captures.",
+      "files": []
+    }
+  ]
+}
