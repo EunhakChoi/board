@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use board_engine::StoreError;
+use board_engine::{EngineError, StoreError};
 use serde::Serialize;
 
 /// The one error shape of the API (`Error` in the contract).
@@ -55,6 +55,28 @@ impl From<StoreError> for ApiError {
             "internal",
             "Internal error",
         )
+    }
+}
+
+impl From<EngineError> for ApiError {
+    fn from(error: EngineError) -> Self {
+        match error {
+            EngineError::Forbidden => Self::new(StatusCode::FORBIDDEN, "forbidden", "Not allowed"),
+            EngineError::NotFound(what) => Self::not_found(format!("{what} not found")),
+            EngineError::Invalid(message) => Self::new(StatusCode::BAD_REQUEST, "invalid", message),
+            EngineError::Exists(what) => Self::new(
+                StatusCode::CONFLICT,
+                "exists",
+                format!("{what} already exists"),
+            ),
+            EngineError::Conflict { head } => Self::new(
+                StatusCode::CONFLICT,
+                "conflict",
+                "main moved since your base; pull and try again",
+            )
+            .with_detail(serde_json::json!({ "head": head })),
+            EngineError::Store(error) => error.into(),
+        }
     }
 }
 

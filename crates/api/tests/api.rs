@@ -1,40 +1,149 @@
 //! Black-box tests of the router, plus the contract check.
 
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeSet;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use board_engine::{Engine, Settings, StoreError};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use board_db::Db;
+use board_engine::{Engine, Ports};
+use board_store::GitStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-#[derive(Default)]
-struct Memory(Mutex<HashMap<String, String>>);
-
-impl Settings for Memory {
-    fn get(&self, key: &str) -> Result<Option<String>, StoreError> {
-        Ok(self.0.lock().unwrap().get(key).cloned())
-    }
-    fn set(&self, key: &str, value: &str) -> Result<(), StoreError> {
-        self.0.lock().unwrap().insert(key.into(), value.into());
-        Ok(())
-    }
+fn engine(local_mode: bool) -> Engine {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let root = std::env::temp_dir().join(format!(
+        "board-api-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let db = Arc::new(Db::memory().unwrap());
+    Engine::new(
+        Ports {
+            settings: db.clone(),
+            records: db,
+            store: Arc::new(GitStore::new(root)),
+        },
+        local_mode,
+    )
 }
 
-fn engine(local_mode: bool) -> Engine {
-    Engine::new(Arc::new(Memory::default()), local_mode)
+async fn send(engine: Engine, request: Request<Body>) -> (StatusCode, Vec<u8>, Option<String>) {
+    let response = board_api::router(engine).oneshot(request).await.unwrap();
+    let status = response.status();
+    let commit = response
+        .headers()
+        .get("x-board-commit")
+        .map(|v| v.to_str().unwrap().to_owned());
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, bytes.to_vec(), commit)
+}
+
+async fn post(engine: Engine, path: &str, body: &Value) -> (StatusCode, Value) {
+    let request = Request::post(path)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let (status, bytes, _) = send(engine, request).await;
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+fn b64(text: &str) -> String {
+    STANDARD.encode(text)
 }
 
 async fn call(engine: Engine, path: &str) -> (StatusCode, Value) {
-    let response = board_api::router(engine)
-        .oneshot(Request::get(path).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-    let status = response.status();
-    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let (status, bytes, _) = send(engine, Request::get(path).body(Body::empty()).unwrap()).await;
     (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[tokio::test]
+async fn import_checkout_push_versions_diff() {
+    let engine = engine(true);
+    let import = json!({
+        "key": "web",
+        "title": "Web",
+        "import": { "source": "test", "files": [
+            { "path": "src/a.ts", "content": b64("export const a = 1;\n") },
+            { "path": "run.sh", "content": b64("#!/bin/sh\n"), "executable": true }
+        ]}
+    });
+    let (status, created) = post(engine.clone(), "/api/projects", &import).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["project"]["origin"], "import");
+    assert_eq!(created["version"]["number"], 1);
+    let v1 = created["version"]["commit"].as_str().unwrap().to_owned();
+
+    let (status, again) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(
+        (status, again["code"].as_str()),
+        (StatusCode::CONFLICT, Some("exists"))
+    );
+
+    let (status, bytes, commit) = send(
+        engine.clone(),
+        Request::get("/api/projects/web/checkout")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(commit.as_deref(), Some(v1.as_str()));
+    assert_eq!(&bytes[..2], &[0x1f, 0x8b]);
+
+    let push = json!({ "base": v1, "message": "edit", "files": [
+        { "path": "src/a.ts", "content": b64("export const a = 2;\n") },
+        { "path": "run.sh" }
+    ]});
+    let (status, v2) = post(engine.clone(), "/api/projects/web/push", &push).await;
+    assert_eq!(status, StatusCode::CREATED, "{v2}");
+    assert_eq!(
+        (v2["number"].as_u64(), v2["kind"].as_str()),
+        (Some(2), Some("push"))
+    );
+
+    let (status, stale) = post(engine.clone(), "/api/projects/web/push", &push).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["code"], "conflict");
+    assert_eq!(stale["detail"]["head"], v2["commit"]);
+
+    let (_, versions) = call(engine.clone(), "/api/projects/web/versions").await;
+    assert_eq!(versions["versions"].as_array().unwrap().len(), 2);
+    let (_, diff) = call(engine.clone(), "/api/projects/web/diff?from=v1").await;
+    assert_eq!(
+        diff,
+        json!({ "changes": [
+            { "path": "run.sh", "kind": "deleted" },
+            { "path": "src/a.ts", "kind": "modified" }
+        ]})
+    );
+    let (_, list) = call(engine.clone(), "/api/projects").await;
+    assert_eq!(list["projects"][0]["key"], "web");
+}
+
+#[tokio::test]
+async fn bad_requests() {
+    let engine = engine(true);
+    let (status, body) = post(engine.clone(), "/api/projects", &json!({ "key": "Bad" })).await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::BAD_REQUEST, Some("invalid"))
+    );
+    let traversal = json!({ "key": "x", "import": { "source": "t", "files": [
+        { "path": "../etc/passwd", "content": b64("no") }
+    ]}});
+    let (status, _) = post(engine.clone(), "/api/projects", &traversal).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = call(engine.clone(), "/api/projects/missing").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = call(engine, "/api/projects/missing/checkout?rev=v1").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

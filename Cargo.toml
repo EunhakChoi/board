@@ -10,6 +10,7 @@ publish = false
 
 [workspace.dependencies]
 axum = "0.8.9"
+base64 = "0.22.1"
 http-body-util = "0.1.5"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }

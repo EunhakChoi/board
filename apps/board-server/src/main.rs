@@ -6,7 +6,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use board_db::Db;
-use board_engine::Engine;
+use board_engine::{Engine, Ports};
+use board_store::GitStore;
 
 use crate::config::Config;
 
@@ -31,8 +32,13 @@ async fn main() -> ExitCode {
 async fn run(config: Config) -> Result<(), String> {
     std::fs::create_dir_all(config.data_dir())
         .map_err(|e| format!("cannot create {}: {e}", config.data_dir().display()))?;
-    let db = Db::open(&config.data_dir().join("board.db")).map_err(|e| e.to_string())?;
-    let engine = Engine::new(Arc::new(db), config.local_mode());
+    let db = Arc::new(Db::open(&config.data_dir().join("board.db")).map_err(|e| e.to_string())?);
+    let ports = Ports {
+        settings: db.clone(),
+        records: db,
+        store: Arc::new(GitStore::new(config.data_dir().join("projects"))),
+    };
+    let engine = Engine::new(ports, config.local_mode());
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.bind))?;

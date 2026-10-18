@@ -3,12 +3,16 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use board_engine::{Settings, StoreError};
-use rusqlite::{Connection, OptionalExtension, params};
+use board_engine::{Records, Settings, StoreError};
+use board_model::{Origin, Project, Version, VersionKind, Visibility};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 
 /// Schema migrations, applied in order. `PRAGMA user_version` records how many have run.
 /// Never edit a released migration; append a new one.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_settings.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001_settings.sql"),
+    include_str!("migrations/0002_projects.sql"),
+];
 
 /// The board database: one SQLite file in WAL mode.
 #[derive(Debug)]
@@ -102,6 +106,124 @@ impl Settings for Db {
     }
 }
 
+impl Records for Db {
+    fn insert_project(&self, project: &Project) -> Result<bool, StoreError> {
+        let inserted = self
+            .lock()?
+            .execute(
+                "INSERT INTO projects (key, title, visibility, origin) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (key) DO NOTHING",
+                params![
+                    project.key,
+                    project.title,
+                    text(project.visibility),
+                    text(project.origin)
+                ],
+            )
+            .map_err(err)?;
+        Ok(inserted == 1)
+    }
+
+    fn project(&self, key: &str) -> Result<Option<Project>, StoreError> {
+        self.lock()?
+            .query_row(
+                &format!("{PROJECT_COLUMNS} WHERE key = ?1"),
+                params![key],
+                project_row,
+            )
+            .optional()
+            .map_err(err)
+    }
+
+    fn projects(&self) -> Result<Vec<Project>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(&format!("{PROJECT_COLUMNS} ORDER BY key"))
+            .map_err(err)?;
+        let rows = statement.query_map([], project_row).map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+
+    fn add_version(
+        &self,
+        project: &str,
+        commit: &str,
+        kind: VersionKind,
+        actor: &str,
+        note: &str,
+    ) -> Result<Version, StoreError> {
+        let conn = self.lock()?;
+        // One statement picks the next number, so concurrent writers cannot collide.
+        conn.query_row(
+            &format!(
+                "INSERT INTO versions (project, number, git_commit, kind, actor, note)
+                 VALUES (?1, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE project = ?1),
+                         ?2, ?3, ?4, ?5)
+                 RETURNING {VERSION_FIELDS}"
+            ),
+            params![project, commit, text(kind), actor, note],
+            version_row,
+        )
+        .map_err(err)
+    }
+
+    fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(&format!(
+                "SELECT {VERSION_FIELDS} FROM versions WHERE project = ?1 ORDER BY number DESC"
+            ))
+            .map_err(err)?;
+        let rows = statement
+            .query_map(params![project], version_row)
+            .map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+}
+
+const PROJECT_COLUMNS: &str = "SELECT key, title, visibility, origin, created_at FROM projects";
+const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at";
+
+fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
+    Ok(Project {
+        key: row.get(0)?,
+        title: row.get(1)?,
+        visibility: parse::<Visibility>(row, 2)?,
+        origin: parse::<Origin>(row, 3)?,
+        created_at: row.get(4)?,
+    })
+}
+
+fn version_row(row: &Row<'_>) -> rusqlite::Result<Version> {
+    Ok(Version {
+        number: row.get(0)?,
+        commit: row.get(1)?,
+        kind: parse::<VersionKind>(row, 2)?,
+        actor: row.get(3)?,
+        note: row.get(4)?,
+        created_at: row.get(5)?,
+    })
+}
+
+/// Stores a model enum as its serde name (`"team"`, `"import"`, ...).
+fn text(value: impl serde::Serialize) -> String {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(text)) => text,
+        _ => String::new(),
+    }
+}
+
+fn parse<T: serde::de::DeserializeOwned>(row: &Row<'_>, index: usize) -> rusqlite::Result<T> {
+    let text: String = row.get(index)?;
+    serde_json::from_value(serde_json::Value::String(text)).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })
+}
+
 fn err(error: impl std::fmt::Display) -> StoreError {
     StoreError(error.to_string())
 }
@@ -136,6 +258,58 @@ mod tests {
                 .unwrap_err()
                 .0
                 .contains("newer than this board")
+        );
+    }
+
+    fn project(key: &str) -> Project {
+        Project {
+            key: key.into(),
+            title: key.to_uppercase(),
+            visibility: Visibility::Team,
+            origin: Origin::Import,
+            created_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn projects_are_unique_and_listed() {
+        let db = Db::memory().unwrap();
+        assert!(db.insert_project(&project("b")).unwrap());
+        assert!(db.insert_project(&project("a")).unwrap());
+        assert!(!db.insert_project(&project("a")).unwrap());
+        let found = db.project("a").unwrap().unwrap();
+        assert_eq!((found.title.as_str(), found.origin), ("A", Origin::Import));
+        assert!(found.created_at.ends_with('Z'));
+        let keys: Vec<_> = db.projects().unwrap().into_iter().map(|p| p.key).collect();
+        assert_eq!(keys, ["a", "b"]);
+        assert_eq!(db.project("zzz").unwrap(), None);
+    }
+
+    #[test]
+    fn versions_count_per_project() {
+        let db = Db::memory().unwrap();
+        db.insert_project(&project("a")).unwrap();
+        db.insert_project(&project("b")).unwrap();
+        let v1 = db
+            .add_version("a", "c1", VersionKind::Import, "Me", "first")
+            .unwrap();
+        let v2 = db
+            .add_version("a", "c2", VersionKind::Push, "Me", "second")
+            .unwrap();
+        let b1 = db
+            .add_version("b", "c3", VersionKind::Initial, "Me", "")
+            .unwrap();
+        assert_eq!((v1.number, v2.number, b1.number), (1, 2, 1));
+        let listed: Vec<_> = db
+            .versions("a")
+            .unwrap()
+            .into_iter()
+            .map(|v| (v.number, v.kind))
+            .collect();
+        assert_eq!(listed, [(2, VersionKind::Push), (1, VersionKind::Import)]);
+        assert!(
+            db.add_version("nope", "c", VersionKind::Push, "Me", "")
+                .is_err()
         );
     }
 
