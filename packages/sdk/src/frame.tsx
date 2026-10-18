@@ -41,8 +41,11 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     const page = project.pages.find((p) => p.id === screen?.page);
     const handlers = [...(screen.mocks ?? []), ...(project.mocks ?? [])];
     const worker = setupWorker(...handlers);
+    // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope follow it.
+    const base = import.meta.env.BASE_URL;
     await worker.start({
       quiet: true,
+      serviceWorker: { url: `${base}mockServiceWorker.js`, options: { scope: base } },
       onUnhandledRequest(request, print) {
         const url = new URL(request.url);
         // Only API calls count; the page's own assets are not mocks.

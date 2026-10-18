@@ -185,6 +185,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/i18n
 
+  apps/board-workspace:
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+
   packages/api-client:
     dependencies:
       openapi-fetch:
