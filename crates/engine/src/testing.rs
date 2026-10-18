@@ -3,12 +3,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use board_model::{Project, Version, VersionKind};
+use board_model::{Comment, CommentStatus, Project, Reply, Version, VersionKind};
 
 use crate::{
-    Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind, Engine,
-    FileChange, Ports, PreviewSettings, ProjectStore, Records, RenderJob, Renderer, Settings, Shot,
-    StoreError, Workspace, WorkspaceError,
+    Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind, Comments, Engine,
+    FileChange, NewComment, NewReply, Ports, PreviewSettings, ProjectStore, Records, RenderJob,
+    Renderer, Settings, Shot, StoreError, Workspace, WorkspaceError,
 };
 
 /// The fakes behind an engine, for tests that steer or inspect them.
@@ -63,6 +63,7 @@ fn engine_with(fakes: &Fakes) -> Engine {
             workspace: fakes.workspace.clone(),
             renderer: fakes.renderer.clone(),
             captures: Arc::new(MemoryCaptures::default()),
+            comments: Arc::new(MemoryComments::default()),
         },
         true,
     )
@@ -71,11 +72,16 @@ fn engine_with(fakes: &Fakes) -> Engine {
 /// Records jobs. Screens render ready; with an image, the picture is `jpeg:<target>` and the
 /// element map points at `src/<target>.tsx:3:5`.
 #[derive(Default)]
-pub struct MemoryRenderer(Mutex<Vec<RenderJob>>);
+pub struct MemoryRenderer(Mutex<Vec<RenderJob>>, Mutex<Option<serde_json::Value>>);
 
 impl MemoryRenderer {
     pub fn jobs(&self) -> Vec<RenderJob> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// The element map of every later render.
+    pub fn set_elements(&self, elements: serde_json::Value) {
+        *self.1.lock().unwrap() = Some(elements);
     }
 }
 
@@ -95,9 +101,11 @@ impl Renderer for MemoryRenderer {
             ready: Some("true".into()),
             issues: Vec::new(),
             image: job.image.map(|_| format!("jpeg:{target}").into_bytes()),
-            elements: job.map.then(
-                || serde_json::json!([{ "tag": "main", "src": format!("src/{target}.tsx:3:5") }]),
-            ),
+            elements: job.map.then(|| {
+                self.1.lock().unwrap().clone().unwrap_or_else(
+                    || serde_json::json!([{ "tag": "main", "src": format!("src/{target}.tsx:3:5") }]),
+                )
+            }),
         })
     }
 }
@@ -157,6 +165,103 @@ impl Captures for MemoryCaptures {
     ) -> Result<Option<serde_json::Value>, StoreError> {
         let key = (project.into(), kind.into(), target.into(), theme.into());
         Ok(self.0.lock().unwrap().get(&key).map(|v| v.2.clone()))
+    }
+}
+
+/// (project, comment, snapshot).
+type StoredComment = (String, Comment, Option<Vec<u8>>);
+
+#[derive(Default)]
+struct MemoryComments(Mutex<Vec<StoredComment>>);
+
+impl Comments for MemoryComments {
+    fn add(
+        &self,
+        project: &str,
+        new: &NewComment,
+        snapshot: Option<&[u8]>,
+    ) -> Result<Comment, StoreError> {
+        let mut all = self.0.lock().unwrap();
+        let comment = Comment {
+            id: all.len() as u64 + 1,
+            kind: new.kind.clone(),
+            target: new.target.clone(),
+            theme: new.theme.clone(),
+            anchor: new.anchor.clone(),
+            body: new.body.clone(),
+            author: new.author.clone(),
+            status: CommentStatus::Open,
+            created_commit: new.commit.clone(),
+            resolved_commit: None,
+            rev: 1,
+            created_at: "now".into(),
+            updated_at: "now".into(),
+            replies: Vec::new(),
+        };
+        all.push((
+            project.into(),
+            comment.clone(),
+            snapshot.map(<[u8]>::to_vec),
+        ));
+        Ok(comment)
+    }
+    fn list(&self, project: &str) -> Result<Vec<Comment>, StoreError> {
+        let all = self.0.lock().unwrap();
+        Ok(all
+            .iter()
+            .filter(|c| c.0 == project)
+            .map(|c| c.1.clone())
+            .collect())
+    }
+    fn get(&self, project: &str, id: u64) -> Result<Option<Comment>, StoreError> {
+        Ok(self.list(project)?.into_iter().find(|c| c.id == id))
+    }
+    fn reply(
+        &self,
+        project: &str,
+        id: u64,
+        rev: u32,
+        reply: &NewReply,
+    ) -> Result<Option<Comment>, StoreError> {
+        let mut all = self.0.lock().unwrap();
+        let Some((_, comment, _)) = all.iter_mut().find(|c| c.0 == project && c.1.id == id) else {
+            return Ok(None);
+        };
+        if comment.rev != rev {
+            return Ok(None);
+        }
+        comment.rev += 1;
+        if let Some(status) = reply.status {
+            comment.status = status;
+            comment.resolved_commit.clone_from(&reply.resolved_commit);
+        }
+        comment.replies.push(Reply {
+            id: comment.replies.len() as u64 + 1,
+            author: reply.author.clone(),
+            body: reply.body.clone(),
+            kind: reply.kind,
+            created_at: "now".into(),
+        });
+        Ok(Some(comment.clone()))
+    }
+    fn move_anchor(
+        &self,
+        project: &str,
+        id: u64,
+        anchor: &board_model::Anchor,
+    ) -> Result<(), StoreError> {
+        let mut all = self.0.lock().unwrap();
+        if let Some((_, comment, _)) = all.iter_mut().find(|c| c.0 == project && c.1.id == id) {
+            comment.anchor = anchor.clone();
+        }
+        Ok(())
+    }
+    fn snapshot(&self, project: &str, id: u64) -> Result<Option<Vec<u8>>, StoreError> {
+        let all = self.0.lock().unwrap();
+        Ok(all
+            .iter()
+            .find(|c| c.0 == project && c.1.id == id)
+            .and_then(|c| c.2.clone()))
     }
 }
 

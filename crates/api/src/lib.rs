@@ -3,6 +3,7 @@
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
 mod captures;
+mod comments;
 mod error;
 mod preview;
 mod projects;
@@ -43,6 +44,13 @@ pub const ROUTES: &[(&str, &str)] = &[
         "get",
         "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements",
     ),
+    ("get", "/api/projects/{key}/comments"),
+    ("post", "/api/projects/{key}/comments"),
+    ("get", "/api/projects/{key}/comments/{id}"),
+    ("post", "/api/projects/{key}/comments/{id}/replies"),
+    ("post", "/api/projects/{key}/comments/{id}/resolve"),
+    ("post", "/api/projects/{key}/comments/{id}/reopen"),
+    ("get", "/api/projects/{key}/comments/{id}/snapshot"),
 ];
 
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
@@ -73,6 +81,27 @@ pub fn router(engine: Engine) -> Router {
         .route(
             "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements",
             get(captures::elements),
+        )
+        .route(
+            "/api/projects/{key}/comments",
+            get(comments::list).post(comments::add),
+        )
+        .route("/api/projects/{key}/comments/{id}", get(comments::get))
+        .route(
+            "/api/projects/{key}/comments/{id}/replies",
+            post(comments::reply),
+        )
+        .route(
+            "/api/projects/{key}/comments/{id}/resolve",
+            post(comments::resolve),
+        )
+        .route(
+            "/api/projects/{key}/comments/{id}/reopen",
+            post(comments::reopen),
+        )
+        .route(
+            "/api/projects/{key}/comments/{id}/snapshot",
+            get(comments::snapshot),
         )
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .fallback(not_found)

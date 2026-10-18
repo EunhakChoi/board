@@ -8,7 +8,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use board_db::{CaptureStore, Db};
+use board_db::{CaptureStore, CommentStore, Db};
 use board_engine::{
     Build, BuildState, BuiltFile, Engine, Ports, PreviewSettings, RenderJob, Renderer, Shot,
     Workspace, WorkspaceError,
@@ -34,7 +34,8 @@ fn engine(local_mode: bool) -> Engine {
             store: Arc::new(GitStore::new(root.join("projects"))),
             workspace: Arc::new(ReadyWorkspace),
             renderer: Arc::new(FakeRenderer),
-            captures: Arc::new(CaptureStore::new(db, root.join("captures"))),
+            captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
+            comments: Arc::new(CommentStore::new(db, root.join("comments"))),
         },
         local_mode,
     )
@@ -433,4 +434,63 @@ async fn check_capture_and_read_back() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+#[tokio::test]
+async fn comment_thread() {
+    let engine = engine(true).with_preview(preview_settings());
+    post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    post(engine.clone(), "/api/projects/web/captures", &json!({})).await;
+
+    let (status, comment) = post(
+        engine.clone(),
+        "/api/projects/web/comments",
+        &json!({ "kind": "screen", "target": "home", "at": { "x": 5, "y": 5 }, "body": "Hi" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{comment}");
+    assert_eq!(comment["anchor"]["src"], "src/home.tsx:1:1");
+    assert_eq!(comment["status"], "open");
+    let id = comment["id"].as_u64().unwrap();
+
+    let (status, replied) = post(
+        engine.clone(),
+        &format!("/api/projects/web/comments/{id}/replies"),
+        &json!({ "rev": 1, "body": "Done?" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{replied}");
+    let (status, stale) = post(
+        engine.clone(),
+        &format!("/api/projects/web/comments/{id}/resolve"),
+        &json!({ "rev": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["code"], "changed");
+    assert_eq!(stale["detail"]["rev"], 2);
+    let (status, resolved) = post(
+        engine.clone(),
+        &format!("/api/projects/web/comments/{id}/resolve"),
+        &json!({ "rev": 2, "body": "fixed in v2" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(resolved["status"], "resolved");
+
+    let (_, open) = call(engine.clone(), "/api/projects/web/comments?status=open").await;
+    assert_eq!(open["comments"], json!([]));
+    let (_, all) = call(engine.clone(), "/api/projects/web/comments").await;
+    assert_eq!(all["comments"][0]["replies"].as_array().unwrap().len(), 2);
+    let (status, image, _) = send(
+        engine.clone(),
+        Request::get(format!("/api/projects/web/comments/{id}/snapshot"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(image.starts_with(&[0xff, 0xd8]));
+    let (status, _) = call(engine, "/api/projects/web/comments?status=nope").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

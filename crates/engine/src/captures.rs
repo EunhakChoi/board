@@ -154,6 +154,7 @@ impl Engine {
                 captured_at: String::new(),
             };
             self.ports.captures.put(key, &capture, image, &elements)?;
+            self.reanchor_comments(key, target.kind, &target.id, theme, &elements)?;
             Ok(result(target, theme, &shot, true))
         }))
     }

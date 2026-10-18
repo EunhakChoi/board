@@ -245,3 +245,55 @@ pub trait Captures: Send + Sync {
         theme: &str,
     ) -> Result<Option<serde_json::Value>, StoreError>;
 }
+
+/// A comment to store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewComment {
+    pub kind: String,
+    pub target: String,
+    pub theme: String,
+    pub anchor: board_model::Anchor,
+    pub body: String,
+    pub author: board_model::Person,
+    pub commit: String,
+}
+
+/// A thread entry to store, with the status it sets (resolve, reopen).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewReply {
+    pub author: board_model::Person,
+    pub body: String,
+    pub kind: board_model::ReplyKind,
+    pub status: Option<board_model::CommentStatus>,
+    /// Set with a resolve.
+    pub resolved_commit: Option<String>,
+}
+
+/// Comments, their threads and the capture snapshot each was made on.
+pub trait Comments: Send + Sync {
+    fn add(
+        &self,
+        project: &str,
+        comment: &NewComment,
+        snapshot: Option<&[u8]>,
+    ) -> Result<board_model::Comment, StoreError>;
+    /// Every comment of `project` with its replies, oldest first.
+    fn list(&self, project: &str) -> Result<Vec<board_model::Comment>, StoreError>;
+    fn get(&self, project: &str, id: u64) -> Result<Option<board_model::Comment>, StoreError>;
+    /// Adds `reply` when the comment is still at `rev`; returns `None` when it moved on.
+    fn reply(
+        &self,
+        project: &str,
+        id: u64,
+        rev: u32,
+        reply: &NewReply,
+    ) -> Result<Option<board_model::Comment>, StoreError>;
+    /// Moves the anchor after a new capture (does not count as a change by a person).
+    fn move_anchor(
+        &self,
+        project: &str,
+        id: u64,
+        anchor: &board_model::Anchor,
+    ) -> Result<(), StoreError>;
+    fn snapshot(&self, project: &str, id: u64) -> Result<Option<Vec<u8>>, StoreError>;
+}

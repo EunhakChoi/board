@@ -76,6 +76,12 @@ impl From<EngineError> for ApiError {
             )
             .with_detail(serde_json::json!({ "head": head })),
             EngineError::Pending(message) => Self::new(StatusCode::CONFLICT, "pending", message),
+            EngineError::Changed(rev) => Self::new(
+                StatusCode::CONFLICT,
+                "changed",
+                "someone changed it meanwhile; read it again",
+            )
+            .with_detail(serde_json::json!({ "rev": rev })),
             EngineError::Unavailable(message) => {
                 Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
             }

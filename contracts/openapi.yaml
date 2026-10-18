@@ -16,6 +16,7 @@ tags:
   - name: auth
   - name: projects
   - name: captures
+  - name: comments
 paths:
   /api/health:
     get:
@@ -403,8 +404,218 @@ paths:
                   $ref: "#/components/schemas/Element"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [comments]
+      operationId: listComments
+      summary: Comments with their threads, oldest first
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, resolved, all]
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [screen, story]
+        - name: target
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [comments]
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [comments]
+      operationId: addComment
+      summary: Comment on an element of the latest capture (by point or selector)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, target, at, body]
+              properties:
+                kind:
+                  type: string
+                  enum: [screen, story]
+                target:
+                  type: string
+                theme:
+                  type: string
+                  enum: [light, dark]
+                at:
+                  oneOf:
+                    - type: object
+                      required: [x, y]
+                      properties:
+                        x:
+                          type: integer
+                        y:
+                          type: integer
+                    - type: object
+                      required: [selector]
+                      properties:
+                        selector:
+                          type: string
+                body:
+                  type: string
+      responses:
+        "201":
+          description: The new comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/comments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CommentId"
+    get:
+      tags: [comments]
+      operationId: getComment
+      summary: One comment with its thread
+      responses:
+        "200":
+          description: The comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/comments/{id}/replies:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CommentId"
+    post:
+      tags: [comments]
+      operationId: replyComment
+      summary: Reply in the thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerInput"
+      responses:
+        "200":
+          description: The comment after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Changed"
+  /api/projects/{key}/comments/{id}/resolve:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CommentId"
+    post:
+      tags: [comments]
+      operationId: resolveComment
+      summary: Resolve, with an optional note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerInput"
+      responses:
+        "200":
+          description: The comment after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Changed"
+  /api/projects/{key}/comments/{id}/reopen:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CommentId"
+    post:
+      tags: [comments]
+      operationId: reopenComment
+      summary: Reopen, with an optional note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerInput"
+      responses:
+        "200":
+          description: The comment after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Changed"
+  /api/projects/{key}/comments/{id}/snapshot:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/CommentId"
+    get:
+      tags: [comments]
+      operationId: commentSnapshot
+      summary: The capture the comment was made on (JPEG); the anchor box marks the element
+      responses:
+        "200":
+          description: JPEG
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    CommentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     CaptureKind:
       name: kind
       in: path
@@ -434,6 +645,12 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
   responses:
+    Changed:
+      description: Someone wrote to it since you read it; `detail.rev` is its revision now
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Pending:
       description: Not possible yet (the preview is still building); try again shortly
       content:
@@ -483,6 +700,103 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    Person:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Anchor:
+      type: object
+      required: [x, y, w, h, chain, sel, tag, text, detached]
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+        w:
+          type: integer
+        h:
+          type: integer
+        chain:
+          type: array
+          items:
+            type: string
+        sel:
+          type: string
+        tag:
+          type: string
+        text:
+          type: string
+        src:
+          type: string
+        detached:
+          type: boolean
+          description: The element is gone from the latest capture; the box is where it last was
+    Comment:
+      type: object
+      required: [id, kind, target, theme, anchor, body, author, status, createdCommit, resolvedCommit, rev, createdAt, updatedAt, replies]
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [screen, story]
+        target:
+          type: string
+        theme:
+          type: string
+          enum: [light, dark]
+        anchor:
+          $ref: "#/components/schemas/Anchor"
+        body:
+          type: string
+        author:
+          $ref: "#/components/schemas/Person"
+        status:
+          type: string
+          enum: [open, resolved]
+        createdCommit:
+          type: string
+        resolvedCommit:
+          type: [string, "null"]
+        rev:
+          type: integer
+          description: Send it back with replies, resolves and reopens
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        replies:
+          type: array
+          items:
+            type: object
+            required: [id, author, body, kind, createdAt]
+            properties:
+              id:
+                type: integer
+              author:
+                $ref: "#/components/schemas/Person"
+              body:
+                type: string
+              kind:
+                type: string
+                enum: [reply, resolve, reopen]
+              createdAt:
+                type: string
+    AnswerInput:
+      type: object
+      additionalProperties: false
+      required: [rev]
+      properties:
+        rev:
+          type: integer
+          description: The comment revision you saw
+        body:
+          type: string
+          description: Required for a reply, optional note for resolve and reopen
     RenderInput:
       type: object
       additionalProperties: false
