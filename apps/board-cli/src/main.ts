@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { detectLocale, type Locale, t } from "@board/i18n";
 import pkg from "../package.json" with { type: "json" };
+import { findCheckout } from "./checkout.ts";
 import * as commands from "./commands.ts";
 import * as notes from "./comments.ts";
 import { type Theme, themesOf } from "./data.ts";
@@ -96,13 +97,17 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       return 0;
     }
     const token = env.BOARD_TOKEN;
+    const cwd = options.cwd ?? process.cwd();
+    // Inside a checkout, its server is the default.
+    const server =
+      str(args, "--server") ??
+      env.BOARD_URL ??
+      findCheckout(cwd)?.state.server ??
+      "http://127.0.0.1:5280";
     const ctx: commands.Context = {
-      server: (str(args, "--server") ?? env.BOARD_URL ?? "http://127.0.0.1:5280").replace(
-        /\/$/,
-        "",
-      ),
+      server: server.replace(/\/$/, ""),
       ...(token ? { token } : {}),
-      cwd: options.cwd ?? process.cwd(),
+      cwd,
       locale,
       json: args.flags.has("--json"),
       out,

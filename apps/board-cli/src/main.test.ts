@@ -55,13 +55,13 @@ after(() => {
   rmSync(work, { recursive: true, force: true });
 });
 
-async function board(args: string[], cwd = work) {
+async function board(args: string[], cwd = work, env: Record<string, string> = { BOARD_URL: url }) {
   const out: string[] = [];
   const err: string[] = [];
   const code = await run(args, {
     cwd,
     locale: "en",
-    env: { BOARD_URL: url },
+    env,
     out: (line) => out.push(line),
     err: (line) => err.push(line),
   });
@@ -127,6 +127,10 @@ test("import, checkout, push, pull, versions and diff", async () => {
   );
   assert.ok(existsSync(join(a, "board.json")));
   assert.match((await board(["push"], a)).out, /Nothing to push/);
+  // Inside a checkout, commands talk to its server without BOARD_URL.
+  const listed = await board(["versions"], a, {});
+  assert.equal(listed.code, 0, listed.err);
+  assert.match(listed.out, /v1/);
 
   // Ignored output never travels.
   write(a, {

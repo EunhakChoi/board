@@ -205,6 +205,8 @@ export class Builds {
         throw error;
       }
       const env = childEnv(home, {
+        // pnpm 11+ reads only pnpm_config_*; npm_config_* covers older pnpm.
+        pnpm_config_store_dir: join(this.#home, "cache", "pnpm-store"),
         npm_config_store_dir: join(this.#home, "cache", "pnpm-store"),
         npm_config_cache: join(this.#home, "cache", "npm"),
       });
