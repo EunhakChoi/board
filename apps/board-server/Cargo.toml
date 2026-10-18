@@ -1,0 +1,18 @@
+[package]
+name = "board-server"
+description = "The board server: wires the API, store, database and realtime hub."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+board-model = { path = "../../crates/model" }
+board-engine = { path = "../../crates/engine" }
+board-store = { path = "../../crates/store" }
+board-db = { path = "../../crates/db" }
+board-collab = { path = "../../crates/collab" }
+board-api = { path = "../../crates/api" }
+
+[lints]
+workspace = true

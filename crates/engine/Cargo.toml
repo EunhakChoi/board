@@ -1,0 +1,13 @@
+[package]
+name = "board-engine"
+description = "Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+board-model = { path = "../model" }
+
+[lints]
+workspace = true
