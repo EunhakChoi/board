@@ -16,7 +16,8 @@ import { fail, system } from "./data.ts";
 /** The board repository (releases, stars). */
 export const REPOSITORY = "EunhakChoi/board";
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
-const SKILL_DIR = resolve(import.meta.dirname, "../skill");
+// The skill sources live at the repository root (`skills/board`).
+const SKILL_DIR = resolve(import.meta.dirname, "../../../skills/board");
 
 // ---- user settings ----------------------------------------------------------------------------
 
@@ -164,7 +165,12 @@ function installSkill(ctx: Context, agents: Agent[]): void {
   for (const agent of agents) {
     const target = skillTarget(ctx, agent);
     mkdirSync(dirname(target), { recursive: true });
-    cpSync(SKILL_DIR, target, { recursive: true, force: true });
+    // evals/ are the skill's own test prompts (skill-creator), not something agents need.
+    cpSync(SKILL_DIR, target, {
+      recursive: true,
+      force: true,
+      filter: (source) => !source.startsWith(join(SKILL_DIR, "evals")),
+    });
     ctx.out(t("cli.skill.installed", { agent, dir: target }, ctx.locale));
   }
 }

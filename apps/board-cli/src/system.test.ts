@@ -86,6 +86,8 @@ test("setup asks to star once, stars with gh, and installs the skill", async () 
   assert.match(first.out, /Starred/);
   assert.ok(existsSync(join(home, ".claude/skills/board/SKILL.md")));
   assert.ok(existsSync(join(home, ".claude/skills/board/references/cli.md")));
+  assert.ok(existsSync(join(home, ".claude/skills/board/references/import.md")));
+  assert.ok(!existsSync(join(home, ".claude/skills/board/evals")));
   assert.equal(JSON.parse(readFileSync(join(home, "config/settings.json"), "utf8")).star, "yes");
 
   const again = await board(["setup"], { answers: ["n"], sh, info: system() });
