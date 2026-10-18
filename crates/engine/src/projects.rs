@@ -1,4 +1,4 @@
-//! Project commands: create, import, checkout, push, versions, diff.
+//! Project commands: create, import, delete, checkout, push, versions, diff.
 
 use board_model::{Actor, Origin, Project, Version, VersionKind, Visibility, valid_path};
 
@@ -174,6 +174,24 @@ impl Engine {
         let from = self.resolve(key, from)?;
         let to = self.resolve(key, to)?;
         Ok(self.ports.store.diff(key, &from, &to)?)
+    }
+
+    /// Deletes a project: its history, versions, captures and comments. Admins only; there is no
+    /// undo.
+    pub fn delete_project(&self, actor: &Actor, key: &str) -> Result<(), EngineError> {
+        self.visible(actor, key, Command::ProjectView)?;
+        if !can(actor, Command::Admin, None) {
+            return Err(EngineError::Forbidden);
+        }
+        // The record first: once it is gone the project is gone, and leftover files are only
+        // cleared again (a new project with the same key starts from an empty store).
+        if !self.ports.records.delete_project(key)? {
+            return Err(EngineError::NotFound("project"));
+        }
+        self.ports.store.remove(key)?;
+        self.ports.captures.remove_project(key)?;
+        self.ports.comments.remove_project(key)?;
+        Ok(())
     }
 
     pub(crate) fn visible(
@@ -384,5 +402,33 @@ mod tests {
             engine.project(&Actor::Local, "nope"),
             Err(EngineError::NotFound("project"))
         );
+    }
+
+    #[test]
+    fn delete_project_removes_everything_and_frees_the_key() {
+        let engine = engine();
+        let import = Import {
+            files: vec![file("a.txt", "1")],
+            source: "local".into(),
+        };
+        engine
+            .create_project(&Actor::Local, "web", "", Some(import))
+            .unwrap();
+        assert_eq!(
+            engine.delete_project(&viewer(), "web"),
+            Err(EngineError::Forbidden)
+        );
+        engine.delete_project(&Actor::Local, "web").unwrap();
+        assert_eq!(engine.projects(&Actor::Local).unwrap(), Vec::new());
+        assert_eq!(
+            engine.delete_project(&Actor::Local, "web"),
+            Err(EngineError::NotFound("project"))
+        );
+        // The key can be used again, from a clean history.
+        let (_, v1) = engine
+            .create_project(&Actor::Local, "web", "", None)
+            .unwrap();
+        assert_eq!(v1.number, 1);
+        assert_eq!(engine.versions(&Actor::Local, "web").unwrap().len(), 1);
     }
 }

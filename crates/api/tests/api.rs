@@ -204,6 +204,24 @@ async fn import_checkout_push_versions_diff() {
 }
 
 #[tokio::test]
+async fn delete_project() {
+    let engine = engine(true);
+    let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let delete = || {
+        Request::delete("/api/projects/web")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (status, _, _) = send(engine.clone(), delete()).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = call(engine.clone(), "/api/projects/web").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = send(engine, delete()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn bad_requests() {
     let engine = engine(true);
     let (status, body) = post(engine.clone(), "/api/projects", &json!({ "key": "Bad" })).await;

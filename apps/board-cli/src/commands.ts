@@ -73,6 +73,20 @@ export async function projects(ctx: Context): Promise<void> {
   });
 }
 
+/** Deletes a project for good, after the user types its key (or with `--yes`). */
+export async function deleteProject(ctx: Context, key: string, yes: boolean): Promise<void> {
+  if (!yes) {
+    if (!ctx.ask) throw new CliError(t("cli.delete.needsYes", { key }, ctx.locale));
+    const answer = await ctx.ask(t("cli.delete.confirm", { key }, ctx.locale));
+    if (answer.trim() !== key) throw new CliError(t("cli.delete.cancelled", {}, ctx.locale));
+  }
+  const { error, response } = await client(ctx).DELETE("/api/projects/{key}", {
+    params: { path: { key } },
+  });
+  if (!response.ok) fail(error, "request failed");
+  emit(ctx, { deleted: key }, () => say(ctx, "cli.delete.done", { key }));
+}
+
 export interface ImportOptions {
   path: string;
   key?: string;

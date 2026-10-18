@@ -138,6 +138,17 @@ paths:
                 $ref: "#/components/schemas/Project"
         "404":
           $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [projects]
+      operationId: deleteProject
+      summary: Delete the project with its versions, captures and comments (admin; no undo)
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{key}/checkout:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"

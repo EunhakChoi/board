@@ -1,4 +1,4 @@
-//! Project routes: create / import, list, checkout, push, versions, diff.
+//! Project routes: create / import, list, delete, checkout, push, versions, diff.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -133,6 +133,16 @@ pub async fn get(
     Path(key): Path<String>,
 ) -> Result<Json<Project>, ApiError> {
     Ok(Json(blocking(move || engine.project(&actor, &key)).await?))
+}
+
+/// Deletes the project with its versions, captures and comments (admins).
+pub async fn delete(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path(key): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    blocking(move || engine.delete_project(&actor, &key)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]

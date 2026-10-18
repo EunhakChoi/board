@@ -155,6 +155,13 @@ fn load(
 }
 
 impl Comments for CommentStore {
+    fn remove_project(&self, project: &str) -> Result<(), StoreError> {
+        if !board_model::Project::valid_key(project) {
+            return Err(StoreError(format!("bad project key {project:?}")));
+        }
+        crate::remove_dir(&self.dir.join(project))
+    }
+
     fn add(
         &self,
         project: &str,

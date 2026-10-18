@@ -117,6 +117,10 @@ type StoredCapture = (Capture, Vec<u8>, serde_json::Value);
 struct MemoryCaptures(Mutex<BTreeMap<CaptureKey, StoredCapture>>);
 
 impl Captures for MemoryCaptures {
+    fn remove_project(&self, project: &str) -> Result<(), StoreError> {
+        self.0.lock().unwrap().retain(|key, _| key.0 != project);
+        Ok(())
+    }
     fn put(
         &self,
         project: &str,
@@ -175,6 +179,10 @@ type StoredComment = (String, Comment, Option<Vec<u8>>);
 struct MemoryComments(Mutex<Vec<StoredComment>>);
 
 impl Comments for MemoryComments {
+    fn remove_project(&self, project: &str) -> Result<(), StoreError> {
+        self.0.lock().unwrap().retain(|(p, _, _)| p != project);
+        Ok(())
+    }
     fn add(
         &self,
         project: &str,
@@ -360,6 +368,13 @@ struct MemoryRecords {
 }
 
 impl Records for MemoryRecords {
+    fn delete_project(&self, key: &str) -> Result<bool, StoreError> {
+        let mut projects = self.projects.lock().unwrap();
+        let before = projects.len();
+        projects.retain(|p| p.key != key);
+        self.versions.lock().unwrap().retain(|(p, _)| p != key);
+        Ok(projects.len() < before)
+    }
     fn insert_project(&self, project: &Project) -> Result<bool, StoreError> {
         let mut projects = self.projects.lock().unwrap();
         if projects.iter().any(|p| p.key == project.key) {
@@ -429,6 +444,10 @@ struct Repo {
 struct MemoryStore(Mutex<HashMap<String, Repo>>);
 
 impl ProjectStore for MemoryStore {
+    fn remove(&self, project: &str) -> Result<(), StoreError> {
+        self.0.lock().unwrap().remove(project);
+        Ok(())
+    }
     fn create(&self, project: &str) -> Result<(), StoreError> {
         self.0
             .lock()

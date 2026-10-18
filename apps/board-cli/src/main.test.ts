@@ -92,6 +92,25 @@ test("prints the version and usage", async () => {
   assert.deepEqual(await board(["--version"]), { code: 0, out: "board 0.0.0", err: "" });
   assert.match((await board([])).out, /^Usage: board/);
   assert.equal((await board(["nope"])).code, 1);
+  // --help on a command prints usage instead of running it.
+  const help = await board(["import", "--help"]);
+  assert.equal(help.code, 0);
+  assert.match(help.out, /^Usage: board/);
+  assert.doesNotMatch((await board(["projects"])).out, /^board-cli/m);
+});
+
+test("deletes a project only when confirmed", async () => {
+  const app = join(work, "gone-app");
+  write(app, { "package.json": "{}", "src/a.ts": "export {};\n" });
+  assert.equal((await board(["import", app, "--key", "gone"])).code, 0);
+  const refused = await board(["delete", "gone"]);
+  assert.equal(refused.code, 1);
+  assert.match(refused.err, /add --yes/);
+  const deleted = await board(["delete", "gone", "--yes"]);
+  assert.equal(deleted.code, 0, deleted.err);
+  assert.match(deleted.out, /Deleted project gone/);
+  assert.doesNotMatch((await board(["projects"])).out, /^gone\t/m);
+  assert.equal((await board(["delete", "gone", "--yes"])).code, 1);
 });
 
 test("import, checkout, push, pull, versions and diff", async () => {

@@ -102,7 +102,8 @@ export interface paths {
         get: operations["getProject"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete the project with its versions, captures and comments (admin; no undo) */
+        delete: operations["deleteProject"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1008,6 +1009,28 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
