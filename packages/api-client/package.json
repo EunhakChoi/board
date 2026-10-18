@@ -1,0 +1,19 @@
+{
+  "name": "@board/api-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen": "openapi-typescript ../../contracts/openapi.yaml -o src/schema.d.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
+  }
+}

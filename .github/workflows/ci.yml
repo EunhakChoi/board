@@ -21,4 +21,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: make setup
+      - name: generated API client is up to date
+        run: make gen-api && git diff --exit-code packages/api-client/src/schema.d.ts
       - run: make check

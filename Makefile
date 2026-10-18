@@ -1,11 +1,14 @@
 CARGO ?= $(shell command -v cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 PNPM ?= pnpm
 
-.PHONY: setup lint format typecheck test test-rust test-ts check
+.PHONY: setup gen-api lint format typecheck test test-rust test-ts check
 
 setup:
 	$(PNPM) install --frozen-lockfile
 	$(CARGO) fetch
+
+gen-api:
+	$(PNPM) --filter @board/api-client run gen
 
 lint:
 	$(CARGO) xtask layers
