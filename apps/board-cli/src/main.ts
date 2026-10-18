@@ -98,11 +98,11 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
     }
     const token = env.BOARD_TOKEN;
     const cwd = options.cwd ?? process.cwd();
-    // Inside a checkout, its server is the default.
+    // A checkout belongs to one server, which wins over the general BOARD_URL.
     const server =
       str(args, "--server") ??
-      env.BOARD_URL ??
       findCheckout(cwd)?.state.server ??
+      env.BOARD_URL ??
       "http://127.0.0.1:5280";
     const ctx: commands.Context = {
       server: server.replace(/\/$/, ""),

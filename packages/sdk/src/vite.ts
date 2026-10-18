@@ -53,6 +53,10 @@ const CONTENT_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+/** Packages the app and board's frame must share (a second React breaks hooks). */
+const SHARED = ["react", "react-dom"] as const;
+const BOARD_DIR = ".board";
+
 /** Set by board-workspace for preview builds. */
 export const PREVIEW_ENV = "BOARD_PREVIEW";
 
@@ -70,14 +74,16 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
   // The project's own copy in `public/` wins; otherwise the one from its msw package is served.
   const worker = (): string | undefined => {
     if (config.publicDir && existsSync(join(config.publicDir, WORKER_FILE))) return undefined;
-    try {
-      return readFileSync(
-        createRequire(join(config.root, "package.json")).resolve(`msw/${WORKER_FILE}`),
-        "utf8",
-      );
-    } catch {
-      return undefined;
+    // msw sits in the app's dependencies or in `.board/package.json`.
+    for (const from of [
+      join(config.root, BOARD_DIR, "package.json"),
+      join(config.root, "package.json"),
+    ]) {
+      try {
+        return readFileSync(createRequire(from).resolve(`msw/${WORKER_FILE}`), "utf8");
+      } catch {}
     }
+    return undefined;
   };
 
   // Absolute paths to public files, which need the base prefix under a preview path.
@@ -99,11 +105,15 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     name: "board:manifest",
     apply,
     config(user, env) {
-      if (env.command !== "build") return;
+      // One React for the app and board's frame, also when `.board/package.json` installs the SDK
+      // apart from the app (its peers then resolve from the app root).
+      const shared = { resolve: { dedupe: [...SHARED] } };
+      if (env.command !== "build") return shared;
       const root = resolve(user.root ?? process.cwd());
       const frame = join(root, frameFile);
       const index = join(root, "index.html");
       return {
+        ...shared,
         build: {
           // Component names stay readable in the element map (React fibers carry function names).
           minify: false,
@@ -165,7 +175,7 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
         configFile: false,
         logLevel: "error",
         // Same import aliases as the app (e.g. `@/components`), without loading its plugins again.
-        resolve: { alias: config.resolve.alias },
+        resolve: { alias: config.resolve.alias, dedupe: [...SHARED] },
       });
       const file = join(resolve(config.root, config.build.outDir), MANIFEST_PATH);
       mkdirSync(dirname(file), { recursive: true });

@@ -3,10 +3,10 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Builds } from "./builds.ts";
@@ -42,7 +42,11 @@ after(() => {
 
 const auth = { authorization: `Bearer ${TOKEN}` };
 
-function sourceTar(files: string[], boardJson: object | undefined): Buffer {
+function sourceTar(
+  files: string[],
+  boardJson: object | undefined,
+  extra: Record<string, string> = {},
+): Buffer {
   const staging = mkdtempSync(join(tmpdir(), "board-src-"));
   try {
     execFileSync(
@@ -52,9 +56,16 @@ function sourceTar(files: string[], boardJson: object | undefined): Buffer {
         cwd: repo,
       },
     );
-    if (boardJson) {
-      writeFileSync(join(staging, "board.json"), JSON.stringify(boardJson));
-      execFileSync("tar", ["-r", "-f", join(staging, "a.tar"), "board.json"], { cwd: staging });
+    const added = { ...extra, ...(boardJson ? { "board.json": JSON.stringify(boardJson) } : {}) };
+    for (const [path, content] of Object.entries(added)) {
+      mkdirSync(dirname(join(staging, "files", path)), { recursive: true });
+      writeFileSync(join(staging, "files", path), content);
+    }
+    // Appended entries replace the repository's copy when extracted.
+    if (Object.keys(added).length > 0) {
+      execFileSync("tar", ["-r", "-f", join(staging, "a.tar"), ...Object.keys(added)], {
+        cwd: join(staging, "files"),
+      });
     }
     execFileSync("gzip", [join(staging, "a.tar")]);
     return readFileSync(join(staging, "a.tar.gz"));
@@ -133,6 +144,71 @@ test("builds and verifies a commit, then serves it", { timeout: 300_000 }, async
   assert.match(log, /vite build/);
   // Packages land in the shared store, so the next build reuses them.
   assert.ok(existsSync(join(home, "cache", "pnpm-store")), "shared pnpm store");
+});
+
+test("installs .board/package.json apart from the app", { timeout: 300_000 }, async () => {
+  // A board-only dependency the app does not have: the build needs the second install.
+  const board = "templates/recommended/.board";
+  const files: Record<string, string> = {
+    [`${board}/package.json`]: JSON.stringify({
+      name: "board-files",
+      private: true,
+      dependencies: { "board-only": "link:./local" },
+    }),
+    [`${board}/pnpm-workspace.yaml`]: "autoInstallPeers: false\n",
+    [`${board}/local/package.json`]: JSON.stringify({
+      name: "board-only",
+      version: "1.0.0",
+      type: "module",
+      exports: "./index.js",
+    }),
+    [`${board}/local/index.js`]: 'export const title = "Tasks";\n',
+    [`${board}/project.tsx`]: readFileSync(join(repo, board, "project.tsx"), "utf8")
+      .replace(
+        'import { defineProject } from "@board/sdk";',
+        'import { defineProject } from "@board/sdk";\nimport { title } from "board-only";',
+      )
+      .replace('title: "Tasks",', "title,"),
+  };
+  const lock = mkdtempSync(join(tmpdir(), "board-lock-"));
+  try {
+    for (const name of [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "local/package.json",
+      "local/index.js",
+    ]) {
+      mkdirSync(dirname(join(lock, name)), { recursive: true });
+      writeFileSync(join(lock, name), files[`${board}/${name}`] as string);
+    }
+    execFileSync("pnpm", ["install", "--lockfile-only", "--ignore-scripts"], {
+      cwd: lock,
+      stdio: "ignore",
+    });
+    files[`${board}/pnpm-lock.yaml`] = readFileSync(join(lock, "pnpm-lock.yaml"), "utf8");
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+  const commit = "c".repeat(40);
+  const tar = sourceTar(
+    [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "pnpm-lock.yaml",
+      "tsconfig.base.json",
+      "packages/sdk",
+      "templates/recommended",
+    ],
+    { app: "templates/recommended" },
+    files,
+  );
+  assert.equal((await put(commit, tar)).status, 202);
+  const build = await waitDone(commit);
+  assert.equal(build.state, "ready", `${build.error}\n${JSON.stringify(build.steps, null, 2)}`);
+  const manifest = await fetch(`${base}/v1/files/demo/${commit}/.board/manifest.json`, {
+    headers: auth,
+  });
+  assert.equal((await manifest.json()).title, "Tasks");
 });
 
 test("a tree without a lockfile fails with the reason, and can be retried", async () => {

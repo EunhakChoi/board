@@ -127,8 +127,8 @@ test("import, checkout, push, pull, versions and diff", async () => {
   );
   assert.ok(existsSync(join(a, "board.json")));
   assert.match((await board(["push"], a)).out, /Nothing to push/);
-  // Inside a checkout, commands talk to its server without BOARD_URL.
-  const listed = await board(["versions"], a, {});
+  // Inside a checkout, commands talk to its server, whatever BOARD_URL says.
+  const listed = await board(["versions"], a, { BOARD_URL: "http://127.0.0.1:9" });
   assert.equal(listed.code, 0, listed.err);
   assert.match(listed.out, /v1/);
 

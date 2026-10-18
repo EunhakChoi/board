@@ -27,6 +27,8 @@ docker compose up -d
 | `BOARD_PREVIEW_PORT` | `5281` | 미리보기 |
 | `BOARD_UPDATE_CHECK` | `true` | 하루 1회 새 버전 확인 (유일한 외부 호출) |
 | `BOARD_TZ` | `UTC` | 렌더 화면의 time zone (예: `Asia/Seoul`) |
+| `BOARD_DATA_DIR` | (volume `board_data`) | 프로젝트 · 댓글 · 캡처를 둘 이 기기의 폴더 |
+| `BOARD_USER` | `board` | server 실행 user. `BOARD_DATA_DIR` 사용 시 폴더 주인 (`uid:gid`) |
 
 데이터는 Docker volume 에 보관:
 
@@ -40,11 +42,20 @@ docker compose up -d
 docker compose logs -f server        # log
 docker compose up -d --build         # `git pull` 후 갱신
 docker compose down                  # 중지 (데이터 유지)
-docker compose down -v               # 중지 + 데이터 전부 삭제
+docker compose down -v               # 중지 + 데이터 전부 삭제 (BOARD_DATA_DIR 폴더는 제외)
 
 # 프로젝트 · 댓글 · 캡처 백업
 docker run --rm -v board_data:/data -v "$PWD":/backup debian:trixie-slim \
   tar -czf /backup/board-data.tgz -C /data .
+```
+
+volume 대신 원하는 폴더에 두려면 폴더를 만들고 `BOARD_DATA_DIR` 로 지정. `BOARD_USER` 는 그 폴더
+주인으로 (git 은 다른 user 소유 repo 를 거부함):
+
+```bash
+mkdir -p ~/board-data
+printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> .env
+docker compose up -d
 ```
 
 ## CLI
