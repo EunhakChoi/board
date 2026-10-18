@@ -393,10 +393,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Pages, screens, connections, flows and stories of a revision (from its build) */
+        get: operations["getManifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Every file path of a revision */
+        get: operations["listFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** One file of a revision (up to 2 MB) */
+        get: operations["readFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Size: {
+            w: number;
+            h: number;
+        };
+        Manifest: {
+            /** @enum {integer} */
+            manifestVersion: 1;
+            title: string;
+            pages: {
+                id: string;
+                route: string;
+                title: string;
+            }[];
+            screens: {
+                id: string;
+                page: string;
+                title: string;
+                note: string;
+                route: string;
+                size: components["schemas"]["Size"];
+                hasSetup: boolean;
+            }[];
+            connections: {
+                from: string;
+                to: string;
+                label: string;
+                /** @enum {string} */
+                kind: "click" | "auto" | "error";
+            }[];
+            flows: {
+                id: string;
+                title: string;
+                steps: {
+                    id: string;
+                    title: string;
+                    note: string;
+                    /** @description Not a screen yet */
+                    planned: boolean;
+                }[];
+            }[];
+            stories: {
+                id: string;
+                component: string;
+                title: string;
+                size: components["schemas"]["Size"];
+            }[];
+        };
         Person: {
             id: string;
             name: string;
@@ -666,6 +770,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description `main` (default), `v<number>` or a commit id */
+        Rev: string;
         CommentId: number;
         CaptureKind: "screen" | "story";
         /** @description Screen or story id */
@@ -1320,6 +1426,96 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getManifest: {
+        parameters: {
+            query?: {
+                /** @description `main` (default), `v<number>` or a commit id */
+                rev?: components["parameters"]["Rev"];
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The manifest (`.board/manifest.json`, see @board/sdk `Manifest`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        commit: string;
+                        manifest: components["schemas"]["Manifest"];
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Pending"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listFiles: {
+        parameters: {
+            query?: {
+                /** @description `main` (default), `v<number>` or a commit id */
+                rev?: components["parameters"]["Rev"];
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sorted paths */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        commit: string;
+                        paths: string[];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    readFile: {
+        parameters: {
+            query: {
+                /** @description `main` (default), `v<number>` or a commit id */
+                rev?: components["parameters"]["Rev"];
+                path: string;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bytes; `text/plain` when UTF-8. `X-Board-Commit` is the commit read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "application/octet-stream": string;
+                };
+            };
+            400: components["responses"]["Invalid"];
             404: components["responses"]["NotFound"];
         };
     };

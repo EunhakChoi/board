@@ -88,6 +88,8 @@ pub trait ProjectStore: Send + Sync {
     fn tag_version(&self, project: &str, number: u32, commit: &str) -> Result<(), StoreError>;
     /// Resolves `main`, `v<number>` or a commit id to a commit id.
     fn resolve(&self, project: &str, rev: &str) -> Result<Option<String>, StoreError>;
+    /// Every file path of `commit`, sorted.
+    fn list(&self, project: &str, commit: &str) -> Result<Vec<String>, StoreError>;
     /// One file of `commit`, or `None` when it does not exist.
     fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError>;
     /// The files of `commit` as a gzipped tar.

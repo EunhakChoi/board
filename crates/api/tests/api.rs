@@ -494,3 +494,55 @@ async fn comment_thread() {
     let (status, _) = call(engine, "/api/projects/web/comments?status=nope").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn manifest_files_and_web() {
+    let engine = engine(true).with_preview(preview_settings());
+    let import = json!({
+        "key": "web",
+        "import": { "source": "t", "files": [{ "path": "src/a.tsx", "content": b64("export {}\n") }] }
+    });
+    post(engine.clone(), "/api/projects", &import).await;
+    let (status, manifest) = call(engine.clone(), "/api/projects/web/manifest").await;
+    assert_eq!(status, StatusCode::OK, "{manifest}");
+    assert_eq!(manifest["manifest"]["screens"][0]["id"], "home");
+    let (_, files) = call(engine.clone(), "/api/projects/web/files").await;
+    assert_eq!(files["paths"], json!(["src/a.tsx"]));
+    let (status, body, commit) = send(
+        engine.clone(),
+        Request::get("/api/projects/web/file?path=src/a.tsx")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"export {}\n");
+    assert_eq!(commit.as_deref(), files["commit"].as_str());
+
+    // The app: API paths stay JSON 404s, other paths fall back to the web tool.
+    let web = std::env::temp_dir().join(format!("board-web-{}", std::process::id()));
+    std::fs::create_dir_all(web.join("assets")).unwrap();
+    std::fs::write(web.join("index.html"), "<!doctype html>app").unwrap();
+    std::fs::write(web.join("assets/a.js"), "x").unwrap();
+    let app = |path: &str| {
+        board_api::app(engine.clone(), Some(web.clone()))
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
+    };
+    let page = app("/p/web/screens").await.unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    assert_eq!(page.headers()["cache-control"], "no-cache");
+    let asset = app("/assets/a.js").await.unwrap();
+    assert_eq!(
+        asset.headers()["content-type"],
+        "text/javascript; charset=utf-8"
+    );
+    assert!(
+        asset.headers()["cache-control"]
+            .to_str()
+            .unwrap()
+            .contains("immutable")
+    );
+    let api = app("/api/nope").await.unwrap();
+    assert_eq!(api.status(), StatusCode::NOT_FOUND);
+    std::fs::remove_dir_all(&web).unwrap();
+}

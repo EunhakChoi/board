@@ -32,6 +32,8 @@ pub struct Config {
     /// The preview origin as `board-render` reaches it (`BOARD_RENDER_PREVIEW_URL`, default
     /// `preview_url`; differs inside docker).
     pub render_preview_url: String,
+    /// The built web tool (`BOARD_WEB_DIR`); found next to the binary when unset.
+    pub web_dir: Option<PathBuf>,
     /// The tool's address as browsers reach it (`BOARD_PUBLIC_URL`), e.g. behind a tunnel.
     pub public_url: Option<String>,
 }
@@ -96,6 +98,9 @@ impl Config {
             || preview_url.clone(),
             |u| u.trim_end_matches('/').to_owned(),
         );
+        let web_dir = env("BOARD_WEB_DIR")
+            .map(PathBuf::from)
+            .or_else(find_web_dir);
         let public_url = env("BOARD_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned());
         if let Some(url) = &public_url
             && !(url.starts_with("http://") || url.starts_with("https://"))
@@ -117,6 +122,7 @@ impl Config {
             render_url,
             render_token,
             render_preview_url,
+            web_dir,
             public_url,
         })
     }
@@ -152,6 +158,19 @@ impl Config {
     pub fn data_dir(&self) -> PathBuf {
         self.home.join("data")
     }
+}
+
+/// `share/board/web` next to an installed binary, or `apps/board-web/dist` when run from a checkout
+/// (`target/<profile>/board-server`).
+fn find_web_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let bin = exe.parent()?;
+    [
+        bin.join("../share/board/web"),
+        bin.join("../../apps/board-web/dist"),
+    ]
+    .into_iter()
+    .find(|dir| dir.join("index.html").is_file())
 }
 
 #[cfg(test)]

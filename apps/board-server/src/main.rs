@@ -86,7 +86,8 @@ async fn run(config: Config) -> Result<(), String> {
         board_api::preview_router(engine.clone(), &origin),
     )
     .with_graceful_shutdown(shutdown());
-    let api = axum::serve(listener, board_api::router(engine)).with_graceful_shutdown(shutdown());
+    let api = axum::serve(listener, board_api::app(engine, config.web_dir.clone()))
+        .with_graceful_shutdown(shutdown());
     let (api, previews) = tokio::join!(api.into_future(), previews.into_future());
     api.and(previews).map_err(|e| e.to_string())
 }

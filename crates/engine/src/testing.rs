@@ -485,6 +485,10 @@ impl ProjectStore for MemoryStore {
         }
         Ok(repo.commits.contains_key(rev).then(|| rev.to_owned()))
     }
+    fn list(&self, project: &str, commit: &str) -> Result<Vec<String>, StoreError> {
+        let repos = self.0.lock().unwrap();
+        Ok(repos[project].commits[commit].keys().cloned().collect())
+    }
     fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let repos = self.0.lock().unwrap();
         Ok(repos[project].commits[commit].get(path).cloned())

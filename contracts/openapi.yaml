@@ -607,8 +607,99 @@ paths:
                 format: binary
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/manifest:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: getManifest
+      summary: Pages, screens, connections, flows and stories of a revision (from its build)
+      parameters:
+        - $ref: "#/components/parameters/Rev"
+      responses:
+        "200":
+          description: The manifest (`.board/manifest.json`, see @board/sdk `Manifest`)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commit, manifest]
+                properties:
+                  commit:
+                    type: string
+                  manifest:
+                    $ref: "#/components/schemas/Manifest"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Pending"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/projects/{key}/files:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: listFiles
+      summary: Every file path of a revision
+      parameters:
+        - $ref: "#/components/parameters/Rev"
+      responses:
+        "200":
+          description: Sorted paths
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commit, paths]
+                properties:
+                  commit:
+                    type: string
+                  paths:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/file:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: readFile
+      summary: One file of a revision (up to 2 MB)
+      parameters:
+        - $ref: "#/components/parameters/Rev"
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The bytes; `text/plain` when UTF-8. `X-Board-Commit` is the commit read.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    Rev:
+      name: rev
+      in: query
+      description: "`main` (default), `v<number>` or a commit id"
+      schema:
+        type: string
     CommentId:
       name: id
       in: path
@@ -700,6 +791,109 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    Size:
+      type: object
+      required: [w, h]
+      properties:
+        w:
+          type: integer
+        h:
+          type: integer
+    Manifest:
+      type: object
+      required: [manifestVersion, title, pages, screens, connections, flows, stories]
+      properties:
+        manifestVersion:
+          type: integer
+          enum: [1]
+        title:
+          type: string
+        pages:
+          type: array
+          items:
+            type: object
+            required: [id, route, title]
+            properties:
+              id:
+                type: string
+              route:
+                type: string
+              title:
+                type: string
+        screens:
+          type: array
+          items:
+            type: object
+            required: [id, page, title, note, route, size, hasSetup]
+            properties:
+              id:
+                type: string
+              page:
+                type: string
+              title:
+                type: string
+              note:
+                type: string
+              route:
+                type: string
+              size:
+                $ref: "#/components/schemas/Size"
+              hasSetup:
+                type: boolean
+        connections:
+          type: array
+          items:
+            type: object
+            required: [from, to, label, kind]
+            properties:
+              from:
+                type: string
+              to:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum: [click, auto, error]
+        flows:
+          type: array
+          items:
+            type: object
+            required: [id, title, steps]
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              steps:
+                type: array
+                items:
+                  type: object
+                  required: [id, title, note, planned]
+                  properties:
+                    id:
+                      type: string
+                    title:
+                      type: string
+                    note:
+                      type: string
+                    planned:
+                      type: boolean
+                      description: Not a screen yet
+        stories:
+          type: array
+          items:
+            type: object
+            required: [id, component, title, size]
+            properties:
+              id:
+                type: string
+              component:
+                type: string
+              title:
+                type: string
+              size:
+                $ref: "#/components/schemas/Size"
     Person:
       type: object
       required: [id, name]
