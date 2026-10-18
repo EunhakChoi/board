@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,6 +131,8 @@ test("builds and verifies a commit, then serves it", { timeout: 300_000 }, async
   assert.equal(again.body.state, "ready");
   const log = await (await fetch(`${base}/v1/builds/demo/${COMMIT}/log`, { headers: auth })).text();
   assert.match(log, /vite build/);
+  // Packages land in the shared store, so the next build reuses them.
+  assert.ok(existsSync(join(home, "cache", "pnpm-store")), "shared pnpm store");
 });
 
 test("a tree without a lockfile fails with the reason, and can be retried", async () => {
