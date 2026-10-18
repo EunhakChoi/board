@@ -75,6 +75,7 @@ export function commitBase(dir: string, commit: string): void {
 
 export interface LocalChange {
   path: string;
+  kind: "A" | "M" | "D";
   /** Undefined means the file was deleted. */
   content?: Buffer;
   executable: boolean;
@@ -92,11 +93,16 @@ export function localChanges(dir: string): LocalChange[] {
     const status = out[i] as string;
     const path = out[i + 1] as string;
     if (status.startsWith("D")) {
-      changes.push({ path, executable: false });
+      changes.push({ path, kind: "D", executable: false });
     } else {
       const file = join(dir, path);
       const executable = (statSync(file).mode & 0o111) !== 0;
-      changes.push({ path, content: readFileSync(file), executable });
+      changes.push({
+        path,
+        kind: status.startsWith("A") ? "A" : "M",
+        content: readFileSync(file),
+        executable,
+      });
     }
   }
   return changes;

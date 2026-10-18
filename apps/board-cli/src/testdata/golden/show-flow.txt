@@ -1,0 +1,6 @@
+$ board show triage
+flow triage — Triage tasks
+  1.  tasks-list   Task list        light + dark (stale)
+  2.  tasks-open   Open tasks only  not captured
+  3.  task-detail  Task detail      planned: side panel
+[exit 0]

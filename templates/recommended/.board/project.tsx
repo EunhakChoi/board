@@ -31,7 +31,7 @@ export default defineProject({
       steps: [
         "tasks-list",
         "tasks-open",
-        { id: "task-detail", title: "Task detail", note: "planned" },
+        { id: "task-detail", title: "Task detail", note: "side panel with the task history" },
       ],
     },
   ],

@@ -437,6 +437,34 @@ async fn check_capture_and_read_back() {
 }
 
 #[tokio::test]
+async fn system_reports_services() {
+    let engine = engine(true).with_tool_url("http://localhost:5280/");
+    let (status, body) = call(engine, "/api/system").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["toolUrl"], "http://localhost:5280");
+    assert_eq!(body["localMode"], true);
+    assert_eq!(body["services"]["workspace"]["ok"], true);
+    assert_eq!(body["services"]["render"]["ok"], true);
+}
+
+#[tokio::test]
+async fn sheet_of_placeholders() {
+    let engine = engine(true).with_preview(preview_settings());
+    post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    let (status, image, _) = send(
+        engine.clone(),
+        Request::get("/api/projects/web/sheet?items=planned,screen:ghost&theme=dark")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(image.starts_with(&[0xff, 0xd8]));
+    let (status, body) = call(engine, "/api/projects/web/sheet?items=page:x").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+#[tokio::test]
 async fn comment_thread() {
     let engine = engine(true).with_preview(preview_settings());
     post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;

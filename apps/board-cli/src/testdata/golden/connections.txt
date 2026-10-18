@@ -1,0 +1,5 @@
+$ board connections
+tasks-list → tasks-open  "Open" (click)
+tasks-open → settings-main  "Settings" (click)
+tasks-list → tasks-error  "Load fails" (error)
+[exit 0]

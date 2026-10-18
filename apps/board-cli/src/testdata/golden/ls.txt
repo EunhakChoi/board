@@ -1,0 +1,14 @@
+$ board ls
+Screens (4)
+  tasks-list     Task list        tasks     light + dark (stale)  1 open comment
+  tasks-open     Open tasks only  tasks     not captured
+  tasks-error    Load failed      tasks     light (1 issue)
+  settings-main  Settings         settings  not captured
+
+Stories (2)
+  button-default  Default  <Button>  light
+  button-outline  Outline  <Button>  not captured
+
+Flows (1)
+  triage  Triage tasks  3 steps, 1 planned
+[exit 0]

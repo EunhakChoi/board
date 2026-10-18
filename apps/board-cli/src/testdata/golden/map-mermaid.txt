@@ -1,0 +1,14 @@
+$ board map --format mermaid
+flowchart LR
+  subgraph page_tasks["Tasks (/)"]
+    tasks_list["Task list"]
+    tasks_open["Open tasks only"]
+    tasks_error["Load failed"]
+  end
+  subgraph page_settings["Settings (/settings)"]
+    settings_main["Settings"]
+  end
+  tasks_list -->|Open| tasks_open
+  tasks_open -->|Settings| settings_main
+  tasks_list ==>|Load fails| tasks_error
+[exit 0]

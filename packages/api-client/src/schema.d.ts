@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versions, links and whether the internal services answer (for `board doctor`) */
+        get: operations["getSystem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/me": {
         parameters: {
             query?: never;
@@ -242,6 +259,25 @@ export interface paths {
         };
         /** The capture's picture */
         get: operations["captureImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Stored captures side by side in one picture (planned steps and missing captures are grey) */
+        get: operations["captureSheet"];
         put?: never;
         post?: never;
         delete?: never;
@@ -641,6 +677,24 @@ export interface components {
             /** @description Latest released version; null when unknown or update checks are off */
             latest?: string | null;
         };
+        SystemInfo: {
+            version: string;
+            /** @description Latest released version; null when unknown or update checks are off */
+            latest: string | null;
+            /** @description Where people open the web tool */
+            toolUrl: string | null;
+            previewUrl: string | null;
+            localMode: boolean;
+            services: {
+                workspace: components["schemas"]["ServiceState"];
+                render: components["schemas"]["ServiceState"];
+            };
+        };
+        ServiceState: {
+            ok: boolean;
+            /** @description Why it fails (admins only) */
+            error?: string;
+        };
         /** @enum {string} */
         Role: "admin" | "editor" | "commenter" | "viewer";
         Me: {
@@ -821,6 +875,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionInfo"];
+                };
+            };
+        };
+    };
+    getSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description System information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
                 };
             };
         };
@@ -1190,6 +1264,34 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    captureSheet: {
+        parameters: {
+            query: {
+                /** @description Comma separated `screen:<id>`, `story:<id>` or `planned`, at most 24 */
+                items: string;
+                theme?: "light" | "dark";
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            400: components["responses"]["Invalid"];
             404: components["responses"]["NotFound"];
         };
     };

@@ -15,7 +15,7 @@ use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use board_engine::Engine;
+use board_engine::{Engine, ServiceState};
 use board_model::{Actor, Role, VERSION};
 use serde::Serialize;
 
@@ -26,6 +26,7 @@ pub use preview::{PreviewOrigin, preview_router};
 pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/health"),
     ("get", "/api/version"),
+    ("get", "/api/system"),
     ("get", "/api/auth/me"),
     ("get", "/api/projects"),
     ("post", "/api/projects"),
@@ -46,6 +47,7 @@ pub const ROUTES: &[(&str, &str)] = &[
         "get",
         "/api/projects/{key}/captures/{kind}/{target}/{theme}/elements",
     ),
+    ("get", "/api/projects/{key}/sheet"),
     ("get", "/api/projects/{key}/comments"),
     ("post", "/api/projects/{key}/comments"),
     ("get", "/api/projects/{key}/comments/{id}"),
@@ -77,6 +79,7 @@ fn routes() -> Router<Engine> {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/version", get(version))
+        .route("/api/system", get(system))
         .route("/api/auth/me", get(me))
         .route("/api/projects", get(projects::list).post(projects::create))
         .route("/api/projects/{key}", get(projects::get))
@@ -89,6 +92,7 @@ fn routes() -> Router<Engine> {
         .route("/api/projects/{key}/files", get(browse::files))
         .route("/api/projects/{key}/file", get(browse::file))
         .route("/api/projects/{key}/check", post(captures::check))
+        .route("/api/projects/{key}/sheet", get(captures::sheet))
         .route(
             "/api/projects/{key}/captures",
             get(captures::list).post(captures::capture),
@@ -144,6 +148,60 @@ async fn version(State(engine): State<Engine>) -> Result<Json<VersionInfo>, ApiE
     Ok(Json(VersionInfo {
         version: VERSION,
         latest: engine.latest_version()?,
+    }))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemInfo {
+    version: &'static str,
+    latest: Option<String>,
+    tool_url: Option<String>,
+    preview_url: Option<String>,
+    local_mode: bool,
+    services: Services,
+}
+
+#[derive(Serialize)]
+struct Services {
+    workspace: Service,
+    render: Service,
+}
+
+#[derive(Serialize)]
+struct Service {
+    ok: bool,
+    /// Why it fails; admins only (it can name internal addresses).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+async fn system(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+) -> Result<Json<SystemInfo>, ApiError> {
+    let admin = actor.role() == Role::Admin;
+    let system = projects::blocking(move || engine.system().map_err(Into::into)).await?;
+    let service = |state: ServiceState| match state {
+        ServiceState::Ok => Service {
+            ok: true,
+            error: None,
+        },
+        ServiceState::Failing(error) => Service {
+            ok: false,
+            error: admin.then_some(error),
+        },
+    };
+    Ok(Json(SystemInfo {
+        version: VERSION,
+        latest: system.latest,
+        tool_url: system.tool_url,
+        preview_url: system.preview_url,
+        local_mode: system.local_mode,
+        services: Services {
+            workspace: service(system.workspace),
+            render: service(system.render),
+        },
     }))
 }
 
