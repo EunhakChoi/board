@@ -8,6 +8,7 @@ by a team (comments, proposals, versions). Pre-alpha.
 - `apps/board-server` (Rust) · `apps/board-render` (Rust + Chromium) · `apps/board-workspace` · `apps/board-agent` · `apps/board-cli` · `apps/board-web` (React + shadcn)
 - `crates/*` layered Rust crates (`board-model` L0 → `board-engine` L1 → `board-store` · `board-db` · `board-collab` L2 → `board-api` L3); `cargo xtask layers` enforces it
 - `apps/board-workspace` (Node): installs, verifies and builds project commits; the only place project code runs on the server side, so its child processes get a minimal environment
+- `apps/board-render` (Rust + Chromium): renders preview pages into images, element maps (component chain + `data-src`) and problems
 - `templates/recommended`: the recommended project setup (Vite + React + TS + Tailwind v4 + shadcn + MSW)
 - `packages/sdk` project contract, vite plugin and frame runtime · `packages/api-client` generated from `contracts/openapi.yaml` · `packages/i18n` en/ko strings
 

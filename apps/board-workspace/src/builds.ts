@@ -246,11 +246,12 @@ export class Builds {
       const out = this.outDir(build.project, build.commit);
       const args = ["build", "--outDir", out, "--emptyOutDir", "--base", build.base];
       if (layout.viteConfig) args.push("--config", layout.viteConfig);
-      if (
-        !(await this.#step(build, "build", () =>
-          run(vite, args, go(layout.app, this.#timeouts.build)),
-        ))
-      ) {
+      // BOARD_PREVIEW turns on @board/sdk/vite for this build (frame entry, manifest, data-src).
+      const preview = {
+        ...go(layout.app, this.#timeouts.build),
+        env: { ...env, BOARD_PREVIEW: "1" },
+      };
+      if (!(await this.#step(build, "build", () => run(vite, args, preview)))) {
         return this.#finish(build, "vite build failed");
       }
       if (!existsSync(join(out, ".board", "manifest.json"))) {

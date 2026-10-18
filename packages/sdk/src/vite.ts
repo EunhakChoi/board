@@ -2,6 +2,9 @@
 // - serves `.board/manifest.json` in dev and writes it into the build output
 // - adds `.board/frame.html` (the screen and story renderer) as a build entry
 // - marks host JSX elements with `data-src` (see source.ts)
+//
+// It works in dev and in preview builds (`BOARD_PREVIEW=1`, set by board-workspace). A plain
+// `vite build` of the app is left untouched, so the product's own build never carries board parts.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -20,9 +23,14 @@ export interface BoardPluginOptions {
 
 export const MANIFEST_PATH = ".board/manifest.json";
 
+/** Set by board-workspace for preview builds. */
+export const PREVIEW_ENV = "BOARD_PREVIEW";
+
 export function board(options: BoardPluginOptions = {}): Plugin[] {
   const frameFile = options.frame ?? ".board/frame.html";
   let config: ResolvedConfig;
+  const apply: Plugin["apply"] = (_config, env) =>
+    env.command === "serve" || process.env[PREVIEW_ENV] === "1";
   const projectPath = () => {
     if (options.project) return join(config.root, options.project);
     const tsx = join(config.root, ".board/project.tsx");
@@ -31,17 +39,20 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
 
   const manifest: Plugin = {
     name: "board:manifest",
-    config(user) {
+    apply,
+    config(user, env) {
+      if (env.command !== "build") return;
       const root = resolve(user.root ?? process.cwd());
       const frame = join(root, frameFile);
-      if (!existsSync(frame)) return;
       const index = join(root, "index.html");
-      // Build the app (when it has an index.html) and the frame side by side.
       return {
         build: {
-          rollupOptions: {
-            input: { ...(existsSync(index) ? { index } : {}), frame },
-          },
+          // Component names stay readable in the element map (React fibers carry function names).
+          minify: false,
+          // Build the app (when it has an index.html) and the frame side by side.
+          ...(existsSync(frame)
+            ? { rollupOptions: { input: { ...(existsSync(index) ? { index } : {}), frame } } }
+            : {}),
         },
       };
     },
@@ -80,6 +91,7 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
 
   const source: Plugin = {
     name: "board:source",
+    apply,
     enforce: "pre",
     transform(code, id) {
       if (options.sourceLocations === false) return null;

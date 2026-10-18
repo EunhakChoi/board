@@ -8,8 +8,9 @@ import { build } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-test("a build has the app, the frame, the manifest and source locations", async () => {
+test("a preview build has the app, the frame, the manifest and source locations", async () => {
   const outDir = mkdtempSync(join(tmpdir(), "board-template-"));
+  process.env.BOARD_PREVIEW = "1";
   try {
     await build({ root, logLevel: "error", build: { outDir, emptyOutDir: true } });
     assert.ok(existsSync(join(outDir, "index.html")));
@@ -30,8 +31,26 @@ test("a build has the app, the frame, the manifest and source locations", async 
       .map((f) => readFileSync(join(outDir, "assets", f), "utf8"))
       .join("\n");
     assert.match(js, /src\/pages\/tasks\.tsx:\d+:\d+/);
-    // The frame's own files are not marked.
+    // The frame's own files are not marked, and component names survive for the element map.
     assert.doesNotMatch(js, /\.board\/frame\.tsx:\d+/);
+    assert.match(js, /function Button\(/);
+  } finally {
+    delete process.env.BOARD_PREVIEW;
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("a plain build of the app has no board parts", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "board-template-"));
+  try {
+    await build({ root, logLevel: "error", build: { outDir, emptyOutDir: true } });
+    assert.ok(existsSync(join(outDir, "index.html")));
+    assert.ok(!existsSync(join(outDir, ".board")));
+    const js = readdirSync(join(outDir, "assets"))
+      .filter((f) => f.endsWith(".js"))
+      .map((f) => readFileSync(join(outDir, "assets", f), "utf8"))
+      .join("\n");
+    assert.doesNotMatch(js, /data-src/);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
