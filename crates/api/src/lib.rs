@@ -2,11 +2,13 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
+mod browse;
 mod captures;
 mod comments;
 mod error;
 mod preview;
 mod projects;
+mod web;
 
 use axum::extract::DefaultBodyLimit;
 use axum::extract::{FromRequestParts, State};
@@ -51,13 +53,27 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("post", "/api/projects/{key}/comments/{id}/resolve"),
     ("post", "/api/projects/{key}/comments/{id}/reopen"),
     ("get", "/api/projects/{key}/comments/{id}/snapshot"),
+    ("get", "/api/projects/{key}/manifest"),
+    ("get", "/api/projects/{key}/files"),
+    ("get", "/api/projects/{key}/file"),
 ];
 
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
 const MAX_BODY: usize = 512 * 1024 * 1024;
 
-/// The board API router.
+/// The board API router; anything else is a JSON 404.
 pub fn router(engine: Engine) -> Router {
+    routes().fallback(not_found).with_state(engine)
+}
+
+/// The API plus the built web tool from `web_dir` (`None` = a page saying it is not built).
+pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
+    routes()
+        .fallback(move |uri: axum::http::Uri| web::serve(web_dir.clone(), uri))
+        .with_state(engine)
+}
+
+fn routes() -> Router<Engine> {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/version", get(version))
@@ -69,6 +85,9 @@ pub fn router(engine: Engine) -> Router {
         .route("/api/projects/{key}/versions", get(projects::versions))
         .route("/api/projects/{key}/diff", get(projects::diff))
         .route("/api/projects/{key}/preview", get(preview::status))
+        .route("/api/projects/{key}/manifest", get(browse::manifest))
+        .route("/api/projects/{key}/files", get(browse::files))
+        .route("/api/projects/{key}/file", get(browse::file))
         .route("/api/projects/{key}/check", post(captures::check))
         .route(
             "/api/projects/{key}/captures",
@@ -104,8 +123,6 @@ pub fn router(engine: Engine) -> Router {
             get(comments::snapshot),
         )
         .layer(DefaultBodyLimit::max(MAX_BODY))
-        .fallback(not_found)
-        .with_state(engine)
 }
 
 #[derive(Serialize)]

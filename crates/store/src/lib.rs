@@ -100,6 +100,20 @@ impl ProjectStore for GitStore {
         Ok(self.git(project).rev_parse(&format!("{name}^{{commit}}")))
     }
 
+    fn list(&self, project: &str, commit: &str) -> Result<Vec<String>, StoreError> {
+        let out = self.git(project).run(
+            &["ls-tree", "-r", "--name-only", "-z", "--full-tree", commit],
+            None,
+        )?;
+        let mut paths: Vec<String> = out
+            .split(|b| *b == 0)
+            .filter(|p| !p.is_empty())
+            .map(|p| String::from_utf8_lossy(p).into_owned())
+            .collect();
+        paths.sort();
+        Ok(paths)
+    }
+
     fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let object = format!("{commit}:{path}");
         let git = self.git(project);
@@ -348,6 +362,7 @@ mod tests {
             Some(&b"2"[..])
         );
         assert_eq!(store.read("web", &c2, "a.txt").unwrap(), None, "deleted");
+        assert_eq!(store.list("web", &c2).unwrap(), ["c.sh", "dir/b file.txt"]);
         assert_eq!(store.read("web", &c1, "dir").unwrap(), None, "a tree");
         assert_eq!(store.resolve("web", "--help").unwrap(), None);
 
