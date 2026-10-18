@@ -304,7 +304,8 @@ mod tests {
 
     #[tokio::test]
     async fn renders_in_a_real_browser() {
-        let executable = find_chromium(std::env::var("HOME").ok());
+        let executable = std::env::var_os("BOARD_CHROMIUM")
+            .map_or_else(|| find_chromium(std::env::var("HOME").ok()), PathBuf::from);
         if !executable.exists() {
             eprintln!("skipped: no Chromium ({})", executable.display());
             return;

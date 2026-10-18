@@ -340,7 +340,10 @@ async fn shoot(
                 }
                 Some(event) = logs.next() => {
                     let entry = &event.entry;
+                    // The browser asks for /favicon.ico on its own; a preview needs none.
+                    let favicon = entry.url.as_deref().is_some_and(|u| u.ends_with("/favicon.ico"));
                     if entry.source != LogEntrySource::Worker
+                        && !favicon
                         && let Some(issue) = console_issue(entry.level == LogEntryLevel::Error, &entry.text)
                     {
                         push(&w, Source::Log, *entry.timestamp.inner(), issue);
