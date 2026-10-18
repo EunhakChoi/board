@@ -16,6 +16,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("board-workspace-client", 2),
     ("board-api", 3),
     ("board-server", 4),
+    ("board-render", 4),
 ];
 
 fn main() -> ExitCode {
