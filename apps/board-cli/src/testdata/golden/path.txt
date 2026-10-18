@@ -1,0 +1,7 @@
+$ board path tasks-list settings-main
+tasks-list
+  ↓ "Open" (click)
+tasks-open
+  ↓ "Settings" (click)
+settings-main
+[exit 0]

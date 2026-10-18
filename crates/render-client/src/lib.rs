@@ -67,6 +67,20 @@ struct WireShot {
 }
 
 impl Renderer for RenderClient {
+    fn health(&self) -> Result<(), WorkspaceError> {
+        let response = self
+            .agent
+            .get(format!("{}/health", self.url))
+            .call()
+            .map_err(|e| WorkspaceError::Unavailable(format!("board-render: {e}")))?;
+        match response.status().as_u16() {
+            200 => Ok(()),
+            status => Err(WorkspaceError::Failed(format!(
+                "board-render: status {status}"
+            ))),
+        }
+    }
+
     fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError> {
         let body = WireJob {
             url: &job.url,

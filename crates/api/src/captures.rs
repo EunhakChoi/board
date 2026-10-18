@@ -2,10 +2,10 @@
 //! their staleness, and read a capture's image or element map.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use board_engine::{CaptureStatus, Engine, RenderResult};
+use board_engine::{CaptureStatus, Engine, EngineError, RenderResult, SheetItem};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;
@@ -103,4 +103,47 @@ pub async fn elements(
     let map =
         blocking(move || engine.capture_elements(&actor, &key, &kind, &target, &theme)).await?;
     Ok(Json(map))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SheetQuery {
+    /// `kind:target` items separated by commas; `planned` for a step with no screen yet.
+    items: String,
+    theme: Option<String>,
+}
+
+fn sheet_items(items: &str) -> Result<Vec<SheetItem>, EngineError> {
+    items
+        .split(',')
+        .map(|item| match item.split_once(':') {
+            Some((kind @ ("screen" | "story"), target)) if !target.is_empty() => {
+                Ok(SheetItem::Capture {
+                    kind: kind.to_owned(),
+                    target: target.to_owned(),
+                })
+            }
+            _ if item == "planned" => Ok(SheetItem::Planned),
+            _ => Err(EngineError::Invalid(format!("unknown sheet item: {item}"))),
+        })
+        .collect()
+}
+
+pub async fn sheet(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path(key): Path<String>,
+    Query(query): Query<SheetQuery>,
+) -> Result<Response, ApiError> {
+    let items = sheet_items(&query.items)?;
+    let theme = query.theme.unwrap_or_else(|| "light".to_owned());
+    let bytes = blocking(move || engine.sheet(&actor, &key, &items, &theme)).await?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        bytes,
+    )
+        .into_response())
 }

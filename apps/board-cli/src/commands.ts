@@ -20,7 +20,16 @@ export interface Context {
   locale: Locale;
   json: boolean;
   out: (line: string) => void;
+  /** Progress and notes (stderr), kept apart from output scripts parse. */
+  err: (line: string) => void;
+  env: NodeJS.ProcessEnv;
   fetch?: typeof globalThis.fetch;
+  /** Asks a person at the terminal; absent when nobody is there (CI, pipes, `--yes`). */
+  ask?: (question: string) => Promise<string>;
+  /** Runs a program for its output (tests replace it); `undefined` = missing or failed. */
+  sh?: (command: string, args: string[]) => string | undefined;
+  /** How often to poll a building preview. */
+  pollMs?: number;
 }
 
 /** A failure to report to the user, already translated. */

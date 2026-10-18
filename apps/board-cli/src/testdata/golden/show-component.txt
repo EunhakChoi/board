@@ -1,0 +1,5 @@
+$ board show Button
+component <Button>
+  button-default  Default  light
+  button-outline  Outline  not captured
+[exit 0]

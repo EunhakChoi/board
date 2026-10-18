@@ -1,0 +1,10 @@
+$ board show c2 --out notes
+c2  resolved  story button-default (dark)
+Local admin, 2026-10-18T10:07:00Z
+  Contrast is low in dark mode
+
+box       24,24 16×16  (detached: the element is gone; this is where it was)
+snapshot  <out>/notes/c2.jpg
+
+  ↳ Local admin (resolved), 2026-10-18T10:08:00Z
+[exit 0]

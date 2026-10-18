@@ -166,6 +166,10 @@ pub trait Workspace: Send + Sync {
         commit: &str,
         path: &str,
     ) -> Result<Option<BuiltFile>, WorkspaceError>;
+    /// Whether the service answers.
+    fn health(&self) -> Result<(), WorkspaceError> {
+        Ok(())
+    }
 }
 
 /// Picture format of a render.
@@ -201,6 +205,10 @@ pub struct Shot {
 /// `board-render`: Chromium screenshots and checks (`apps/board-render`).
 pub trait Renderer: Send + Sync {
     fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError>;
+    /// Whether the service answers.
+    fn health(&self) -> Result<(), WorkspaceError> {
+        Ok(())
+    }
 }
 
 /// A stored capture of one screen or story in one theme (the latest one).

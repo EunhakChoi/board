@@ -1,0 +1,8 @@
+$ board check
+ok    screen tasks-list (light)
+FAIL  screen tasks-error (light)
+        [board] missing mock GET /api/me
+FAIL  story button-default (light)
+        not ready after 10000 ms
+2 of 3 have problems.
+[exit 1]

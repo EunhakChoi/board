@@ -8,6 +8,7 @@ pub mod policy;
 mod ports;
 mod preview;
 mod projects;
+mod sheet;
 
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ pub use ports::{
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
+pub use sheet::SheetItem;
 
 /// Everything the engine needs from the outside world.
 #[derive(Clone)]
@@ -46,6 +48,7 @@ pub struct Engine {
     ports: Ports,
     local_mode: bool,
     preview: Option<Arc<PreviewSettings>>,
+    tool_url: Option<Arc<str>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -62,6 +65,7 @@ impl Engine {
             ports,
             local_mode,
             preview: None,
+            tool_url: None,
         }
     }
 
@@ -70,6 +74,31 @@ impl Engine {
     pub fn with_preview(mut self, settings: PreviewSettings) -> Self {
         self.preview = Some(Arc::new(settings));
         self
+    }
+
+    /// Where people open the web tool, for links (`board url`, notifications).
+    #[must_use]
+    pub fn with_tool_url(mut self, url: &str) -> Self {
+        self.tool_url = Some(url.trim_end_matches('/').into());
+        self
+    }
+
+    /// Versions, links and whether the internal services answer.
+    pub fn system(&self) -> Result<System, StoreError> {
+        let state = |result: Result<(), WorkspaceError>| match result {
+            Ok(()) => ServiceState::Ok,
+            Err(WorkspaceError::Unavailable(e) | WorkspaceError::Failed(e)) => {
+                ServiceState::Failing(e)
+            }
+        };
+        Ok(System {
+            latest: self.latest_version()?,
+            tool_url: self.tool_url.as_deref().map(str::to_owned),
+            preview_url: self.preview.as_ref().map(|p| p.origin.clone()),
+            local_mode: self.local_mode,
+            workspace: state(self.ports.workspace.health()),
+            render: state(self.ports.renderer.health()),
+        })
     }
 
     /// True while the server only listens on localhost: every request acts as the built-in admin.
@@ -88,6 +117,24 @@ impl Engine {
 }
 
 const LATEST_VERSION: &str = "update.latest";
+
+/// What `Engine::system` reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct System {
+    pub latest: Option<String>,
+    pub tool_url: Option<String>,
+    pub preview_url: Option<String>,
+    pub local_mode: bool,
+    pub workspace: ServiceState,
+    pub render: ServiceState,
+}
+
+/// Whether an internal service answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceState {
+    Ok,
+    Failing(String),
+}
 
 #[cfg(test)]
 pub(crate) mod testing;

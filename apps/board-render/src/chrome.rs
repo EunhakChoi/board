@@ -511,14 +511,16 @@ fn exception_message(details: &ExceptionDetails) -> String {
     }
 }
 
-/// Console text that is a problem: every missing mock, and errors except 401 / 403 (signed-out
-/// states are often the point of a screen).
+/// Console text that is a problem: every missing mock, and errors except the browser's own note
+/// of an HTTP error answer. Mocked 401 / 404 / 500 answers are the point of signed-out, not-found
+/// and error screens; how the app handles them shows up as page errors or its own console errors.
 pub fn console_issue(error: bool, text: &str) -> Option<String> {
     if text.contains("[board] missing mock") {
         return Some(text.to_owned());
     }
-    let auth = text.contains("status of 401") || text.contains("status of 403");
-    (error && !auth).then(|| format!("error: {}", first(text, 300)))
+    let http_answer =
+        text.starts_with("Failed to load resource: the server responded with a status");
+    (error && !http_answer).then(|| format!("error: {}", first(text, 300)))
 }
 
 #[cfg(test)]
@@ -539,6 +541,17 @@ mod tests {
                 "Failed to load resource: the server responded with a status of 401 ()"
             ),
             None
+        );
+        assert_eq!(
+            console_issue(
+                true,
+                "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+            ),
+            None
+        );
+        assert_eq!(
+            console_issue(true, "Failed to load resource: net::ERR_CONNECTION_REFUSED"),
+            Some("error: Failed to load resource: net::ERR_CONNECTION_REFUSED".into())
         );
     }
 }

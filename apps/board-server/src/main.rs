@@ -2,6 +2,7 @@
 
 mod config;
 mod secret;
+mod update;
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -55,12 +56,17 @@ async fn run(config: Config) -> Result<(), String> {
             config.workspace_token.clone(),
         )),
     };
-    let engine = Engine::new(ports, config.local_mode()).with_preview(PreviewSettings {
-        origin: config.preview_url.clone(),
-        render_origin: config.render_preview_url.clone(),
-        secret,
-        ttl_secs: PREVIEW_TOKEN_SECS,
-    });
+    let engine = Engine::new(ports, config.local_mode())
+        .with_preview(PreviewSettings {
+            origin: config.preview_url.clone(),
+            render_origin: config.render_preview_url.clone(),
+            secret,
+            ttl_secs: PREVIEW_TOKEN_SECS,
+        })
+        .with_tool_url(&config.tool_url());
+    if config.update_check {
+        update::spawn(engine.clone());
+    }
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.bind))?;

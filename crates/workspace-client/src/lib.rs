@@ -114,6 +114,21 @@ fn encode_path(path: &str) -> String {
 }
 
 impl Workspace for WorkspaceClient {
+    fn health(&self) -> Result<(), WorkspaceError> {
+        let mut response = self
+            .agent
+            .get(format!("{}/health", self.url))
+            .call()
+            .map_err(|e| unavailable(&e))?;
+        match response.status().as_u16() {
+            200 => Ok(()),
+            status => Err(unexpected(
+                status,
+                &response.body_mut().read_to_string().unwrap_or_default(),
+            )),
+        }
+    }
+
     fn build(&self, project: &str, commit: &str) -> Result<Option<Build>, WorkspaceError> {
         let mut request = self
             .agent

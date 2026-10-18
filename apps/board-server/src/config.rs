@@ -36,6 +36,8 @@ pub struct Config {
     pub web_dir: Option<PathBuf>,
     /// The tool's address as browsers reach it (`BOARD_PUBLIC_URL`), e.g. behind a tunnel.
     pub public_url: Option<String>,
+    /// Daily check for a new release (`BOARD_UPDATE_CHECK=false` turns it off).
+    pub update_check: bool,
 }
 
 impl Config {
@@ -107,6 +109,10 @@ impl Config {
         {
             return Err(format!("BOARD_PUBLIC_URL {url:?} must be an http(s) URL"));
         }
+        let update_check = !matches!(
+            env("BOARD_UPDATE_CHECK").as_deref().map(str::trim),
+            Some("false" | "0" | "off" | "no")
+        );
         if public {
             // Sign-in (OIDC) lands in P1. Until then a public server would be open to anyone.
             return Err("--public needs sign-in, which is not available yet".to_owned());
@@ -124,6 +130,7 @@ impl Config {
             render_preview_url,
             web_dir,
             public_url,
+            update_check,
         })
     }
 

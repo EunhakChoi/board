@@ -70,6 +70,7 @@ export default async function setup() {
       BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
       BOARD_WORKSPACE_TOKEN: token,
       BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
+      BOARD_UPDATE_CHECK: "false",
     }),
   ];
   const teardown = async () => {

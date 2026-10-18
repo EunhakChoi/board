@@ -42,6 +42,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionInfo"
+  /api/system:
+    get:
+      tags: [system]
+      operationId: getSystem
+      summary: Versions, links and whether the internal services answer (for `board doctor`)
+      responses:
+        "200":
+          description: System information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
   /api/auth/me:
     get:
       tags: [auth]
@@ -381,6 +393,37 @@ paths:
               schema:
                 type: string
                 format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/sheet:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [captures]
+      operationId: captureSheet
+      summary: Stored captures side by side in one picture (planned steps and missing captures are grey)
+      parameters:
+        - name: items
+          in: query
+          required: true
+          description: "Comma separated `screen:<id>`, `story:<id>` or `planned`, at most 24"
+          schema:
+            type: string
+        - name: theme
+          in: query
+          schema:
+            type: string
+            enum: [light, dark]
+      responses:
+        "200":
+          description: JPEG
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/Invalid"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/projects/{key}/captures/{kind}/{target}/{theme}/elements:
@@ -1158,6 +1201,39 @@ components:
         latest:
           type: [string, "null"]
           description: Latest released version; null when unknown or update checks are off
+    SystemInfo:
+      type: object
+      required: [version, latest, toolUrl, previewUrl, localMode, services]
+      properties:
+        version:
+          type: string
+        latest:
+          type: [string, "null"]
+          description: Latest released version; null when unknown or update checks are off
+        toolUrl:
+          type: [string, "null"]
+          description: Where people open the web tool
+        previewUrl:
+          type: [string, "null"]
+        localMode:
+          type: boolean
+        services:
+          type: object
+          required: [workspace, render]
+          properties:
+            workspace:
+              $ref: "#/components/schemas/ServiceState"
+            render:
+              $ref: "#/components/schemas/ServiceState"
+    ServiceState:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string
+          description: Why it fails (admins only)
     Role:
       type: string
       enum: [admin, editor, commenter, viewer]

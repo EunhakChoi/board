@@ -1,0 +1,3 @@
+$ board show nope
+[stderr] board: No screen, story, page, flow, component or comment is called nope.
+[exit 1]

@@ -37,6 +37,7 @@ before(async () => {
       BOARD_HOME: join(work, "home"),
       BOARD_BIND: `127.0.0.1:${port}`,
       BOARD_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
+      BOARD_UPDATE_CHECK: "false",
     },
     stdio: "ignore",
   });
@@ -159,4 +160,21 @@ test("import, checkout, push, pull, versions and diff", async () => {
     "A\t.gitignore\nM\tapps/web/src/page.tsx",
   );
   assert.match((await board(["versions"])).err, /Which project/);
+
+  const behind = (await board(["status"], b)).out;
+  assert.match(behind, /^project {2}demo /);
+  assert.match(behind, /base {5}v1 /);
+  assert.match(behind, /main {5}v2 \w+ {2}newer than this checkout/);
+  assert.match(behind, /changes {2}1\n {2}M apps\/web\/src\/page\.tsx$/);
+  assert.match((await board(["status"], a)).out, /main {5}v2 \w+\nchanges {2}0$/);
+});
+
+test("init creates a project from a template and checks it out", async () => {
+  const dir = join(work, "tasks");
+  const result = await board(["init", "tasks", dir]);
+  assert.equal(result.code, 0, result.err);
+  assert.match(result.out, /Checked out tasks/);
+  assert.ok(existsSync(join(dir, "templates/recommended/.board/project.tsx")));
+  assert.match((await board(["status"], dir)).out, /changes {2}0$/);
+  assert.match((await board(["init", "x", "--template", "nope"])).err, /No template called nope/);
 });

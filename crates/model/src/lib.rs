@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// Product version, reported by every app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The GitHub repository releases come from.
+pub const REPOSITORY: &str = "EunhakChoi/board";
 
 /// What someone may do. Ordered from least to most: each role can do everything the roles before it can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
