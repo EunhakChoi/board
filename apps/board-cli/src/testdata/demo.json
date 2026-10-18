@@ -5,7 +5,14 @@
     "toolUrl": "http://localhost:5280",
     "previewUrl": "http://127.0.0.1:5281",
     "localMode": true,
-    "services": { "workspace": { "ok": true }, "render": { "ok": true } }
+    "services": {
+      "workspace": {
+        "ok": true
+      },
+      "render": {
+        "ok": true
+      }
+    }
   },
   "manifest": {
     "commit": "2cff597abcdef0123456789abcdef0123456789a",
@@ -13,8 +20,17 @@
       "manifestVersion": 1,
       "title": "Tasks",
       "pages": [
-        { "id": "tasks", "route": "/", "title": "Tasks" },
-        { "id": "settings", "route": "/settings", "title": "Settings" }
+        {
+          "id": "tasks",
+          "route": "/",
+          "title": "Tasks",
+          "note": "The task list and its states"
+        },
+        {
+          "id": "settings",
+          "route": "/settings",
+          "title": "Settings"
+        }
       ],
       "screens": [
         {
@@ -23,7 +39,10 @@
           "title": "Task list",
           "note": "",
           "route": "/",
-          "size": { "w": 1440, "h": 900 },
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
           "hasSetup": false
         },
         {
@@ -32,7 +51,10 @@
           "title": "Open tasks only",
           "note": "",
           "route": "/",
-          "size": { "w": 1440, "h": 900 },
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
           "hasSetup": true
         },
         {
@@ -41,7 +63,10 @@
           "title": "Load failed",
           "note": "API answers 500",
           "route": "/",
-          "size": { "w": 1440, "h": 900 },
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
           "hasSetup": false
         },
         {
@@ -50,24 +75,58 @@
           "title": "Settings",
           "note": "",
           "route": "/settings",
-          "size": { "w": 1280, "h": 800 },
+          "size": {
+            "w": 1280,
+            "h": 800
+          },
           "hasSetup": false
         }
       ],
       "connections": [
-        { "from": "tasks-list", "to": "tasks-open", "label": "Open", "kind": "click" },
-        { "from": "tasks-open", "to": "settings-main", "label": "Settings", "kind": "click" },
-        { "from": "tasks-list", "to": "tasks-error", "label": "Load fails", "kind": "error" }
+        {
+          "from": "tasks-list",
+          "to": "tasks-open",
+          "label": "Open",
+          "kind": "click"
+        },
+        {
+          "from": "tasks-open",
+          "to": "settings-main",
+          "label": "Settings",
+          "kind": "click"
+        },
+        {
+          "from": "tasks-list",
+          "to": "tasks-error",
+          "label": "Load fails",
+          "kind": "error"
+        }
       ],
       "flows": [
         {
           "id": "triage",
           "title": "Triage tasks",
           "steps": [
-            { "id": "tasks-list", "title": "Task list", "note": "", "planned": false },
-            { "id": "tasks-open", "title": "Open tasks only", "note": "", "planned": false },
-            { "id": "task-detail", "title": "Task detail", "note": "side panel", "planned": true }
-          ]
+            {
+              "id": "tasks-list",
+              "title": "Task list",
+              "note": "",
+              "planned": false
+            },
+            {
+              "id": "tasks-open",
+              "title": "Open tasks only",
+              "note": "filter on",
+              "planned": false
+            },
+            {
+              "id": "task-detail",
+              "title": "Task detail",
+              "note": "side panel",
+              "planned": true
+            }
+          ],
+          "note": "Find what is still open"
         }
       ],
       "stories": [
@@ -75,13 +134,19 @@
           "id": "button-default",
           "component": "Button",
           "title": "Default",
-          "size": { "w": 480, "h": 320 }
+          "size": {
+            "w": 480,
+            "h": 320
+          }
         },
         {
           "id": "button-outline",
           "component": "Button",
           "title": "Outline",
-          "size": { "w": 480, "h": 320 }
+          "size": {
+            "w": 480,
+            "h": 320
+          }
         }
       ]
     }
@@ -157,7 +222,10 @@
         "detached": false
       },
       "body": "Rows need more spacing.\nMaybe 12px?",
-      "author": { "id": "local", "name": "Local admin" },
+      "author": {
+        "id": "local",
+        "name": "Local admin"
+      },
       "status": "open",
       "createdCommit": "2cff597",
       "resolvedCommit": null,
@@ -167,7 +235,10 @@
       "replies": [
         {
           "id": 1,
-          "author": { "id": "local", "name": "Local admin" },
+          "author": {
+            "id": "local",
+            "name": "Local admin"
+          },
           "body": "Agreed",
           "kind": "reply",
           "createdAt": "2026-10-18T10:06:00Z"
@@ -191,7 +262,10 @@
         "detached": true
       },
       "body": "Contrast is low in dark mode",
-      "author": { "id": "local", "name": "Local admin" },
+      "author": {
+        "id": "local",
+        "name": "Local admin"
+      },
       "status": "resolved",
       "createdCommit": "2cff597",
       "resolvedCommit": "2cff597",
@@ -201,7 +275,10 @@
       "replies": [
         {
           "id": 2,
-          "author": { "id": "local", "name": "Local admin" },
+          "author": {
+            "id": "local",
+            "name": "Local admin"
+          },
           "body": "",
           "kind": "resolve",
           "createdAt": "2026-10-18T10:08:00Z"

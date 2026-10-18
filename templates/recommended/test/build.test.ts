@@ -46,6 +46,7 @@ test("a plain build of the app has no board parts", async () => {
     await build({ root, logLevel: "error", build: { outDir, emptyOutDir: true } });
     assert.ok(existsSync(join(outDir, "index.html")));
     assert.ok(!existsSync(join(outDir, ".board")));
+    assert.ok(!existsSync(join(outDir, "mockServiceWorker.js")));
     const js = readdirSync(join(outDir, "assets"))
       .filter((f) => f.endsWith(".js"))
       .map((f) => readFileSync(join(outDir, "assets", f), "utf8"))

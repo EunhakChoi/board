@@ -1,6 +1,7 @@
 // Marks every host JSX element (`<div>`, `<button>`, …) with `data-src="path:line:col"` so the board
-// can map a clicked element back to the exact place in the source. Only for preview builds; handoff
-// exports come from the project store, never from this output.
+// can map a clicked element back to the exact place in the source, and points absolute paths to
+// public files (`"/logo.png"`) at the build's base. Only for preview builds; handoff exports come
+// from the project store, never from this output.
 
 import { parse } from "@babel/parser";
 import MagicString from "magic-string";
@@ -15,16 +16,31 @@ interface Node {
   [key: string]: unknown;
 }
 
+export interface SourceOptions {
+  /** Add `data-src` to host elements (JSX files only; default true). */
+  locations?: boolean;
+  /**
+   * True for an absolute URL that names a public file (`/logo.png`). Such string literals become
+   * `import.meta.env.BASE_URL + "logo.png"`, because previews are served under a path prefix and
+   * vite only rewrites these in HTML and CSS.
+   */
+  isPublic?: (url: string) => boolean;
+}
+
 /**
- * Adds `data-src` to host elements in `code` (a .jsx/.tsx module at `path`, relative to the project
- * root). Returns undefined when nothing changed. Components (`<Button>`, `<ui.Card>`) are left
- * alone: they may not forward unknown props, and the host elements they render get marked instead.
+ * Adds `data-src` to host elements in `code` (a module at `path`, relative to the project root) and
+ * rebases public file paths. Returns undefined when nothing changed. Components (`<Button>`,
+ * `<ui.Card>`) are left alone: they may not forward unknown props, and the host elements they
+ * render get marked instead.
  */
 export function addSourceLocations(
   code: string,
   path: string,
+  options: SourceOptions = {},
 ): { code: string; map: ReturnType<MagicString["generateMap"]> } | undefined {
-  if (!code.includes("<")) return undefined;
+  const locations = (options.locations ?? true) && code.includes("<");
+  const { isPublic } = options;
+  if (!locations && !(isPublic && code.includes('"/'))) return undefined;
   let ast: Node;
   try {
     ast = parse(code, {
@@ -37,8 +53,28 @@ export function addSourceLocations(
   }
   const out = new MagicString(code);
   let changed = false;
-  walk(ast, (node) => {
-    if (node.type !== "JSXOpeningElement") return;
+  walk(ast, undefined, (node, parent) => {
+    if (isPublic && node.type === "StringLiteral" && node.start != null && node.end != null) {
+      const value = node.value as string;
+      const skip =
+        parent?.type === "ImportDeclaration" ||
+        parent?.type === "ExportNamedDeclaration" ||
+        parent?.type === "ExportAllDeclaration" ||
+        parent?.type === "TSLiteralType" ||
+        parent?.type === "TSExternalModuleReference" ||
+        (parent?.type === "ObjectProperty" && parent.key === node);
+      if (!skip && isPublic(value)) {
+        const rebased = `import.meta.env.BASE_URL + ${JSON.stringify(value.slice(1))}`;
+        out.overwrite(
+          node.start,
+          node.end,
+          parent?.type === "JSXAttribute" ? `{${rebased}}` : `(${rebased})`,
+        );
+        changed = true;
+      }
+      return;
+    }
+    if (!locations || node.type !== "JSXOpeningElement") return;
     const name = node.name as Node;
     if (name.type !== "JSXIdentifier" || !/^[a-z]/.test(name.name as string)) return;
     const attributes = node.attributes as Node[];
@@ -57,15 +93,19 @@ export function addSourceLocations(
   return { code: out.toString(), map: out.generateMap({ hires: true, source: path }) };
 }
 
-function walk(node: Node, visit: (node: Node) => void): void {
-  visit(node);
+function walk(
+  node: Node,
+  parent: Node | undefined,
+  visit: (node: Node, parent: Node | undefined) => void,
+): void {
+  visit(node, parent);
   for (const key of Object.keys(node)) {
     if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
     const value = node[key];
     if (Array.isArray(value)) {
-      for (const child of value) if (isNode(child)) walk(child, visit);
+      for (const child of value) if (isNode(child)) walk(child, node, visit);
     } else if (isNode(value)) {
-      walk(value, visit);
+      walk(value, node, visit);
     }
   }
 }

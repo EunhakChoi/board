@@ -502,6 +502,8 @@ export interface components {
                 id: string;
                 route: string;
                 title: string;
+                /** @description What the page is for (absent in older builds) */
+                note?: string;
             }[];
             screens: {
                 id: string;
@@ -522,6 +524,8 @@ export interface components {
             flows: {
                 id: string;
                 title: string;
+                /** @description What the user is trying to do (absent in older builds) */
+                note?: string;
                 steps: {
                     id: string;
                     title: string;
@@ -782,6 +786,8 @@ export interface components {
             };
             content: {
                 "application/json": {
+                    /** @description The commit rendered; pass it as `rev` to render more of the same version */
+                    commit: string;
                     results: components["schemas"]["RenderResult"][];
                 };
             };

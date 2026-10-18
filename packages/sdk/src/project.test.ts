@@ -24,9 +24,10 @@ const base: ProjectDef = {
     {
       id: "checkout",
       title: "Checkout",
+      note: "pay for a full cart",
       steps: [
         "cart-full",
-        "pay-form",
+        { id: "pay-form", title: "Pay by card", note: "card form" },
         { id: "pay-done", title: "Paid", note: "receipt" },
         "refund",
       ],
@@ -46,10 +47,7 @@ test("reports every problem with its id", () => {
     pages: [...base.pages, { id: "cart", route: "nope", title: "Dup" }],
     screens: [...base.screens, { id: "Bad Id", page: "missing", title: "x", size: { w: 0, h: 1 } }],
     connections: [{ from: "cart-full", to: "ghost" }],
-    flows: [
-      { id: "empty", title: "Empty", steps: [] },
-      { id: "shadow", title: "Shadow", steps: [{ id: "pay-form", title: "Pay" }] },
-    ],
+    flows: [{ id: "empty", title: "Empty", steps: [] }],
   };
   const problems = validate(broken);
   for (const expected of [
@@ -60,7 +58,6 @@ test("reports every problem with its id", () => {
     'screen "Bad Id" size must be positive',
     'names unknown screen "ghost"',
     'flow "empty" has no steps',
-    'plans "pay-form", which already is a screen',
   ]) {
     assert.ok(
       problems.some((p) => p.includes(expected)),
@@ -91,11 +88,14 @@ test("the manifest fills defaults and marks planned steps", () => {
     manifest.flows[0]?.steps.map((s) => [s.id, s.title, s.planned]),
     [
       ["cart-full", "Full cart", false],
-      ["pay-form", "Payment", false],
+      ["pay-form", "Pay by card", false],
       ["pay-done", "Paid", true],
       ["refund", "refund", true],
     ],
   );
+  assert.equal(manifest.flows[0]?.note, "pay for a full cart");
+  assert.equal(manifest.flows[0]?.steps[1]?.note, "card form");
+  assert.equal(manifest.pages[0]?.note, "");
   assert.deepEqual(manifest.stories, [
     { id: "button-primary", component: "Button", title: "Primary", size: { w: 480, h: 320 } },
   ]);

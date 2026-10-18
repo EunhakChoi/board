@@ -27,6 +27,7 @@ The first build of the images takes a while (Rust and the web tool are compiled)
 | `BOARD_PORT` | `5280` | web tool and API |
 | `BOARD_PREVIEW_PORT` | `5281` | previews |
 | `BOARD_UPDATE_CHECK` | `true` | daily check for a new release (the only outside call) |
+| `BOARD_TZ` | `UTC` | time zone of rendered screens (e.g. `Asia/Seoul`) |
 
 Data lives in Docker volumes:
 

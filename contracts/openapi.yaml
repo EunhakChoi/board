@@ -803,8 +803,11 @@ components:
         application/json:
           schema:
             type: object
-            required: [results]
+            required: [commit, results]
             properties:
+              commit:
+                type: string
+                description: The commit rendered; pass it as `rev` to render more of the same version
               results:
                 type: array
                 items:
@@ -863,6 +866,9 @@ components:
                 type: string
               title:
                 type: string
+              note:
+                type: string
+                description: What the page is for (absent in older builds)
         screens:
           type: array
           items:
@@ -908,6 +914,9 @@ components:
                 type: string
               title:
                 type: string
+              note:
+                type: string
+                description: What the user is trying to do (absent in older builds)
               steps:
                 type: array
                 items:

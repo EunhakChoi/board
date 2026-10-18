@@ -26,6 +26,7 @@ docker compose up -d
 | `BOARD_PORT` | `5280` | 웹 도구 · API |
 | `BOARD_PREVIEW_PORT` | `5281` | 미리보기 |
 | `BOARD_UPDATE_CHECK` | `true` | 하루 1회 새 버전 확인 (유일한 외부 호출) |
+| `BOARD_TZ` | `UTC` | 렌더 화면의 time zone (예: `Asia/Seoul`) |
 
 데이터는 Docker volume 에 보관:
 

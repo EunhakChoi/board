@@ -79,6 +79,11 @@ export function Screens() {
         >
           <span className="text-sm font-semibold">{row.page.title}</span>
           <span className="truncate font-mono text-xs text-muted-foreground">{row.page.route}</span>
+          {row.page.note && (
+            <span className="line-clamp-4 text-xs text-muted-foreground" title={row.page.note}>
+              {row.page.note}
+            </span>
+          )}
         </div>
       ))}
       {layout.cards.map((card) => {

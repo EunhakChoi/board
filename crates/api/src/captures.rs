@@ -5,7 +5,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use board_engine::{CaptureStatus, Engine, EngineError, RenderResult, SheetItem};
+use board_engine::{CaptureStatus, Engine, EngineError, Rendered, SheetItem};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;
@@ -26,21 +26,16 @@ pub struct RenderInput {
     force: bool,
 }
 
-#[derive(Serialize)]
-pub struct Results {
-    results: Vec<RenderResult>,
-}
-
 pub async fn check(
     State(engine): State<Engine>,
     Caller(actor): Caller,
     Path(key): Path<String>,
     Json(input): Json<RenderInput>,
-) -> Result<Json<Results>, ApiError> {
+) -> Result<Json<Rendered>, ApiError> {
     let rev = input.rev.unwrap_or_else(|| "main".into());
-    let results =
+    let rendered =
         blocking(move || engine.check(&actor, &key, &rev, &input.targets, &input.themes)).await?;
-    Ok(Json(Results { results }))
+    Ok(Json(rendered))
 }
 
 pub async fn capture(
@@ -48,9 +43,9 @@ pub async fn capture(
     Caller(actor): Caller,
     Path(key): Path<String>,
     Json(input): Json<RenderInput>,
-) -> Result<Json<Results>, ApiError> {
+) -> Result<Json<Rendered>, ApiError> {
     let rev = input.rev.unwrap_or_else(|| "main".into());
-    let results = blocking(move || {
+    let rendered = blocking(move || {
         engine.capture(
             &actor,
             &key,
@@ -61,7 +56,7 @@ pub async fn capture(
         )
     })
     .await?;
-    Ok(Json(Results { results }))
+    Ok(Json(rendered))
 }
 
 #[derive(Serialize)]

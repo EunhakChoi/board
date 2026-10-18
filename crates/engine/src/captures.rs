@@ -22,6 +22,13 @@ const PARALLEL: usize = 4;
 
 pub const THEMES: [&str; 2] = ["light", "dark"];
 
+/// A check or capture: the commit it rendered and one result per target and theme.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Rendered {
+    pub commit: String,
+    pub results: Vec<RenderResult>,
+}
+
 /// The result of checking or capturing one target in one theme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,14 +93,15 @@ impl Engine {
         rev: &str,
         requested: &[String],
         themes: &[String],
-    ) -> Result<Vec<RenderResult>, EngineError> {
+    ) -> Result<Rendered, EngineError> {
         self.visible(actor, key, Command::ProjectView)?;
         let (commit, settings) = self.ready_build(actor, key, rev)?;
         let jobs = self.jobs(key, &commit, requested, themes)?;
-        Ok(Self::run_parallel(&jobs, |(target, theme)| {
+        let results = Self::run_parallel(&jobs, |(target, theme)| {
             let shot = self.shoot(settings, key, &commit, target, theme, None)?;
             Ok(result(target, theme, &shot, false))
-        }))
+        });
+        Ok(Rendered { commit, results })
     }
 
     /// Captures targets (empty = all) in `themes`, skipping those already captured at this commit
@@ -106,7 +114,7 @@ impl Engine {
         requested: &[String],
         themes: &[String],
         force: bool,
-    ) -> Result<Vec<RenderResult>, EngineError> {
+    ) -> Result<Rendered, EngineError> {
         self.visible(actor, key, Command::BranchEdit)?;
         let (commit, settings) = self.ready_build(actor, key, rev)?;
         let jobs = self.jobs(key, &commit, requested, themes)?;
@@ -117,7 +125,7 @@ impl Engine {
             .into_iter()
             .map(|c| ((c.kind.clone(), c.target.clone(), c.theme.clone()), c))
             .collect();
-        Ok(Self::run_parallel(&jobs, |(target, theme)| {
+        let results = Self::run_parallel(&jobs, |(target, theme)| {
             let id = (
                 target.kind.to_owned(),
                 target.id.clone(),
@@ -156,7 +164,8 @@ impl Engine {
             self.ports.captures.put(key, &capture, image, &elements)?;
             self.reanchor_comments(key, target.kind, &target.id, theme, &elements)?;
             Ok(result(target, theme, &shot, true))
-        }))
+        });
+        Ok(Rendered { commit, results })
     }
 
     /// Stored captures, each marked stale when `main` moved in a way that can change it.
@@ -515,7 +524,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            ids(&results),
+            ids(&results.results),
             [
                 "screen:list:light:false",
                 "screen:list:dark:false",
@@ -545,14 +554,14 @@ mod tests {
             .capture(&Actor::Local, "shop", "main", &targets, &[], false)
             .unwrap();
         assert_eq!(
-            ids(&first),
+            ids(&first.results),
             ["screen:list:light:true", "screen:empty:light:true"]
         );
         let again = engine
             .capture(&Actor::Local, "shop", "main", &targets, &[], false)
             .unwrap();
         assert_eq!(
-            ids(&again),
+            ids(&again.results),
             ["screen:list:light:false", "screen:empty:light:false"]
         );
         assert_eq!(
