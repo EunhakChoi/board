@@ -7,6 +7,14 @@
 
 > 상태: pre-alpha, 비공개. 아직 사용 불가.
 
+## 실행
+
+```bash
+docker compose up -d     # 이후 http://localhost:5280 접속
+```
+
+설정 · CLI · Docker 없이 실행 · 보안 참고: [docs/local.ko.md](docs/local.ko.md).
+
 ## License
 
 [MIT](LICENSE-MIT) 또는 [Apache-2.0](LICENSE-APACHE) 중 선택 (이중 라이선스).

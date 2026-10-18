@@ -1,7 +1,7 @@
 CARGO ?= $(shell command -v cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 PNPM ?= pnpm
 
-.PHONY: setup gen-api lint format typecheck test test-rust test-ts check e2e
+.PHONY: setup gen-api lint format typecheck test test-rust test-ts check e2e docker-smoke
 
 setup:
 	$(PNPM) install --frozen-lockfile
@@ -40,3 +40,7 @@ e2e:
 	$(CARGO) build --quiet -p board-server -p board-render
 	$(PNPM) --filter board-web run build
 	$(PNPM) --filter board-web run e2e
+
+# `docker compose` install on spare ports (5380 / 5381), checked end to end, then removed.
+docker-smoke:
+	scripts/docker-smoke.sh

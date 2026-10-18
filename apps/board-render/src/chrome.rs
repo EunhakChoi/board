@@ -140,8 +140,6 @@ impl Tab {
 #[derive(Debug, Clone)]
 pub struct ChromeOptions {
     pub executable: PathBuf,
-    /// Origins to treat as secure although plain http (service workers need a secure origin).
-    pub secure_origins: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -160,19 +158,13 @@ impl Chrome {
 
     async fn launch(&self) -> Result<Arc<Browser>, String> {
         let dir = std::env::temp_dir().join(format!("board-render-{}", std::process::id()));
-        let mut args = vec![
+        let args = vec![
             "--disable-back-forward-cache".to_owned(),
             "--no-service-autorun".to_owned(),
             "--hide-scrollbars".to_owned(),
             // No hover styles stuck on whatever sits under the default mouse position.
             "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4".to_owned(),
         ];
-        if !self.options.secure_origins.is_empty() {
-            args.push(format!(
-                "--unsafely-treat-insecure-origin-as-secure={}",
-                self.options.secure_origins.join(",")
-            ));
-        }
         let config = BrowserConfig::builder()
             .chrome_executable(&self.options.executable)
             .user_data_dir(&dir)

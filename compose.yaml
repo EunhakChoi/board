@@ -1,0 +1,89 @@
+# board in local mode: `docker compose up -d`, then open http://localhost:5280.
+#
+# Ports are published on this machine's loopback only; everyone who can reach them acts as the
+# built-in admin (no sign-in). Change them with BOARD_PORT / BOARD_PREVIEW_PORT.
+
+name: board
+
+x-server-build: &server-build
+  context: .
+  dockerfile: docker/server.Dockerfile
+
+services:
+  # A random token the services use with each other, created once.
+  tokens:
+    build: *server-build
+    image: board-server:local
+    user: root
+    command:
+      - sh
+      - -c
+      - test -s /secrets/internal-token || { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /secrets/internal-token && chmod 444 /secrets/internal-token; }
+    volumes:
+      - secrets:/secrets
+
+  server:
+    build: *server-build
+    image: board-server:local
+    restart: unless-stopped
+    depends_on:
+      tokens:
+        condition: service_completed_successfully
+      workspace:
+        condition: service_started
+      render:
+        condition: service_started
+    environment:
+      BOARD_PUBLIC_URL: http://localhost:${BOARD_PORT:-5280}
+      BOARD_PREVIEW_URL: http://127.0.0.1:${BOARD_PREVIEW_PORT:-5281}
+      # board-render reaches previews through its loopback forward (see render below).
+      BOARD_RENDER_PREVIEW_URL: http://127.0.0.1:5281
+      BOARD_WORKSPACE_URL: http://workspace:5282
+      BOARD_WORKSPACE_TOKEN_FILE: /secrets/internal-token
+      BOARD_RENDER_URL: http://render:5283
+      BOARD_RENDER_TOKEN_FILE: /secrets/internal-token
+      BOARD_UPDATE_CHECK: ${BOARD_UPDATE_CHECK:-true}
+    ports:
+      - 127.0.0.1:${BOARD_PORT:-5280}:5280
+      - 127.0.0.1:${BOARD_PREVIEW_PORT:-5281}:5281
+    volumes:
+      - data:/data
+      - secrets:/secrets:ro
+
+  workspace:
+    build:
+      context: .
+      dockerfile: docker/workspace.Dockerfile
+    image: board-workspace:local
+    restart: unless-stopped
+    depends_on:
+      tokens:
+        condition: service_completed_successfully
+    environment:
+      BOARD_WORKSPACE_TOKEN_FILE: /secrets/internal-token
+    volumes:
+      - workspace:/data
+      - secrets:/secrets:ro
+
+  render:
+    build:
+      context: .
+      dockerfile: docker/render.Dockerfile
+    image: board-render:local
+    restart: unless-stopped
+    depends_on:
+      tokens:
+        condition: service_completed_successfully
+    environment:
+      BOARD_RENDER_TOKEN_FILE: /secrets/internal-token
+      # Previews as http://127.0.0.1:5281 (a trusted origin: the preview cookie and the mock
+      # service worker need one), relayed to the server.
+      BOARD_RENDER_FORWARD: 127.0.0.1:5281=server:5281
+    shm_size: 1gb
+    volumes:
+      - secrets:/secrets:ro
+
+volumes:
+  data:
+  workspace:
+  secrets:

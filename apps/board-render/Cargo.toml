@@ -13,7 +13,7 @@ chromiumoxide = { version = "0.9.1", default-features = false }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["io-util", "time"] }
 
 [dev-dependencies]
 http-body-util.workspace = true

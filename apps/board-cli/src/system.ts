@@ -207,9 +207,9 @@ function portOpen(port: number): Promise<boolean> {
 export async function doctor(ctx: Context): Promise<number> {
   const checks: Check[] = [];
   const node = process.versions.node;
-  const [major = 0, minor = 0] = node.split(".").map(Number);
+  const [major = 0] = node.split(".").map(Number);
   checks.push(
-    major > 22 || (major === 22 && minor >= 18)
+    major >= 24
       ? { state: "ok", text: `node ${node}` }
       : { state: "fail", text: `node ${node}`, hint: t("cli.doctor.node", {}, ctx.locale) },
   );

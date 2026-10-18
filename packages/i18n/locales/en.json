@@ -140,7 +140,7 @@
   "cli.setup.noAgents": "No Claude Code or Codex found; install the skill later with `board skill install`.",
   "cli.setup.next": "Next: `board init <key>` for a new project, or `board import <path>` for an existing app.",
   "cli.skill.installed": "Installed the board skill for {agent} in {dir}",
-  "cli.doctor.node": "board needs Node.js 22.18 or newer.",
+  "cli.doctor.node": "board needs Node.js 24 or newer.",
   "cli.doctor.git": "Install git.",
   "cli.doctor.serve": "Start it: `board serve` (or `docker compose up`).",
   "cli.doctor.sameHost": "Previews must be on another host (e.g. localhost vs 127.0.0.1) so they cannot read the tool's cookies. Set BOARD_PUBLIC_URL / BOARD_PREVIEW_URL.",
