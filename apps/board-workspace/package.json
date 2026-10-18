@@ -10,5 +10,8 @@
     "start": "node src/main.ts",
     "typecheck": "tsc -p .",
     "test": "node --test --test-concurrency=1 'src/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
   }
 }
