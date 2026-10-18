@@ -1,0 +1,4 @@
+{
+  "cli.version": "board {version}",
+  "cli.usage": "Usage: board <command> [options]"
+}

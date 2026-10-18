@@ -1,0 +1,16 @@
+{
+  "name": "@board/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "board": "./src/main.ts"
+  },
+  "dependencies": {
+    "@board/i18n": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test 'src/**/*.test.ts'"
+  }
+}

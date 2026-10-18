@@ -1,0 +1,4 @@
+{
+  "cli.version": "board {version}",
+  "cli.usage": "사용법: board <명령> [옵션]"
+}

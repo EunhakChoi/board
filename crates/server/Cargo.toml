@@ -1,0 +1,12 @@
+[package]
+name = "board-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+board-core = { path = "../core" }
+
+[lints]
+workspace = true

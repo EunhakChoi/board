@@ -1,0 +1,10 @@
+[package]
+name = "board-core"
+description = "Pure domain rules (no I/O): policy, comment anchoring, catalog."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
