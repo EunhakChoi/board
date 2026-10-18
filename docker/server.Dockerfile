@@ -11,8 +11,8 @@ WORKDIR /src
 COPY . .
 # Build with the image's toolchain, not a fresh download of "stable".
 RUN rm rust-toolchain.toml
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
     cargo build --release --locked -p board-server && cp target/release/board-server /board-server
 
 FROM debian:trixie-slim
