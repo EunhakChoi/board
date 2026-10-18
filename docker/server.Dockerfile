@@ -25,6 +25,7 @@ COPY --from=build /board-server /usr/local/bin/board-server
 COPY --from=web /src/apps/board-web/dist /usr/local/share/board/web
 USER board
 ENV BOARD_HOME=/data \
+    HOME=/data \
     BOARD_BIND=0.0.0.0:5280 \
     BOARD_PREVIEW_BIND=0.0.0.0:5281 \
     BOARD_CONTAINER=true

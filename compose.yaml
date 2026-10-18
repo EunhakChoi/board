@@ -46,8 +46,11 @@ services:
     ports:
       - 127.0.0.1:${BOARD_PORT:-5280}:5280
       - 127.0.0.1:${BOARD_PREVIEW_PORT:-5281}:5281
+    # With BOARD_DATA_DIR (a folder on this machine) set BOARD_USER to its owner, e.g. "1000:1000".
+    user: ${BOARD_USER:-board}
     volumes:
-      - data:/data
+      # Projects, versions, comments and captures: a Docker volume, or the folder BOARD_DATA_DIR.
+      - ${BOARD_DATA_DIR:-data}:/data
       - secrets:/secrets:ro
 
   workspace:

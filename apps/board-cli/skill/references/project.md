@@ -72,6 +72,21 @@ Rules (checked when the project loads):
 - Stories are grouped by `component` in the Components view. A story's `mocks` start MSW like a
   screen's.
 
+## Imported apps: keep board files in `.board/`
+
+An imported app stays as it is in its repository; everything board needs lives in `.board/`:
+
+```
+.board/
+  vite.config.ts       the app's config plus board() (used instead of the app's own)
+  package.json         board-only dependencies: @board/sdk, msw, mock helpers ("type": "module")
+  pnpm-lock.yaml       its lockfile (install with `pnpm install` inside .board/)
+  pnpm-workspace.yaml  `autoInstallPeers: false`, so React and vite come from the app
+```
+
+board installs `.board/package.json` after the app's own dependencies. Don't add board packages
+to the app's `package.json` or lockfile.
+
 ## Static files
 
 Files in `.board/public/` are served at the root of the frame (dev and preview builds), next to

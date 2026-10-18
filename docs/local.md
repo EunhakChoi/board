@@ -28,6 +28,8 @@ The first build of the images takes a while (Rust and the web tool are compiled)
 | `BOARD_PREVIEW_PORT` | `5281` | previews |
 | `BOARD_UPDATE_CHECK` | `true` | daily check for a new release (the only outside call) |
 | `BOARD_TZ` | `UTC` | time zone of rendered screens (e.g. `Asia/Seoul`) |
+| `BOARD_DATA_DIR` | (volume `board_data`) | a folder on this machine for projects, comments and captures |
+| `BOARD_USER` | `board` | user the server runs as; with `BOARD_DATA_DIR`, the folder's owner (`uid:gid`) |
 
 Data lives in Docker volumes:
 
@@ -41,11 +43,21 @@ Data lives in Docker volumes:
 docker compose logs -f server        # logs
 docker compose up -d --build         # update after `git pull`
 docker compose down                  # stop (data is kept)
-docker compose down -v               # stop and delete all data
+docker compose down -v               # stop and delete all data (not a BOARD_DATA_DIR folder)
 
 # back up projects, comments and captures
 docker run --rm -v board_data:/data -v "$PWD":/backup debian:trixie-slim \
   tar -czf /backup/board-data.tgz -C /data .
+```
+
+To keep the data in a folder of your choice instead of a volume, create the folder and point
+`BOARD_DATA_DIR` at it, with `BOARD_USER` set to its owner (git refuses a repository owned by
+someone else):
+
+```bash
+mkdir -p ~/board-data
+printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> .env
+docker compose up -d
 ```
 
 ## The CLI

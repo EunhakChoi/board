@@ -370,22 +370,42 @@ function packageManager(dir: string): "pnpm" | "npm" | "yarn" {
   return "npm";
 }
 
-/** Runs the app's vite dev server in this checkout (installing first when needed). */
+/**
+ * Runs the app's vite dev server in this checkout (installing first when needed): with the
+ * board-only config `.board/vite.config.*` when there is one, else the app's `dev` script.
+ */
 export async function dev(ctx: Context): Promise<number> {
   const found = findCheckout(ctx.cwd);
   if (!found) throw new CliError(t("cli.error.noCheckout", {}, ctx.locale));
-  const pm = packageManager(found.dir);
-  const run = (args: string[], cwd: string) =>
+  const run = (command: string, args: string[], cwd: string) =>
     new Promise<number>((done) => {
-      const child = spawn(pm, args, { cwd, env: ctx.env, stdio: "inherit" });
+      const child = spawn(command, args, { cwd, env: ctx.env, stdio: "inherit" });
       child.once("exit", (code) => done(code ?? 1));
       child.once("error", () => done(127));
     });
-  if (!existsSync(join(found.dir, "node_modules"))) {
-    const installed = await run(["install"], found.dir);
+  const app = appDir(found.dir);
+  const board = join(app, ".board");
+  // The app's dependencies, then board-only ones (`.board/package.json`) installed apart.
+  for (const dir of [found.dir, ...(existsSync(join(board, "package.json")) ? [board] : [])]) {
+    if (existsSync(join(dir, "node_modules"))) continue;
+    const installed = await run(packageManager(dir), ["install"], dir);
     if (installed !== 0) return installed;
   }
-  return run(["run", "dev"], appDir(found.dir));
+  const config = ["ts", "mts", "js", "mjs"]
+    .map((ext) => join(board, `vite.config.${ext}`))
+    .find((file) => existsSync(file));
+  const vite = config ? findViteBin(app, found.dir) : undefined;
+  if (config && vite) return run(vite, ["--config", config], app);
+  return run(packageManager(found.dir), ["run", "dev"], app);
+}
+
+/** `node_modules/.bin/vite` from the app up to the checkout root (monorepos hoist tools). */
+function findViteBin(app: string, root: string): string | undefined {
+  for (let dir = app; ; dir = dirname(dir)) {
+    const bin = join(dir, "node_modules", ".bin", "vite");
+    if (existsSync(bin)) return bin;
+    if (dir === root || dirname(dir) === dir) return undefined;
+  }
 }
 
 export async function status(ctx: Context): Promise<number> {

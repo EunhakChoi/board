@@ -43,3 +43,24 @@ test("rejects a missing lockfile and an app outside the project", () => {
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test("finds board-only dependencies in .board/package.json, which need a lockfile", () => {
+  const root = tree({
+    "pnpm-lock.yaml": "",
+    "package.json": "{}",
+    ".board/package.json": "{}",
+    ".board/package-lock.json": "",
+  });
+  const noLock = tree({ "pnpm-lock.yaml": "", "package.json": "{}", ".board/package.json": "{}" });
+  try {
+    assert.deepEqual(readLayout(root).boardPackage, { dir: join(root, ".board"), manager: "npm" });
+    assert.equal(
+      readLayout(tree({ "pnpm-lock.yaml": "", "package.json": "{}" })).boardPackage,
+      undefined,
+    );
+    assert.throws(() => readLayout(noLock), /no lockfile next to .board\/package.json/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(noLock, { recursive: true, force: true });
+  }
+});

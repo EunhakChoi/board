@@ -14,7 +14,7 @@ import {
 import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { findBin, type Layout, LayoutError, readLayout } from "./project.ts";
+import { findBin, type Layout, LayoutError, type PackageManager, readLayout } from "./project.ts";
 import { childEnv, type RunResult, run } from "./run.ts";
 
 export type StepName = "extract" | "install" | "typecheck" | "lint" | "build";
@@ -213,15 +213,21 @@ export class Builds {
       const go = (cwd: string, timeoutMs: number) => ({ cwd, env, log, timeoutMs });
 
       // Dependency install scripts stay off (security.md): bundlers ship prebuilt binaries.
-      const install =
-        layout.manager === "pnpm"
+      const install = (manager: PackageManager) =>
+        manager === "pnpm"
           ? ["install", "--frozen-lockfile", "--prefer-offline", "--ignore-scripts"]
           : ["ci", "--prefer-offline", "--no-audit", "--no-fund", "--ignore-scripts"];
-      if (
-        !(await this.#step(build, "install", () =>
-          run(layout.manager, install, go(tree, this.#timeouts.install)),
-        ))
-      ) {
+      const installAll = async () => {
+        const app = await run(
+          layout.manager,
+          install(layout.manager),
+          go(tree, this.#timeouts.install),
+        );
+        const board = layout.boardPackage;
+        if (app.code !== 0 || !board) return app;
+        return run(board.manager, install(board.manager), go(board.dir, this.#timeouts.install));
+      };
+      if (!(await this.#step(build, "install", installAll))) {
         return this.#finish(build, "dependency install failed");
       }
 

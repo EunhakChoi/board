@@ -13,6 +13,11 @@ export interface Layout {
   manager: PackageManager;
   /** `.board/vite.config.*` when the project keeps a board-only vite config. */
   viteConfig: string | undefined;
+  /**
+   * `.board/` when it has its own `package.json`: board-only dependencies (`@board/sdk`, msw, …)
+   * installed apart from the app, so the app's own manifest and lockfile stay as in its repo.
+   */
+  boardPackage: { dir: string; manager: PackageManager } | undefined;
   scripts: Record<string, string>;
 }
 
@@ -22,11 +27,7 @@ export function readLayout(root: string): Layout {
   const app = appDir(root);
   if (!existsSync(join(app, "package.json")))
     throw new LayoutError(`no package.json in ${rel(root, app)}`);
-  const manager = existsSync(join(root, "pnpm-lock.yaml"))
-    ? "pnpm"
-    : existsSync(join(root, "package-lock.json"))
-      ? "npm"
-      : undefined;
+  const manager = lockfileManager(root);
   if (!manager)
     throw new LayoutError("no lockfile (pnpm-lock.yaml or package-lock.json) at the project root");
   const viteConfig = ["ts", "mts", "js", "mjs"]
@@ -35,7 +36,27 @@ export function readLayout(root: string): Layout {
   const pkg = JSON.parse(readFileSync(join(app, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
   };
-  return { root, app, manager, viteConfig, scripts: pkg.scripts ?? {} };
+  return {
+    root,
+    app,
+    manager,
+    viteConfig,
+    boardPackage: boardPackage(join(app, ".board")),
+    scripts: pkg.scripts ?? {},
+  };
+}
+
+function boardPackage(dir: string): Layout["boardPackage"] {
+  if (!existsSync(join(dir, "package.json"))) return undefined;
+  const manager = lockfileManager(dir);
+  if (!manager) throw new LayoutError("no lockfile next to .board/package.json");
+  return { dir, manager };
+}
+
+function lockfileManager(dir: string): PackageManager | undefined {
+  if (existsSync(join(dir, "pnpm-lock.yaml"))) return "pnpm";
+  if (existsSync(join(dir, "package-lock.json"))) return "npm";
+  return undefined;
 }
 
 function appDir(root: string): string {
