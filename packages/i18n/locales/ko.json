@@ -1,4 +1,20 @@
 {
   "cli.version": "board {version}",
-  "cli.usage": "사용법: board <명령> [옵션]"
+  "cli.usage": "사용법: board <명령> [옵션]\n\n명령:\n  projects                       프로젝트 목록\n  import [경로] [--key k] [--title t] [--include 폴더]... [--dry-run]\n                                 앱 (과 그 앱이 쓰는 workspace package) 을 프로젝트로 가져오기\n  checkout <프로젝트> [폴더] [--rev main|vN]\n                                 프로젝트를 폴더로 내려받기\n  push [-m 메시지]               이 checkout 의 변경을 새 버전으로 보내기\n  pull                           이 checkout 을 최신 버전으로 갱신\n  versions [-p 프로젝트]         버전 목록\n  diff <from> [to] [-p 프로젝트] 버전 사이에 바뀐 경로\n\n옵션: --server <url> (또는 BOARD_URL), --json, --version",
+  "cli.usage.checkout": "사용법: board checkout <프로젝트> [폴더] [--rev main|vN]",
+  "cli.usage.diff": "사용법: board diff <from> [to] [-p 프로젝트]",
+  "cli.projects.none": "아직 프로젝트 없음. `board import <경로>` 로 가져오기.",
+  "cli.import.plan": "{source} 에서 파일 {count}개를 프로젝트 {key} 로 가져올 예정:",
+  "cli.import.done": "파일 {count}개를 프로젝트 {key} 로 가져옴 (버전 1).",
+  "cli.checkout.done": "{project} ({commit}) 을 {dir} 에 내려받음",
+  "cli.push.nothing": "보낼 변경 없음 (마지막 버전 이후 변경 없음).",
+  "cli.push.done": "바뀐 파일 {count}개를 버전 {version} 으로 보냄.",
+  "cli.push.conflict": "다른 사람이 먼저 보냄. 변경을 따로 보관하고 `board pull` 후 다시 push.",
+  "cli.pull.dirty": "보내지 않은 변경이 있음. 먼저 push.",
+  "cli.pull.upToDate": "이미 최신 버전.",
+  "cli.pull.done": "{commit} 으로 갱신.",
+  "cli.error.noProject": "어느 프로젝트? -p <프로젝트> 를 주거나 checkout 안에서 실행.",
+  "cli.error.noCheckout": "checkout 폴더가 아님. 먼저 `board checkout <프로젝트>`.",
+  "cli.error.notEmpty": "{dir} 가 비어 있지 않음.",
+  "cli.error.unreachable": "board server 에 연결할 수 없음. 실행 중인지 확인 (BOARD_URL 또는 --server)."
 }

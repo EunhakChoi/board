@@ -7,10 +7,11 @@
     "board": "./src/main.ts"
   },
   "dependencies": {
-    "@board/i18n": "workspace:*"
+    "@board/i18n": "workspace:*",
+    "@board/api-client": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "node --test 'src/**/*.test.ts'"
+    "test": "node --test --test-concurrency=1 'src/**/*.test.ts'"
   }
 }
