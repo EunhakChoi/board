@@ -24,3 +24,24 @@ jobs:
       - name: generated API client is up to date
         run: make gen-api && git diff --exit-code packages/api-client/src/schema.d.ts
       - run: make check
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter board-web exec playwright install --with-deps chromium chromium-headless-shell
+      - run: make e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-traces
+          path: apps/board-web/test-results
