@@ -166,10 +166,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Static build of a revision, started on first call; poll until ready or failed
+         * @description Once ready, pages are at `baseUrl` on the preview origin, e.g. `{baseUrl}.board/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to this project and commit.
+         */
+        get: operations["previewProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Preview: {
+            commit: string;
+            /** @enum {string} */
+            state: "queued" | "running" | "ready" | "failed";
+            steps: {
+                /** @description extract, install, typecheck, lint or build */
+                name: string;
+                /** @enum {string} */
+                state: "ok" | "failed" | "skipped";
+                durationMs: number;
+                /** @description Why it was skipped, or the end of its output when it failed */
+                detail: string;
+            }[];
+            /** @description Empty unless the build failed */
+            error: string;
+            /** @description Present once ready, ends with `/` */
+            baseUrl?: string;
+            /** @description Present once ready */
+            token?: string;
+        };
         Error: {
             /** @description Stable machine-readable code, e.g. `unauthorized`, `conflict`, `not_found` */
             code: string;
@@ -559,6 +601,43 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    previewProject: {
+        parameters: {
+            query?: {
+                /** @description `main` (default), `v<number>` or a commit id */
+                rev?: string;
+                /** @description Build again when the last build of this commit failed */
+                retry?: boolean;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The build and, once ready, where to open it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preview"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description board-workspace is not running, or previews are not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

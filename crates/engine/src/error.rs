@@ -1,4 +1,4 @@
-use crate::StoreError;
+use crate::{StoreError, WorkspaceError};
 
 /// Why a command did not run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,7 +15,20 @@ pub enum EngineError {
     Conflict {
         head: String,
     },
+    /// A service the command needs is down or not configured.
+    Unavailable(String),
     Store(StoreError),
+}
+
+impl From<WorkspaceError> for EngineError {
+    fn from(error: WorkspaceError) -> Self {
+        match error {
+            WorkspaceError::Unavailable(message) => Self::Unavailable(message),
+            WorkspaceError::Failed(message) => {
+                Self::Store(StoreError(format!("workspace: {message}")))
+            }
+        }
+    }
 }
 
 impl From<StoreError> for EngineError {
@@ -32,6 +45,7 @@ impl std::fmt::Display for EngineError {
             Self::Invalid(message) => f.write_str(message),
             Self::Exists(what) => write!(f, "{what} already exists"),
             Self::Conflict { head } => write!(f, "main moved to {head}; pull and try again"),
+            Self::Unavailable(message) => write!(f, "unavailable: {message}"),
             Self::Store(error) => write!(f, "storage error: {error}"),
         }
     }

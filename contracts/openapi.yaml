@@ -257,6 +257,43 @@ paths:
                           enum: [added, modified, deleted]
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/preview:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [projects]
+      operationId: previewProject
+      summary: Static build of a revision, started on first call; poll until ready or failed
+      description: >
+        Once ready, pages are at `baseUrl` on the preview origin, e.g.
+        `{baseUrl}.board/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to
+        this project and commit.
+      parameters:
+        - name: rev
+          in: query
+          description: "`main` (default), `v<number>` or a commit id"
+          schema:
+            type: string
+        - name: retry
+          in: query
+          description: Build again when the last build of this commit failed
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The build and, once ready, where to open it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preview"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: board-workspace is not running, or previews are not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
     ProjectKey:
@@ -292,6 +329,41 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    Preview:
+      type: object
+      required: [commit, state, steps, error]
+      properties:
+        commit:
+          type: string
+        state:
+          type: string
+          enum: [queued, running, ready, failed]
+        steps:
+          type: array
+          items:
+            type: object
+            required: [name, state, durationMs, detail]
+            properties:
+              name:
+                type: string
+                description: extract, install, typecheck, lint or build
+              state:
+                type: string
+                enum: [ok, failed, skipped]
+              durationMs:
+                type: integer
+              detail:
+                type: string
+                description: Why it was skipped, or the end of its output when it failed
+        error:
+          type: string
+          description: Empty unless the build failed
+        baseUrl:
+          type: string
+          description: Present once ready, ends with `/`
+        token:
+          type: string
+          description: Present once ready
     Error:
       type: object
       required: [code, message]

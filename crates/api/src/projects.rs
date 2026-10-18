@@ -16,7 +16,7 @@ use crate::{ApiError, Caller};
 pub const COMMIT_HEADER: &str = "x-board-commit";
 
 /// Runs a blocking engine call (git, SQLite) off the async runtime.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, EngineError> + Send + 'static,
 ) -> Result<T, ApiError> {
     match tokio::task::spawn_blocking(work).await {

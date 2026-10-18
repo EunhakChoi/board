@@ -3,14 +3,17 @@
 mod error;
 pub mod policy;
 mod ports;
+mod preview;
 mod projects;
 
 use std::sync::Arc;
 
 pub use error::EngineError;
 pub use ports::{
-    Author, Change, ChangeKind, FileChange, ProjectStore, Records, Settings, StoreError,
+    Author, Build, BuildState, BuildStep, BuiltFile, Change, ChangeKind, FileChange, ProjectStore,
+    Records, Settings, StoreError, Workspace, WorkspaceError,
 };
+pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
 
 /// Everything the engine needs from the outside world.
@@ -19,6 +22,7 @@ pub struct Ports {
     pub settings: Arc<dyn Settings>,
     pub records: Arc<dyn Records>,
     pub store: Arc<dyn ProjectStore>,
+    pub workspace: Arc<dyn Workspace>,
 }
 
 impl std::fmt::Debug for Ports {
@@ -32,6 +36,7 @@ impl std::fmt::Debug for Ports {
 pub struct Engine {
     ports: Ports,
     local_mode: bool,
+    preview: Option<Arc<PreviewSettings>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -44,7 +49,18 @@ impl std::fmt::Debug for Engine {
 
 impl Engine {
     pub fn new(ports: Ports, local_mode: bool) -> Self {
-        Self { ports, local_mode }
+        Self {
+            ports,
+            local_mode,
+            preview: None,
+        }
+    }
+
+    /// Enables previews: built commits are served from `settings.origin` with signed tokens.
+    #[must_use]
+    pub fn with_preview(mut self, settings: PreviewSettings) -> Self {
+        self.preview = Some(Arc::new(settings));
+        self
     }
 
     /// True while the server only listens on localhost: every request acts as the built-in admin.

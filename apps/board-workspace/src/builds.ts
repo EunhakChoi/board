@@ -210,10 +210,11 @@ export class Builds {
       });
       const go = (cwd: string, timeoutMs: number) => ({ cwd, env, log, timeoutMs });
 
+      // Dependency install scripts stay off (security.md): bundlers ship prebuilt binaries.
       const install =
         layout.manager === "pnpm"
-          ? ["install", "--frozen-lockfile", "--prefer-offline"]
-          : ["ci", "--prefer-offline", "--no-audit", "--no-fund"];
+          ? ["install", "--frozen-lockfile", "--prefer-offline", "--ignore-scripts"]
+          : ["ci", "--prefer-offline", "--no-audit", "--no-fund", "--ignore-scripts"];
       if (
         !(await this.#step(build, "install", () =>
           run(layout.manager, install, go(tree, this.#timeouts.install)),

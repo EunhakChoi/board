@@ -6,19 +6,94 @@ use std::sync::{Arc, Mutex};
 use board_model::{Project, Version, VersionKind};
 
 use crate::{
-    Author, Change, ChangeKind, Engine, FileChange, Ports, ProjectStore, Records, Settings,
-    StoreError,
+    Author, Build, BuildState, BuiltFile, Change, ChangeKind, Engine, FileChange, Ports,
+    PreviewSettings, ProjectStore, Records, Settings, StoreError, Workspace, WorkspaceError,
 };
 
 pub fn engine() -> Engine {
+    engine_with(Arc::new(MemoryWorkspace::default()))
+}
+
+pub fn engine_with_preview(settings: PreviewSettings) -> (Engine, Arc<MemoryWorkspace>) {
+    let workspace = Arc::new(MemoryWorkspace::default());
+    (
+        engine_with(workspace.clone()).with_preview(settings),
+        workspace,
+    )
+}
+
+fn engine_with(workspace: Arc<MemoryWorkspace>) -> Engine {
     Engine::new(
         Ports {
             settings: Arc::new(MemorySettings::default()),
             records: Arc::new(MemoryRecords::default()),
             store: Arc::new(MemoryStore::default()),
+            workspace,
         },
         true,
     )
+}
+
+/// Builds stay queued until a test calls [`MemoryWorkspace::finish`].
+#[derive(Default)]
+pub struct MemoryWorkspace {
+    builds: Mutex<HashMap<(String, String), Build>>,
+    starts: Mutex<usize>,
+}
+
+impl MemoryWorkspace {
+    pub fn starts(&self) -> usize {
+        *self.starts.lock().unwrap()
+    }
+
+    pub fn finish(&self, state: BuildState) {
+        for build in self.builds.lock().unwrap().values_mut() {
+            build.state = state;
+        }
+    }
+}
+
+impl Workspace for MemoryWorkspace {
+    fn build(&self, project: &str, commit: &str) -> Result<Option<Build>, WorkspaceError> {
+        Ok(self
+            .builds
+            .lock()
+            .unwrap()
+            .get(&(project.into(), commit.into()))
+            .cloned())
+    }
+    fn start_build(
+        &self,
+        project: &str,
+        commit: &str,
+        _base: &str,
+        _source: Vec<u8>,
+        retry: bool,
+    ) -> Result<Build, WorkspaceError> {
+        let mut builds = self.builds.lock().unwrap();
+        let key = (project.to_owned(), commit.to_owned());
+        if let Some(build) = builds.get(&key)
+            && !(retry && build.state == BuildState::Failed)
+        {
+            return Ok(build.clone());
+        }
+        *self.starts.lock().unwrap() += 1;
+        let build = Build {
+            state: BuildState::Queued,
+            steps: Vec::new(),
+            error: String::new(),
+        };
+        builds.insert(key, build.clone());
+        Ok(build)
+    }
+    fn file(
+        &self,
+        _project: &str,
+        _commit: &str,
+        _path: &str,
+    ) -> Result<Option<BuiltFile>, WorkspaceError> {
+        Ok(None)
+    }
 }
 
 #[derive(Default)]

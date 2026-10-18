@@ -75,6 +75,9 @@ impl From<EngineError> for ApiError {
                 "main moved since your base; pull and try again",
             )
             .with_detail(serde_json::json!({ "head": head })),
+            EngineError::Unavailable(message) => {
+                Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
+            }
             EngineError::Store(error) => error.into(),
         }
     }
