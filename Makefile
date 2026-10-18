@@ -8,6 +8,7 @@ setup:
 	$(CARGO) fetch
 
 lint:
+	$(CARGO) xtask layers
 	$(PNPM) exec biome check --error-on-warnings .
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets -- -D warnings

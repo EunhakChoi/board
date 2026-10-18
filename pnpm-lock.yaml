@@ -176,7 +176,7 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
-  apps/cli:
+  apps/board-cli:
     dependencies:
       '@board/i18n':
         specifier: workspace:*

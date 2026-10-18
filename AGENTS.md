@@ -5,9 +5,8 @@ by a team (comments, proposals, versions). Pre-alpha.
 
 ## Layout
 
-- `apps/web` web tool (React + shadcn) · `apps/cli` CLI + skill
-- `crates/server` board-server (Rust, axum) · `crates/core` pure rules, no I/O · `crates/renderer` Chromium capture
-- `services/workspace` runs project code (install, build, vite, checks) · `services/agent-runner` web agent containers
+- `apps/board-server` (Rust) · `apps/board-render` (Rust + Chromium) · `apps/board-workspace` · `apps/board-agent` · `apps/board-cli` · `apps/board-web` (React + shadcn)
+- `crates/*` layered Rust crates (`board-model` L0 → `board-engine` L1 → `board-store` · `board-db` · `board-collab` L2 → `board-api` L3); `cargo xtask layers` enforces it
 - `packages/sdk` project contract · `packages/api-client` generated from `contracts/openapi.yaml` · `packages/i18n` en/ko strings
 
 ## Rules
@@ -15,5 +14,6 @@ by a team (comments, proposals, versions). Pre-alpha.
 - `make check` (lint + typecheck + test) must pass before you finish.
 - Clients call the server only through `@board/api-client`; change `contracts/openapi.yaml` first.
 - Every user-facing string goes through `@board/i18n`. English is the default; keep `ko.json` keys a subset of `en.json`.
-- Provider services (renderer, workspace, agent-runner) take orders from the server only.
+- `board-render`, `board-workspace` and `board-agent` take orders from `board-server` only.
+- Every action is a command in `board-engine`; the web tool, CLI, MCP and agents call the same commands.
 - Work on a branch, open a PR to `main`.

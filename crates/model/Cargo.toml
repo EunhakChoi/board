@@ -1,0 +1,10 @@
+[package]
+name = "board-model"
+description = "Domain model: projects, versions, branches, comments, anchors, screens and flows. Pure data, no I/O."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

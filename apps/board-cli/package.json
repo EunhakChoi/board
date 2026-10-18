@@ -1,5 +1,5 @@
 {
-  "name": "@board/cli",
+  "name": "board-cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",

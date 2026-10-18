@@ -1,6 +1,6 @@
-//! Pure domain rules shared by the server. No I/O lives here.
+//! Domain model: projects, versions, branches, comments, anchors, screens and flows. Pure data, no I/O.
 
-/// Product version, shared by the server and reported to clients.
+/// Product version, reported by every app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
