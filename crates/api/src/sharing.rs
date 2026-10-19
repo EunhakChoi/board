@@ -22,6 +22,7 @@ pub struct SharingView {
     owner: Option<OwnerView>,
     modes: Vec<ModeView>,
     warning: Option<String>,
+    ngrok_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -57,6 +58,7 @@ impl From<SharingStatus> for SharingView {
                 })
                 .collect(),
             warning: status.warning,
+            ngrok_token: status.ngrok_token,
         }
     }
 }
@@ -76,6 +78,8 @@ pub struct StartInput {
     #[serde(default)]
     url: String,
     owner_name: Option<String>,
+    authtoken: Option<String>,
+    domain: Option<String>,
 }
 
 /// `PUT /api/admin/sharing`: turns sharing on, or changes its address (this machine only).
@@ -88,6 +92,8 @@ async fn start(
         mode: input.mode,
         url: input.url,
         owner_name: input.owner_name,
+        authtoken: input.authtoken,
+        domain: input.domain,
     };
     Ok(Json(
         blocking(move || engine.start_sharing(&actor, &request))

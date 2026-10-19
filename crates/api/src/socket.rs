@@ -28,7 +28,7 @@ pub async fn socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     // Browsers send cookies with cross-site socket requests; only the tool's own pages may open one.
-    if !same_origin(&headers) {
+    if !same_origin(&headers, engine.tool_url().as_deref()) {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "origin",
@@ -44,10 +44,15 @@ pub async fn socket(
 }
 
 /// The `Origin` (when sent) names the host the request went to.
-fn same_origin(headers: &HeaderMap) -> bool {
+/// The page's origin is the address it was served from, or the board's own address (a proxy in
+/// front of the remote door may rewrite `Host`).
+fn same_origin(headers: &HeaderMap, tool_url: Option<&str>) -> bool {
     let Some(origin) = headers.get(ORIGIN).and_then(|v| v.to_str().ok()) else {
         return true;
     };
+    if tool_url.is_some_and(|url| url.trim_end_matches('/') == origin.trim_end_matches('/')) {
+        return true;
+    }
     let host = headers
         .get(HOST)
         .and_then(|v| v.to_str().ok())
@@ -104,10 +109,15 @@ mod tests {
     fn origin_must_match_the_host() {
         let mut headers = HeaderMap::new();
         headers.insert(HOST, HeaderValue::from_static("board.test"));
-        assert!(same_origin(&headers), "no origin: not a browser");
+        assert!(same_origin(&headers, None), "no origin: not a browser");
         headers.insert(ORIGIN, HeaderValue::from_static("https://board.test"));
-        assert!(same_origin(&headers));
+        assert!(same_origin(&headers, None));
         headers.insert(ORIGIN, HeaderValue::from_static("https://evil.test"));
-        assert!(!same_origin(&headers));
+        assert!(!same_origin(&headers, None));
+        // Behind a proxy that rewrites Host, the board's own address still counts.
+        headers.insert(HOST, HeaderValue::from_static("127.0.0.1:5284"));
+        headers.insert(ORIGIN, HeaderValue::from_static("https://b.ngrok.app"));
+        assert!(same_origin(&headers, Some("https://b.ngrok.app")));
+        assert!(!same_origin(&headers, Some("https://other.ngrok.app")));
     }
 }

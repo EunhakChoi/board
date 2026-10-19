@@ -35,7 +35,8 @@ pub use ports::{
     Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
     Invites, Joined, Kick, NewComment, NewInvite, NewNotification, NewReply, NewShareLink, NewUser,
     NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
-    Settings, Shot, StoreError, TunnelMode, Tunnels, WebhookSender, Workspace, WorkspaceError,
+    Settings, Shot, StoreError, TunnelMode, TunnelOptions, Tunnels, WebhookSender, Workspace,
+    WorkspaceError,
 };
 pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};

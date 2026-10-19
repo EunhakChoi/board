@@ -71,6 +71,9 @@ comes through it signs in with an invite link.
      inside the tailnet). board runs `tailscale serve` and shows the machine's name.
    - **Tailscale Funnel** — anyone with a link reaches the sign-in page at the machine's `ts.net`
      name. If Funnel is not enabled for the machine, the page shows the admin-console link.
+   - **ngrok** — the server runs an ngrok tunnel itself (no ngrok program needed). Paste the
+     authtoken from your ngrok dashboard (kept on the server, never shown again) and, if you have
+     one, your ngrok domain so the address stays the same. `BOARD_NGROK_AUTHTOKEN` also works.
    - **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing
      at `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
 2. Enter your name (the first time) and turn sharing on.

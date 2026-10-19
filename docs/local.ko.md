@@ -69,6 +69,9 @@ docker compose up -d
      board 가 `tailscale serve` 실행 후 기기 이름 표시.
    - **Tailscale Funnel** — link 가진 누구나 기기의 `ts.net` 이름으로 로그인 화면까지 접근. 기기에
      Funnel 이 꺼져 있으면 관리 화면 link 표시.
+   - **ngrok** — 서버가 ngrok tunnel 직접 실행 (ngrok 프로그램 불필요). ngrok dashboard 의
+     authtoken 입력 (서버에 보관, 다시 표시 안 함) 및 있으면 ngrok 도메인 입력 → 주소 고정.
+     `BOARD_NGROK_AUTHTOKEN` 도 가능.
    - **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
      `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
 2. 내 이름 (처음 한 번) 입력 후 공유 켜기.
