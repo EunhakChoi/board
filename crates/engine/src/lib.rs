@@ -1,5 +1,6 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod access;
 mod auth;
 mod browse;
 mod captures;
@@ -13,6 +14,7 @@ mod sheet;
 
 use std::sync::Arc;
 
+pub use access::AccessChange;
 pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};

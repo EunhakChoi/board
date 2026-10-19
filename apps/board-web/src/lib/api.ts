@@ -11,6 +11,9 @@ export type Element = Schemas["Element"];
 export type Preview = Schemas["Preview"];
 export type Version = Schemas["Version"];
 export type Project = Schemas["Project"];
+export type User = Schemas["User"];
+export type AllowRule = Schemas["AllowRule"];
+export type Role = Schemas["Role"];
 export type Theme = "light" | "dark";
 export type TargetKind = "screen" | "story";
 
@@ -41,6 +44,22 @@ export async function unwrap<T>(
     );
   }
   return data;
+}
+
+/** Like [`unwrap`] for answers without a body (`204 No Content`). */
+export async function unwrapEmpty(
+  call: Promise<{ error?: unknown; response: Response }>,
+): Promise<void> {
+  const { error, response } = await call;
+  if (!response.ok) {
+    const body = (error ?? {}) as { code?: string; message?: string; detail?: unknown };
+    throw new HttpError(
+      response.status,
+      body.code ?? "error",
+      body.message ?? response.statusText,
+      body.detail,
+    );
+  }
 }
 
 export function captureImage(

@@ -12,6 +12,7 @@ import { Projects } from "@/pages/Projects";
 import { Screens } from "@/pages/Screens";
 import { Setup, SignIn } from "@/pages/SignIn";
 import { Target } from "@/pages/Target";
+import { Team } from "@/pages/Team";
 import { Versions } from "@/pages/Versions";
 import "./index.css";
 
@@ -23,6 +24,14 @@ const router = createBrowserRouter([
     element: (
       <AuthGate>
         <Projects />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/team",
+    element: (
+      <AuthGate>
+        <Team />
       </AuthGate>
     ),
   },

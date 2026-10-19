@@ -1,7 +1,16 @@
 // Server state for the web tool (TanStack Query over the typed API client).
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Comment, HttpError, type TargetKind, type Theme, unwrap } from "./api.ts";
+import {
+  api,
+  type Comment,
+  HttpError,
+  type Role,
+  type TargetKind,
+  type Theme,
+  unwrap,
+  unwrapEmpty,
+} from "./api.ts";
 
 const path = (key: string) => ({ params: { path: { key } } });
 
@@ -212,7 +221,60 @@ export function useMe() {
 
 export function useSignOut() {
   return useMutation({
-    mutationFn: () => unwrap(api.POST("/api/auth/logout")).catch(() => undefined),
+    mutationFn: () => unwrapEmpty(api.POST("/api/auth/logout")).catch(() => undefined),
     onSettled: () => window.location.assign("/signin"),
   });
+}
+
+/** Accounts and the allowlist, for the admin's Team page. Polled so new requests show up. */
+export function useUsers() {
+  return useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: () => unwrap(api.GET("/api/admin/users")),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useAllowRules() {
+  return useQuery({
+    queryKey: ["admin", "allow-rules"],
+    queryFn: () => unwrap(api.GET("/api/admin/allow-rules")),
+  });
+}
+
+export function useAdminActions() {
+  const client = useQueryClient();
+  const settled = () => client.invalidateQueries({ queryKey: ["admin"] });
+  const user = (id: string) => ({ params: { path: { id } } });
+  return {
+    approve: useMutation({
+      mutationFn: (id: string) => unwrap(api.POST("/api/admin/users/{id}/approve", user(id))),
+      onSettled: settled,
+    }),
+    reject: useMutation({
+      mutationFn: (id: string) => unwrap(api.POST("/api/admin/users/{id}/reject", user(id))),
+      onSettled: settled,
+    }),
+    change: useMutation({
+      mutationFn: ({
+        id,
+        ...body
+      }: {
+        id: string;
+        role?: Role;
+        status?: "active" | "rejected" | "removed";
+      }) => unwrap(api.PATCH("/api/admin/users/{id}", { ...user(id), body })),
+      onSettled: settled,
+    }),
+    addRule: useMutation({
+      mutationFn: (body: { kind: "domain" | "email"; value: string }) =>
+        unwrap(api.POST("/api/admin/allow-rules", { body })),
+      onSettled: settled,
+    }),
+    removeRule: useMutation({
+      mutationFn: (id: number) =>
+        unwrapEmpty(api.DELETE("/api/admin/allow-rules/{id}", { params: { path: { id } } })),
+      onSettled: settled,
+    }),
+  };
 }

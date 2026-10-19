@@ -1,4 +1,4 @@
-import { LogOut, Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,14 @@ export function AppHeader({ children, actions }: { children?: ReactNode; actions
       <div className="flex min-w-0 flex-1 items-center gap-3">{children}</div>
       <div className="flex items-center gap-2">
         {actions}
+        {signedIn?.role === "admin" && signedIn.kind === "user" && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/team">
+              <Users />
+              {t("web.team.nav")}
+            </Link>
+          </Button>
+        )}
         <Segmented
           label={t("web.ui.language")}
           value={locale}

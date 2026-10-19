@@ -126,6 +126,168 @@ paths:
       responses:
         "204":
           description: Signed out
+  /api/admin/allow-rules:
+    get:
+      tags: [access]
+      operationId: listAllowRules
+      summary: Domains and addresses let in on their first sign-in (admins)
+      responses:
+        "200":
+          description: The allowlist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rules]
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AllowRule"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [access]
+      operationId: addAllowRule
+      summary: Adds a domain or address to the allowlist (admins)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, value]
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  enum: [domain, email]
+                value:
+                  type: string
+                  description: "`example.com` or `someone@example.com`"
+      responses:
+        "201":
+          description: The rule (the existing one when it was there already)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllowRule"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/allow-rules/{id}:
+    delete:
+      tags: [access]
+      operationId: removeAllowRule
+      summary: Removes an allowlist rule (admins); people already in stay in
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/users:
+    get:
+      tags: [access]
+      operationId: listUsers
+      summary: Every account (admins); `pending` ones are access requests
+      responses:
+        "200":
+          description: Accounts, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/users/{id}:
+    patch:
+      tags: [access]
+      operationId: changeUser
+      summary: Changes a member's role, removes them or lets them back in (admins)
+      description: Removing someone ends their sessions at once. The last admin cannot be demoted or removed.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                role:
+                  $ref: "#/components/schemas/Role"
+                status:
+                  type: string
+                  enum: [active, rejected, removed]
+      responses:
+        "200":
+          description: The account now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/users/{id}/approve:
+    post:
+      tags: [access]
+      operationId: approveUser
+      summary: Approves an access request; the person gets in at once (admins)
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The account now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/users/{id}/reject:
+    post:
+      tags: [access]
+      operationId: rejectUser
+      summary: Declines an access request (admins)
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The account now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects:
     get:
       tags: [projects]
@@ -806,6 +968,12 @@ paths:
           $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
     Rev:
       name: rev
       in: query
@@ -1315,6 +1483,37 @@ components:
     Role:
       type: string
       enum: [admin, editor, commenter, viewer]
+    User:
+      type: object
+      required: [id, email, name, role, status, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: [string, "null"]
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          type: string
+          enum: [pending, active, rejected, removed]
+          description: "`pending` = access request waiting for an admin"
+        createdAt:
+          type: string
+    AllowRule:
+      type: object
+      required: [id, kind, value]
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [domain, email]
+        value:
+          type: string
     Me:
       type: object
       required: [kind, name, role, localMode]

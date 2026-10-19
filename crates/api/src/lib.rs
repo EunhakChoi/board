@@ -2,6 +2,7 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
+mod admin;
 mod auth;
 mod browse;
 mod captures;
@@ -14,7 +15,7 @@ mod web;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use board_engine::{Engine, ServiceState, SessionState};
 use board_model::{Actor, Role, VERSION};
@@ -33,6 +34,13 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/auth/oidc/start"),
     ("get", "/api/auth/oidc/callback"),
     ("post", "/api/auth/logout"),
+    ("get", "/api/admin/allow-rules"),
+    ("post", "/api/admin/allow-rules"),
+    ("delete", "/api/admin/allow-rules/{id}"),
+    ("get", "/api/admin/users"),
+    ("patch", "/api/admin/users/{id}"),
+    ("post", "/api/admin/users/{id}/approve"),
+    ("post", "/api/admin/users/{id}/reject"),
     ("get", "/api/projects"),
     ("post", "/api/projects"),
     ("get", "/api/projects/{key}"),
@@ -90,6 +98,18 @@ fn routes() -> Router<Engine> {
         .route("/api/auth/oidc/start", get(auth::start))
         .route("/api/auth/oidc/callback", get(auth::callback))
         .route("/api/auth/logout", post(auth::logout))
+        .route(
+            "/api/admin/allow-rules",
+            get(admin::allow_rules).post(admin::add_allow_rule),
+        )
+        .route(
+            "/api/admin/allow-rules/{id}",
+            delete(admin::remove_allow_rule),
+        )
+        .route("/api/admin/users", get(admin::users))
+        .route("/api/admin/users/{id}", patch(admin::change_user))
+        .route("/api/admin/users/{id}/approve", post(admin::approve))
+        .route("/api/admin/users/{id}/reject", post(admin::reject))
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/{key}",
