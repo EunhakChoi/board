@@ -314,14 +314,15 @@ export async function doctor(ctx: Context): Promise<number> {
             },
       );
     }
-    const host = (url: string | null) => (url ? new URL(url).hostname : "");
+    // Previews run project code: they need their own origin (another host, or another port).
+    const origin = (url: string | null) => (url ? new URL(url).origin : "");
     if (info.toolUrl && info.previewUrl) {
       checks.push(
-        host(info.toolUrl) !== host(info.previewUrl)
+        origin(info.toolUrl) !== origin(info.previewUrl)
           ? { state: "ok", text: `web tool ${info.toolUrl}, previews ${info.previewUrl}` }
           : {
               state: "fail",
-              text: `web tool ${info.toolUrl} and previews ${info.previewUrl} share a host`,
+              text: `web tool and previews share one origin (${info.toolUrl})`,
               hint: t("cli.doctor.sameHost", {}, ctx.locale),
             },
       );

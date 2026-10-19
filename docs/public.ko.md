@@ -8,10 +8,17 @@ Google (또는 다른 OpenID Connect provider) 로그인은 추가 선택.
 
 ## 준비물
 
-- **고정 주소** 2개 (도구용 · 미리보기용, 모두 HTTPS). 예: `https://board.example.com`,
-  `https://preview.board.example.com`. port 5280 · 5281 앞에 reverse proxy (Caddy, nginx) 또는
-  고정 domain tunnel (Cloudflare Tunnel, ngrok 예약 domain). 미리보기는 프로젝트 코드를
-  실행하므로 도구와 다른 host 여야 함 (도구 cookie 접근 차단).
+- **고정 주소** 2개 (도구용 · 미리보기용). 미리보기는 프로젝트 코드를 실행하므로 별도 origin
+  필요: 다른 host, 또는 같은 host 의 다른 port. 아래 중 하나:
+
+  | 방식 | 도구 | 미리보기 |
+  |---|---|---|
+  | 내 도메인 + reverse proxy 또는 Cloudflare Tunnel | `https://board.example.com` | `https://preview.board.example.com` |
+  | Tailscale Funnel (무료, 고정 이름) | `https://pc.tailnet.ts.net` | `https://pc.tailnet.ts.net:8443` |
+  | 사무실 LAN (시험용, 암호화 없음) | `http://192.168.0.10:5280` | `http://192.168.0.10:5281` |
+
+  Tailscale Funnel: `tailscale funnel --bg 5280`, `tailscale funnel --bg --https=8443 5281`.
+  이름 있는 주소 권장: 전달하는 link 에 IP 주소가 드러나지 않음.
 - **선택: OpenID Connect client** (초대 link 대신 Google 로그인을 쓸 때):
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
      *OAuth client ID* → *Web application*.

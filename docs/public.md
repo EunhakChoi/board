@@ -9,11 +9,17 @@ option on top.
 
 ## What you need
 
-- **A fixed address** for the tool and one for previews, both over HTTPS, e.g.
-  `https://board.example.com` and `https://preview.board.example.com`. A reverse proxy (Caddy,
-  nginx) or a tunnel with fixed domains (Cloudflare Tunnel, ngrok reserved domains) in front of
-  ports 5280 and 5281. Previews must be a different host from the tool: they run project code and
-  must never see the tool's cookies.
+- **A fixed address** for the tool and one for previews. Previews run project code, so they need
+  their own origin: another host, or the same host on another port. Any of these works:
+
+  | How | Tool | Previews |
+  |---|---|---|
+  | Your domain behind a proxy or Cloudflare Tunnel | `https://board.example.com` | `https://preview.board.example.com` |
+  | Tailscale Funnel (free, fixed name) | `https://pc.tailnet.ts.net` | `https://pc.tailnet.ts.net:8443` |
+  | Office LAN (testing; not encrypted) | `http://192.168.0.10:5280` | `http://192.168.0.10:5281` |
+
+  Tailscale Funnel: `tailscale funnel --bg 5280` and `tailscale funnel --bg --https=8443 5281`.
+  Prefer an address with a name: links people get then show no IP address.
 - **Optional: an OpenID Connect client**, for signing in with Google instead of invite links:
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
      *OAuth client ID* → *Web application*.

@@ -141,7 +141,7 @@ impl Config {
         );
         let oidc = oidc(&env)?;
         if public {
-            check_public(public_url.as_deref())?;
+            check_public(public_url.as_deref(), &preview_url)?;
         }
         let admin_emails = env("BOARD_ADMIN_EMAILS")
             .unwrap_or_default()
@@ -209,7 +209,13 @@ impl Config {
 
 /// A public server needs the address people open: invite links and the provider point there.
 /// Sign-in is always on (invite links, plus a provider when one is set up).
-fn check_public(public_url: Option<&str>) -> Result<(), String> {
+fn check_public(public_url: Option<&str>, preview_url: &str) -> Result<(), String> {
+    // Previews run project code: another host or port, never the tool's own origin.
+    if public_url.map(|u| u.trim_end_matches('/')) == Some(preview_url) {
+        return Err(
+            "BOARD_PREVIEW_URL must differ from BOARD_PUBLIC_URL (another host or port)".to_owned(),
+        );
+    }
     if public_url.is_none() {
         return Err("--public needs BOARD_PUBLIC_URL, the fixed address people open".to_owned());
     }
@@ -374,6 +380,15 @@ mod tests {
     fn public_needs_a_fixed_address_and_takes_an_optional_provider() {
         let error = config(&["--public"], &[("HOME", "/h")]).unwrap_err();
         assert!(error.contains("BOARD_PUBLIC_URL"));
+        let same = config(
+            &["--public"],
+            &[
+                ("HOME", "/h"),
+                ("BOARD_PUBLIC_URL", "https://board.example.com"),
+                ("BOARD_PREVIEW_URL", "https://board.example.com/"),
+            ],
+        );
+        assert!(same.unwrap_err().contains("BOARD_PREVIEW_URL"));
         let invites_only = config(
             &["--public"],
             &[

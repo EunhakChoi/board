@@ -143,7 +143,7 @@
   "cli.doctor.node": "board needs Node.js 24 or newer.",
   "cli.doctor.git": "Install git.",
   "cli.doctor.serve": "Start it: `board serve` (or `docker compose up`).",
-  "cli.doctor.sameHost": "Previews must be on another host (e.g. localhost vs 127.0.0.1) so they cannot read the tool's cookies. Set BOARD_PUBLIC_URL / BOARD_PREVIEW_URL.",
+  "cli.doctor.sameHost": "Previews need their own origin: another host or at least another port (e.g. https://board.example.ts.net:8443). Set BOARD_PUBLIC_URL / BOARD_PREVIEW_URL.",
   "cli.doctor.noDocker": "docker: not found (only needed for docker compose)",
   "cli.serve.missing": "Cannot find {name}. Build it (`cargo build --release`) or set its path (BOARD_SERVER_BIN, BOARD_RENDER_BIN, BOARD_WORKSPACE_MAIN).",
   "cli.status.behind": "newer than this checkout: run `board pull`",
