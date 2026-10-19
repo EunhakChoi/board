@@ -51,9 +51,31 @@ link 는 한 번 쓰면 끝. 관리자가 없는 동안은 시작할 때마다 �
 - **허용 목록** 의 주소 · domain: 첫 로그인 때 바로 입장 (editor).
 - 그 밖의 사람: 관리자가 **접속 승인 요청** 을 승인 · 거절할 때까지 "승인 대기 중" 화면.
 
+## 알림 · webhook
+
+- **알림함**: 새 댓글 → 프로젝트를 볼 수 있는 모든 사람. 답글 · 해결 · 다시 열기 → 그 댓글
+  thread 참여자. 접속 요청 → 관리자. 자기 행동은 알리지 않음. 웹은 상단 bell, agent 는
+  `board inbox`.
+- **webhook** (Team → Webhook, 관리자 전용, 로컬 모드에서도 동작): event 선택 (`comment.added`,
+  `comment.replied`, `comment.resolved`, `comment.reopened`, `version.created`,
+  `access.requested`) + 선택적으로 프로젝트 1개. 비공개 프로젝트 event 는 그 프로젝트로 지정한
+  webhook 에만 전달. 전달 형식 = JSON `POST`:
+
+  ```json
+  { "event": "comment.added", "project": "web", "actor": "Ann",
+    "text": "Ann commented on screen home: …", "url": "https://board.example.com/p/web/…",
+    "data": { "comment": 12, "kind": "screen", "target": "home", "body": "…" } }
+  ```
+
+  검증: `X-Board-Signature: sha256=<hex>` = webhook 생성 때 표시된 secret 으로 계산한
+  `<X-Board-Timestamp>.<body>` 의 HMAC-SHA256. 실패 시 2번 재시도 (2초 · 10초 후). Team 화면에
+  마지막 상태 표시. "테스트 전송" = `ping` 전송.
+
 ## 보안
 
 - session = `HttpOnly` · `SameSite=Lax` cookie, HTTPS 에서 `Secure`, 30일. 변경 요청은
   `x-board-client` header 도 필요 (다른 site 는 보낼 수 없음).
 - token 은 hash 만 저장. 거절 · 권한 회수 시 그 사람의 session 즉시 종료.
 - client secret 은 파일로도 지정 가능: `BOARD_OIDC_CLIENT_SECRET_FILE`.
+- webhook secret 은 server key (`BOARD_SECRET_KEY` 또는 `data/secret.key`) 에서 파생, 저장 안 함.
+  key 를 바꾸면 모든 webhook secret 도 바뀜.

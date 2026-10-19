@@ -23,7 +23,7 @@ export function startIdp(port: number): () => void {
       const back = url.searchParams.get("redirect_uri") ?? "";
       const state = url.searchParams.get("state") ?? "";
       const nonce = url.searchParams.get("nonce") ?? "";
-      const links = ["boss", "eve"].map((who) => {
+      const links = ["boss", "eve", "ann"].map((who) => {
         const code = `${who}.${Math.random().toString(36).slice(2)}`;
         nonces.set(code, nonce);
         const target = `${back}?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`;

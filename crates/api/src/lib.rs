@@ -9,6 +9,7 @@ mod captures;
 mod comments;
 mod error;
 mod links;
+mod notices;
 mod preview;
 mod projects;
 mod socket;
@@ -45,6 +46,13 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("patch", "/api/admin/users/{id}"),
     ("post", "/api/admin/users/{id}/approve"),
     ("post", "/api/admin/users/{id}/reject"),
+    ("get", "/api/me/notifications"),
+    ("post", "/api/me/notifications/read"),
+    ("get", "/api/admin/webhooks"),
+    ("post", "/api/admin/webhooks"),
+    ("delete", "/api/admin/webhooks/{id}"),
+    ("post", "/api/admin/webhooks/{id}/rotate"),
+    ("post", "/api/admin/webhooks/{id}/test"),
     ("get", "/api/me/cli-tokens"),
     ("post", "/api/me/cli-tokens"),
     ("delete", "/api/me/cli-tokens/{id}"),
@@ -204,6 +212,7 @@ fn routes() -> Router<Engine> {
             "/api/projects/{key}/comments/{id}/snapshot",
             get(comments::snapshot),
         )
+        .merge(notices::routes())
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 

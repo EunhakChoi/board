@@ -184,7 +184,7 @@ impl Engine {
             } else {
                 (Role::Editor, UserStatus::Pending)
             };
-            accounts.insert_user(&NewUser {
+            let user = accounts.insert_user(&NewUser {
                 id: format!("u{}", &random_hex()[..12]),
                 provider: provider.to_owned(),
                 subject: claims.subject.clone(),
@@ -193,7 +193,11 @@ impl Engine {
                 avatar_url: claims.picture.clone(),
                 role,
                 status,
-            })?
+            })?;
+            if user.status == UserStatus::Pending {
+                self.access_requested(&user);
+            }
+            user
         };
         if user.status == UserStatus::Pending {
             self.ports.realtime.publish_admins(
@@ -299,7 +303,7 @@ fn random_bytes() -> [u8; 32] {
     bytes
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     bytes.iter().fold(String::new(), |mut s, b| {
         let _ = write!(s, "{b:02x}");

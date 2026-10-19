@@ -568,7 +568,65 @@ pub trait Realtime: Send + Sync {
     fn publish(&self, project: &str, kind: &str, data: serde_json::Value);
     /// An event only admins get, wherever they are.
     fn publish_admins(&self, kind: &str, data: serde_json::Value);
+    /// Tells these people (user ids) their inbox changed, wherever they are connected.
+    fn notify(&self, people: &[String]);
     fn kick(&self, who: Kick);
     /// Marks someone working on the project from their own checkout (until they push).
     fn working(&self, project: &str, person: &board_model::Person, on: bool);
+}
+
+/// A notification to store for one member.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewNotification {
+    pub user: String,
+    pub kind: String,
+    pub project: Option<String>,
+    pub actor: String,
+    pub text: String,
+    pub link: String,
+    pub data: serde_json::Value,
+}
+
+/// A webhook to store. `salt` with the server key gives the signing secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewWebhook {
+    pub id: String,
+    pub url: String,
+    pub events: Vec<String>,
+    pub project: Option<String>,
+    pub salt: String,
+    pub secret_last4: String,
+    pub created_by: String,
+}
+
+/// Inbox notifications and webhooks kept by the database.
+pub trait Notices: Send + Sync {
+    fn insert_notifications(&self, notifications: &[NewNotification]) -> Result<(), StoreError>;
+    /// Newest first, at most `limit`.
+    fn notifications(
+        &self,
+        user: &str,
+        unread_only: bool,
+        limit: u32,
+    ) -> Result<Vec<board_model::Notification>, StoreError>;
+    fn unread_count(&self, user: &str) -> Result<u32, StoreError>;
+    /// Marks these (or, with `None`, all) of the user's notifications read.
+    fn mark_read(&self, user: &str, ids: Option<&[u64]>) -> Result<(), StoreError>;
+    /// Every webhook with its salt.
+    fn webhooks(&self) -> Result<Vec<(board_model::Webhook, String)>, StoreError>;
+    fn insert_webhook(&self, hook: &NewWebhook) -> Result<board_model::Webhook, StoreError>;
+    fn delete_webhook(&self, id: &str) -> Result<bool, StoreError>;
+    fn set_webhook_salt(&self, id: &str, salt: &str, last4: &str) -> Result<bool, StoreError>;
+    /// The outcome of the latest delivery: an HTTP status, or an error when none came back.
+    fn record_delivery(
+        &self,
+        id: &str,
+        status: Option<u16>,
+        error: Option<&str>,
+    ) -> Result<(), StoreError>;
+}
+
+/// Sends one webhook POST and returns the HTTP status (`board-server` over HTTPS).
+pub trait WebhookSender: Send + Sync {
+    fn post(&self, url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String>;
 }

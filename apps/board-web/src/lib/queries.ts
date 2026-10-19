@@ -410,3 +410,54 @@ export function useProjectAccessActions(key: string) {
     }),
   };
 }
+
+/** The signed-in member's inbox. Realtime nudges refetch it; the poll covers pages without a room. */
+export function useInbox(enabled: boolean) {
+  return useQuery({
+    queryKey: ["notifications"],
+    enabled,
+    queryFn: () => unwrap(api.GET("/api/me/notifications", { params: { query: { limit: 30 } } })),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarkRead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids?: number[]) =>
+      unwrap(api.POST("/api/me/notifications/read", { body: ids ? { ids } : {} })),
+    onSettled: () => client.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useWebhooks() {
+  return useQuery({
+    queryKey: ["admin", "webhooks"],
+    queryFn: () => unwrap(api.GET("/api/admin/webhooks")),
+  });
+}
+
+export function useWebhookActions() {
+  const client = useQueryClient();
+  const settled = () => client.invalidateQueries({ queryKey: ["admin", "webhooks"] });
+  const hook = (id: string) => ({ params: { path: { id } } });
+  return {
+    create: useMutation({
+      mutationFn: (body: { url: string; events: string[]; project?: string | null }) =>
+        unwrap(api.POST("/api/admin/webhooks", { body })),
+      onSettled: settled,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => unwrapEmpty(api.DELETE("/api/admin/webhooks/{id}", hook(id))),
+      onSettled: settled,
+    }),
+    rotate: useMutation({
+      mutationFn: (id: string) => unwrap(api.POST("/api/admin/webhooks/{id}/rotate", hook(id))),
+      onSettled: settled,
+    }),
+    test: useMutation({
+      mutationFn: (id: string) => unwrap(api.POST("/api/admin/webhooks/{id}/test", hook(id))),
+      onSettled: settled,
+    }),
+  };
+}

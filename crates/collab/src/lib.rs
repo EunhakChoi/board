@@ -203,6 +203,22 @@ impl Realtime for Hub {
         });
     }
 
+    fn notify(&self, people: &[String]) {
+        // Only a nudge: clients refetch their inbox.
+        let message = json!({ "type": "inbox" }).to_string();
+        self.with(|state| {
+            for room in state.rooms.values() {
+                for client in room
+                    .clients
+                    .values()
+                    .filter(|c| people.contains(&c.peer.person))
+                {
+                    let _ = client.sender.send(Outgoing::Text(message.clone()));
+                }
+            }
+        });
+    }
+
     fn kick(&self, who: Kick) {
         self.with(|state| {
             for (project, room) in &mut state.rooms {
@@ -323,6 +339,16 @@ mod tests {
         }
         let lost = hello(&hub.join("web", peer("u3", "user", Role::Editor), Some(2)));
         assert_eq!(lost["reload"], true);
+    }
+
+    #[test]
+    fn inbox_nudges_reach_only_those_people() {
+        let hub = Hub::new();
+        let mut ann = hub.join("web", peer("u1", "user", Role::Editor), None);
+        let mut bob = hub.join("other", peer("u2", "user", Role::Editor), None);
+        hub.notify(&["u2".into()]);
+        assert_eq!(next(&mut bob.receiver)["type"], "inbox");
+        assert!(ann.receiver.try_recv().is_err());
     }
 
     #[test]

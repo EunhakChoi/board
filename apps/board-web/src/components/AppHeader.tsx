@@ -1,6 +1,7 @@
 import { LogOut, Moon, Sun, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
+import { Inbox } from "@/components/Inbox";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useLocale, useT } from "@/lib/i18n";
@@ -27,7 +28,9 @@ export function AppHeader({ children, actions }: { children?: ReactNode; actions
       <div className="flex min-w-0 flex-1 items-center gap-3">{children}</div>
       <div className="flex items-center gap-2">
         {actions}
-        {signedIn?.role === "admin" && signedIn.kind === "user" && (
+        <Inbox />
+        {((signedIn?.role === "admin" && signedIn.kind === "user") ||
+          me.data?.kind === "local") && (
           <Button variant="ghost" size="sm" asChild>
             <Link to="/team">
               <Users />

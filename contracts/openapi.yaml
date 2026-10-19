@@ -17,6 +17,8 @@ tags:
   - name: projects
   - name: captures
   - name: comments
+  - name: inbox
+  - name: settings
 paths:
   /api/health:
     get:
@@ -315,6 +317,171 @@ paths:
           $ref: "#/components/responses/Invalid"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/me/notifications:
+    get:
+      tags: [inbox]
+      operationId: listNotifications
+      summary: The caller's notifications, newest first (empty in local mode and for guests)
+      parameters:
+        - name: unread
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Notifications and how many are unread
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notifications, unread]
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+                  unread:
+                    type: integer
+  /api/me/notifications/read:
+    post:
+      tags: [inbox]
+      operationId: markNotificationsRead
+      summary: Marks these notifications read, or all of them when `ids` is left out
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        "200":
+          description: How many stay unread
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unread]
+                properties:
+                  unread:
+                    type: integer
+  /api/admin/webhooks:
+    get:
+      tags: [settings]
+      operationId: listWebhooks
+      summary: Webhooks and the events they can choose (admin)
+      responses:
+        "200":
+          description: Webhooks (without secrets)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [webhooks, events]
+                properties:
+                  webhooks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Webhook"
+                  events:
+                    type: array
+                    items:
+                      type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [settings]
+      operationId: createWebhook
+      summary: Adds a webhook; its signing secret is shown only now (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url]
+              properties:
+                url:
+                  type: string
+                events:
+                  type: array
+                  description: Empty or left out means every event
+                  items:
+                    type: string
+                project:
+                  type: [string, "null"]
+                  description: Only this project's events (needed for a private project)
+      responses:
+        "201":
+          $ref: "#/components/responses/WebhookSecret"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/webhooks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [settings]
+      operationId: deleteWebhook
+      summary: Removes a webhook (admin)
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/webhooks/{id}/rotate:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [settings]
+      operationId: rotateWebhookSecret
+      summary: Gives the webhook a new signing secret, shown only now; the old one stops working
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookSecret"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/webhooks/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [settings]
+      operationId: testWebhook
+      summary: Sends a `ping` delivery now and records the outcome
+      responses:
+        "200":
+          description: The webhook with `lastStatus` / `lastError` of this delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/me/cli-tokens:
@@ -1481,6 +1648,18 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
   responses:
+    WebhookSecret:
+      description: The webhook and its signing secret (shown once)
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [webhook, secret]
+            properties:
+              webhook:
+                $ref: "#/components/schemas/Webhook"
+              secret:
+                type: string
     Changed:
       description: Someone wrote to it since you read it; `detail.rev` is its revision now
       content:
@@ -1968,6 +2147,58 @@ components:
           description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+    Notification:
+      type: object
+      required: [id, kind, project, actor, text, link, data, createdAt, readAt]
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [comment.added, comment.replied, comment.resolved, comment.reopened, access.requested]
+        project:
+          type: [string, "null"]
+        actor:
+          type: string
+        text:
+          type: string
+          description: One line for people
+        link:
+          type: string
+          description: Path on the tool to open
+        data:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+        readAt:
+          type: [string, "null"]
+    Webhook:
+      type: object
+      required: [id, url, events, project, secretLast4, createdBy, createdAt, lastStatus, lastError, lastDeliveryAt]
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        project:
+          type: [string, "null"]
+        secretLast4:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        lastStatus:
+          type: [integer, "null"]
+        lastError:
+          type: [string, "null"]
+        lastDeliveryAt:
+          type: [string, "null"]
     CliToken:
       type: object
       required: [id, name, via, createdAt, lastUsedAt]

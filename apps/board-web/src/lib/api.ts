@@ -14,6 +14,8 @@ export type Project = Schemas["Project"];
 export type User = Schemas["User"];
 export type AllowRule = Schemas["AllowRule"];
 export type Role = Schemas["Role"];
+export type Notification = Schemas["Notification"];
+export type Webhook = Schemas["Webhook"];
 export type Theme = "light" | "dark";
 export type TargetKind = "screen" | "story";
 

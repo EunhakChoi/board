@@ -8,7 +8,7 @@ import {
   MonitorPlay,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { CommentThread } from "@/components/CommentThread";
 import { Cursors, Selections, usePointerShare } from "@/components/Presence";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,12 @@ export function Target() {
   const [mode, setMode] = useState<"capture" | "live">("capture");
   const [pick, setPick] = useState<Selection | undefined>();
   const [focus, setFocus] = useState<number | undefined>();
+  // `?comment=12` (from a notification) opens on that comment.
+  const [search] = useSearchParams();
+  const linked = Number(search.get("comment")) || undefined;
+  useEffect(() => {
+    if (linked) setFocus(linked);
+  }, [linked]);
 
   const item = useMemo(() => {
     if (!manifest) return undefined;

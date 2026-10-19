@@ -36,11 +36,23 @@ fn engine(local_mode: bool) -> Engine {
             renderer: Arc::new(FakeRenderer),
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
             comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
-            accounts: db,
+            accounts: db.clone(),
+            notices: db,
+            webhooks: Arc::new(TeapotSender),
             realtime: Arc::new(board_collab::Hub::new()),
         },
         local_mode,
     )
+    .with_secret([3; 32])
+}
+
+/// Every webhook receiver answers 418, so tests can tell a delivery happened.
+struct TeapotSender;
+
+impl board_engine::WebhookSender for TeapotSender {
+    fn post(&self, _: &str, _: &[(&str, String)], _: &[u8]) -> Result<u16, String> {
+        Ok(418)
+    }
 }
 
 /// Every build is ready at once and has one page.
@@ -1259,4 +1271,124 @@ async fn realtime_room_relays_presence_and_events() {
         .headers_mut()
         .insert("origin", "https://evil.test".parse().unwrap());
     assert!(tokio_tungstenite::connect_async(request).await.is_err());
+}
+
+/// Boss (admin) and Ann (editor) signed in, and a project `web`; returns their cookies.
+async fn boss_and_ann() -> (Engine, String, String) {
+    let (engine, idp) = signed_in_engine();
+    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
+    let boss = boss.unwrap();
+    json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/allow-rules",
+            &boss,
+            Some(json!({"kind": "domain", "value": "example.com"})),
+        ),
+    )
+    .await;
+    let (ann, _) = browser_sign_in(&engine, &idp, "ann", "").await;
+    let ann = ann.unwrap();
+    json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/projects",
+            &boss,
+            Some(json!({"key": "web", "title": "Web"})),
+        ),
+    )
+    .await;
+    (engine, boss, ann)
+}
+
+#[tokio::test]
+async fn inbox_gets_comments_and_marks_read() {
+    let (engine, boss, ann) = boss_and_ann().await;
+    let (status, _) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/projects/web/comments",
+            &boss,
+            Some(
+                json!({"kind": "screen", "target": "home", "at": {"x": 1, "y": 1}, "body": "Look"}),
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, inbox) = json_of(
+        &engine,
+        as_member("GET", "/api/me/notifications?unread=true", &ann, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(inbox["unread"], 1);
+    assert_eq!(inbox["notifications"][0]["kind"], "comment.added");
+    assert_eq!(
+        inbox["notifications"][0]["text"],
+        "boss commented on screen home: Look"
+    );
+    let (_, read) = json_of(
+        &engine,
+        as_member("POST", "/api/me/notifications/read", &ann, Some(json!({}))),
+    )
+    .await;
+    assert_eq!(read["unread"], 0);
+}
+
+#[tokio::test]
+async fn webhooks_are_admin_settings_with_a_secret_shown_once() {
+    let (engine, boss, ann) = boss_and_ann().await;
+    // Webhooks are for admins; the secret comes back once.
+    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/webhooks", &ann, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, created) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/webhooks",
+            &boss,
+            Some(json!({"url": "https://hooks.test/x", "events": ["comment.added"]})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let secret = created["secret"].as_str().unwrap();
+    let id = created["webhook"]["id"].as_str().unwrap().to_owned();
+    assert!(secret.ends_with(created["webhook"]["secretLast4"].as_str().unwrap()));
+    let (status, tested) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            &format!("/api/admin/webhooks/{id}/test"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(tested["lastStatus"], 418);
+    let (_, list) = json_of(
+        &engine,
+        as_member("GET", "/api/admin/webhooks", &boss, None),
+    )
+    .await;
+    assert_eq!(list["webhooks"].as_array().unwrap().len(), 1);
+    assert!(list["webhooks"][0].get("secret").is_none());
+    assert!(
+        list["events"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("version.created"))
+    );
+    let (status, _) = json_of(
+        &engine,
+        as_member("DELETE", &format!("/api/admin/webhooks/{id}"), &boss, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
 }
