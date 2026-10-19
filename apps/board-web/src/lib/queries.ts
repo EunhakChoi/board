@@ -6,6 +6,7 @@ import {
   type Comment,
   HttpError,
   type Role,
+  type ShareMode,
   type TargetKind,
   type Theme,
   unwrap,
@@ -525,4 +526,33 @@ export function useInviteActions() {
 
 export function useOwnSignInLink() {
   return useMutation({ mutationFn: () => unwrap(api.POST("/api/me/sign-in-link")) });
+}
+
+export function useSharing(enabled: boolean) {
+  return useQuery({
+    queryKey: ["admin", "sharing"],
+    queryFn: () => unwrap(api.GET("/api/admin/sharing")),
+    enabled,
+  });
+}
+
+export function useSharingActions() {
+  const client = useQueryClient();
+  const settled = () => {
+    client.invalidateQueries({ queryKey: ["admin", "sharing"] });
+    // Turning sharing on the first time makes this machine act as the new owner.
+    client.invalidateQueries({ queryKey: ["me"] });
+    client.invalidateQueries({ queryKey: ["system"] });
+  };
+  return {
+    start: useMutation({
+      mutationFn: (body: { mode: ShareMode; url: string; ownerName?: string }) =>
+        unwrap(api.PUT("/api/admin/sharing", { body })),
+      onSettled: settled,
+    }),
+    stop: useMutation({
+      mutationFn: () => unwrap(api.DELETE("/api/admin/sharing")),
+      onSettled: settled,
+    }),
+  };
 }

@@ -307,6 +307,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether and where this local board is shared (admin) */
+        get: operations["getSharing"];
+        /** Turns sharing on or changes its address; the first time makes the owner account (this machine only) */
+        put: operations["startSharing"];
+        post?: never;
+        /** Turns sharing off (this machine only) */
+        delete: operations["stopSharing"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/invites": {
         parameters: {
             query?: never;
@@ -1373,6 +1392,22 @@ export interface components {
             status: "pending" | "active" | "rejected" | "removed";
             createdAt: string;
         };
+        /**
+         * @description `address`: an address set up by hand (reverse proxy or tunnel to the remote door)
+         * @enum {string}
+         */
+        ShareMode: "address";
+        Sharing: {
+            /** @description Set by the server's environment (--public); the page only shows it */
+            fixed: boolean;
+            mode: components["schemas"]["ShareMode"] | null;
+            url: string | null;
+            /** @description The account this machine acts as once sharing was turned on */
+            owner: {
+                id: string;
+                name: string;
+            } | null;
+        };
         Invite: {
             id: string;
             role: components["schemas"]["Role"];
@@ -2045,6 +2080,81 @@ export interface operations {
             };
             400: components["responses"]["Invalid"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getSharing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sharing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sharing"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    startSharing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: components["schemas"]["ShareMode"];
+                    /** @description The address other machines open (it must reach the remote door) */
+                    url: string;
+                    /** @description Needed the first time */
+                    ownerName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sharing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sharing"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    stopSharing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sharing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sharing"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listInvites: {

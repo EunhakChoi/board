@@ -60,6 +60,20 @@ printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> 
 docker compose up -d
 ```
 
+## Share it from this machine
+
+A local board can be opened to others without restarting it. It has a second port, the **remote
+door** (`127.0.0.1:5284`, `BOARD_REMOTE_BIND`): closed until sharing is on, then everyone who
+comes through it signs in with an invite link.
+
+1. Point a tunnel or reverse proxy at `127.0.0.1:5284` — never at 5280, which trusts everyone.
+2. In **Team › Sharing**, enter your name and the address people open, then turn sharing on.
+3. Invite people from the same page.
+
+This machine keeps working without sign-in, as you (the owner account made in step 2). Turning
+sharing off closes the remote door; accounts stay for next time. Previews come through the same
+address, sandboxed. For a server that is only ever used by a team, see [public mode](public.md).
+
 ## The CLI
 
 The CLI is not published yet; run it from the clone (Node.js 24+, pnpm 12):

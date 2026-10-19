@@ -8,6 +8,9 @@ const DEFAULT_BIND: &str = "127.0.0.1:5280";
 /// Default preview origin: same machine, other port. The tool is opened as `localhost`, previews as
 /// `127.0.0.1`, so the two never share cookies.
 const DEFAULT_PREVIEW_BIND: &str = "127.0.0.1:5281";
+/// Default remote door of a local board: what tunnels and reverse proxies point at once sharing
+/// is on. It always signs people in.
+const DEFAULT_REMOTE_BIND: &str = "127.0.0.1:5284";
 const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
 const DEFAULT_RENDER_URL: &str = "http://127.0.0.1:5283";
 
@@ -40,6 +43,8 @@ pub struct Config {
     /// `BOARD_CONTAINER=true`: listening on every container address is still local mode. Only for
     /// containers whose ports are published on the host's loopback (`127.0.0.1:5280:5280`).
     pub container: bool,
+    /// The remote door of a local board (`BOARD_REMOTE_BIND`); none on a public server.
+    pub remote_bind: Option<SocketAddr>,
     /// Preview listener (`BOARD_PREVIEW_BIND`).
     pub preview_bind: SocketAddr,
     /// Preview origin as browsers reach it (`BOARD_PREVIEW_URL`, default `http://<preview bind>`).
@@ -108,6 +113,7 @@ impl Config {
         if preview_bind == bind {
             return Err("BOARD_PREVIEW_BIND must differ from BOARD_BIND".to_owned());
         }
+        let remote_bind = remote_bind(&env, public, bind, preview_bind)?;
         let public_url = env("BOARD_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned());
         if let Some(url) = &public_url
             && !(url.starts_with("http://") || url.starts_with("https://"))
@@ -154,6 +160,7 @@ impl Config {
             bind,
             public,
             container,
+            remote_bind,
             preview_bind,
             preview_url,
             workspace_url,
@@ -226,6 +233,26 @@ fn preview_url(
     } else {
         Err(format!("BOARD_PREVIEW_URL {url:?} must be an http(s) URL"))
     }
+}
+
+/// The remote door of a local board (a public server has none: every request signs in).
+fn remote_bind(
+    env: &impl Fn(&str) -> Option<String>,
+    public: bool,
+    bind: SocketAddr,
+    preview_bind: SocketAddr,
+) -> Result<Option<SocketAddr>, String> {
+    if public {
+        return Ok(None);
+    }
+    let text = env("BOARD_REMOTE_BIND").unwrap_or_else(|| DEFAULT_REMOTE_BIND.to_owned());
+    let addr: SocketAddr = text
+        .parse()
+        .map_err(|_| format!("BOARD_REMOTE_BIND {text:?} is not an address like 127.0.0.1:5284"))?;
+    if addr == bind || addr == preview_bind {
+        return Err("BOARD_REMOTE_BIND must differ from the other addresses".to_owned());
+    }
+    Ok(Some(addr))
 }
 
 /// A public server needs the address people open: invite links and the provider point there.

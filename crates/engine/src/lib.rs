@@ -14,10 +14,13 @@ mod ports;
 mod preview;
 mod projects;
 mod realtime;
+mod sharing;
 mod sheet;
 mod tokens;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+use sharing::Live;
 
 pub use access::AccessChange;
 pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
@@ -34,8 +37,9 @@ pub use ports::{
     NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
     Settings, Shot, StoreError, WebhookSender, Workspace, WorkspaceError,
 };
-pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings};
+pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};
+pub use sharing::{Owner, ShareMode, ShareRequest, Sharing, SharingStatus};
 pub use sheet::SheetItem;
 pub use tokens::{DEVICE_INTERVAL_SECS, DevicePoll, DeviceRequest, DeviceStart, NewCliToken};
 
@@ -68,8 +72,8 @@ pub struct Engine {
     ports: Ports,
     local_mode: bool,
     preview: Option<Arc<PreviewSettings>>,
-    tool_url: Option<Arc<str>>,
-    sign_in: Option<Arc<SignInSettings>>,
+    /// What can change while running: the address and sign-in, when sharing turns on or off.
+    live: Arc<RwLock<Live>>,
     pending: Arc<auth::PendingSignIns>,
     secret: Option<Arc<[u8; 32]>>,
 }
@@ -88,8 +92,7 @@ impl Engine {
             ports,
             local_mode,
             preview: None,
-            tool_url: None,
-            sign_in: None,
+            live: Arc::default(),
             pending: Arc::default(),
             secret: None,
         }
@@ -104,8 +107,8 @@ impl Engine {
 
     /// Turns sign-in on (a public server): accounts come from the identity provider.
     #[must_use]
-    pub fn with_sign_in(mut self, settings: SignInSettings) -> Self {
-        self.sign_in = Some(Arc::new(settings));
+    pub fn with_sign_in(self, settings: SignInSettings) -> Self {
+        self.write_live(|live| live.base_sign_in = Some(Arc::new(settings)));
         self
     }
 
@@ -118,9 +121,23 @@ impl Engine {
 
     /// Where people open the web tool, for links (`board url`, notifications).
     #[must_use]
-    pub fn with_tool_url(mut self, url: &str) -> Self {
-        self.tool_url = Some(url.trim_end_matches('/').into());
+    pub fn with_tool_url(self, url: &str) -> Self {
+        self.write_live(|live| live.home_url = Some(url.trim_end_matches('/').into()));
         self
+    }
+
+    pub(crate) fn read_live(&self) -> std::sync::RwLockReadGuard<'_, Live> {
+        self.live
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(crate) fn write_live(&self, change: impl FnOnce(&mut Live)) {
+        let mut live = self
+            .live
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        change(&mut live);
     }
 
     /// Versions, links and whether the internal services answer.
@@ -133,12 +150,12 @@ impl Engine {
         };
         Ok(System {
             latest: self.latest_version()?,
-            tool_url: self.tool_url.as_deref().map(str::to_owned),
+            tool_url: self.tool_url(),
             preview_url: self.preview.as_ref().map(|p| p.origin.clone()),
             local_mode: self.local_mode,
             workspace: state(self.ports.workspace.health()),
             render: state(self.ports.renderer.health()),
-            sign_in: match &self.sign_in {
+            sign_in: match &self.sign_in() {
                 Some(settings) => Some(SignInStatus {
                     provider: settings.identity.as_ref().map(|i| i.provider().to_owned()),
                     callback_url: settings
@@ -158,15 +175,19 @@ impl Engine {
 
     /// True when previews are served from the tool's own address (one address for both).
     pub fn previews_on_tool(&self) -> bool {
-        match (&self.preview, &self.tool_url) {
-            (Some(preview), Some(tool)) => preview.origin.trim_end_matches('/') == tool.as_ref(),
+        match (&self.preview, self.tool_url()) {
+            (Some(preview), Some(tool)) => preview.origin.trim_end_matches('/') == tool,
             _ => false,
         }
     }
 
     /// Where people open the web tool, when known.
-    pub fn tool_url(&self) -> Option<&str> {
-        self.tool_url.as_deref()
+    pub fn tool_url(&self) -> Option<String> {
+        let live = self.read_live();
+        live.sharing
+            .as_ref()
+            .map(|s| s.url.clone())
+            .or_else(|| live.home_url.as_deref().map(str::to_owned))
     }
 
     /// True while the server only listens on localhost: every request acts as the built-in admin.

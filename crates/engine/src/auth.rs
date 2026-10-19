@@ -98,7 +98,7 @@ pub enum SessionState {
 impl Engine {
     /// Whether sign-in is configured (always true for a public server).
     pub fn sign_in_enabled(&self) -> bool {
-        self.sign_in.is_some()
+        self.sign_in().is_some()
     }
 
     /// Starts a sign-in: remembers the round trip and returns the provider URL to send the browser
@@ -175,7 +175,7 @@ impl Engine {
                 .user(&user.id)?
                 .ok_or(EngineError::NotFound("user"))?
         } else {
-            let (role, status) = if setup || is_admin_email(settings, &email) {
+            let (role, status) = if setup || is_admin_email(&settings, &email) {
                 (Role::Admin, UserStatus::Active)
             } else if !accounts.has_admin()? {
                 return Ok(SignIn::Refused(Refusal::SetupRequired));
@@ -247,15 +247,14 @@ impl Engine {
         Ok(Some(token))
     }
 
-    pub(crate) fn sign_in_settings(&self) -> Result<&SignInSettings, EngineError> {
-        self.sign_in
-            .as_deref()
+    pub(crate) fn sign_in_settings(&self) -> Result<Arc<SignInSettings>, EngineError> {
+        self.sign_in()
             .ok_or_else(|| EngineError::Unavailable("sign-in is not configured".into()))
     }
 
     /// The identity provider, when one is set up.
-    fn identity(&self) -> Result<&dyn Identity, EngineError> {
-        self.sign_in_settings()?.identity.as_deref().ok_or_else(|| {
+    fn identity(&self) -> Result<Arc<dyn Identity>, EngineError> {
+        self.sign_in_settings()?.identity.clone().ok_or_else(|| {
             EngineError::Unavailable(
                 "no sign-in provider is set up; ask an admin for an invite link".into(),
             )

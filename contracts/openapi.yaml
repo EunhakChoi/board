@@ -402,6 +402,67 @@ paths:
           $ref: "#/components/responses/Invalid"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/admin/sharing:
+    get:
+      tags: [admin]
+      operationId: getSharing
+      summary: Whether and where this local board is shared (admin)
+      responses:
+        "200":
+          description: Sharing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sharing"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [admin]
+      operationId: startSharing
+      summary: Turns sharing on or changes its address; the first time makes the owner account (this machine only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode, url]
+              properties:
+                mode:
+                  $ref: "#/components/schemas/ShareMode"
+                url:
+                  type: string
+                  description: The address other machines open (it must reach the remote door)
+                ownerName:
+                  type: string
+                  description: Needed the first time
+      responses:
+        "200":
+          description: Sharing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sharing"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [admin]
+      operationId: stopSharing
+      summary: Turns sharing off (this machine only)
+      responses:
+        "200":
+          description: Sharing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sharing"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/admin/invites:
     get:
       tags: [admin]
@@ -2366,6 +2427,34 @@ components:
           description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+    ShareMode:
+      type: string
+      enum: [address]
+      description: "`address`: an address set up by hand (reverse proxy or tunnel to the remote door)"
+    Sharing:
+      type: object
+      required: [fixed, mode, url, owner]
+      properties:
+        fixed:
+          type: boolean
+          description: Set by the server's environment (--public); the page only shows it
+        mode:
+          oneOf:
+            - $ref: "#/components/schemas/ShareMode"
+            - type: "null"
+        url:
+          type: [string, "null"]
+        owner:
+          description: The account this machine acts as once sharing was turned on
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+            - type: "null"
     Invite:
       type: object
       required: [id, role, user, label, createdBy, createdAt, expiresAt, usedAt, usedBy]

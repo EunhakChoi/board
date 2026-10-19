@@ -160,7 +160,7 @@ impl Engine {
         self.insert_member(&name, role)
     }
 
-    fn insert_member(&self, name: &str, role: Role) -> Result<User, EngineError> {
+    pub(crate) fn insert_member(&self, name: &str, role: Role) -> Result<User, EngineError> {
         let id = format!("u{}", &random_hex()[..12]);
         Ok(self.ports.accounts.insert_user(&NewUser {
             id: id.clone(),
@@ -212,7 +212,7 @@ impl Engine {
     }
 }
 
-fn check_name(name: &str) -> Result<String, EngineError> {
+pub(crate) fn check_name(name: &str) -> Result<String, EngineError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME {
         return Err(EngineError::Invalid(format!(

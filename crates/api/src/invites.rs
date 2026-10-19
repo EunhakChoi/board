@@ -174,7 +174,7 @@ fn created(base: &str, made: NewInviteLink) -> Created {
 }
 
 fn base(engine: &Engine) -> String {
-    engine.tool_url().unwrap_or_default().to_owned()
+    engine.tool_url().unwrap_or_default()
 }
 
 fn secure(engine: &Engine) -> bool {

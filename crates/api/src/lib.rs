@@ -13,6 +13,7 @@ mod links;
 mod notices;
 mod preview;
 mod projects;
+mod sharing;
 mod socket;
 mod tokens;
 mod web;
@@ -20,13 +21,14 @@ mod web;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::HeaderMap;
+use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use board_engine::{Engine, ServiceState, SessionState};
 use board_model::{Actor, Role, VERSION};
 use serde::Serialize;
 
-pub use auth::{CLIENT_HEADER, Caller, SESSION_COOKIE};
+pub use auth::{CLIENT_HEADER, Caller, LocalDoor, Remote, SESSION_COOKIE};
 pub use error::ApiError;
 pub use preview::{PreviewOrigin, preview_router};
 
@@ -55,6 +57,9 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("delete", "/api/admin/invites/{id}"),
     ("post", "/api/admin/users/{id}/sign-in-link"),
     ("post", "/api/me/sign-in-link"),
+    ("get", "/api/admin/sharing"),
+    ("put", "/api/admin/sharing"),
+    ("delete", "/api/admin/sharing"),
     ("get", "/api/me/notifications"),
     ("post", "/api/me/notifications/read"),
     ("get", "/api/admin/webhooks"),
@@ -135,6 +140,37 @@ pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
         sandbox: true,
     };
     app.merge(preview::preview_routes(engine, &origin))
+}
+
+/// The remote door of a local board: what a tunnel or reverse proxy points at. Everyone signs
+/// in here, previews are served sandboxed under the same address, and while sharing is off it
+/// answers nothing.
+pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
+    let origin = PreviewOrigin {
+        frame_ancestors: vec!["'self'".to_owned()],
+        sandbox: true,
+    };
+    routes()
+        .fallback(move |uri: axum::http::Uri| web::serve(web_dir.clone(), uri))
+        .with_state(engine.clone())
+        .merge(preview::preview_routes(engine.clone(), &origin))
+        .layer(axum::middleware::from_fn(
+            move |mut request: axum::extract::Request, next: axum::middleware::Next| {
+                let open = engine.remote_open();
+                async move {
+                    if !open {
+                        return ApiError::new(
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            "sharing_off",
+                            "This board is not shared right now",
+                        )
+                        .into_response();
+                    }
+                    request.extensions_mut().insert(Remote);
+                    next.run(request).await
+                }
+            },
+        ))
 }
 
 fn routes() -> Router<Engine> {
@@ -233,6 +269,7 @@ fn routes() -> Router<Engine> {
         )
         .merge(notices::routes())
         .merge(invites::routes())
+        .merge(sharing::routes())
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -301,6 +338,7 @@ struct Service {
 /// admins see why a service fails.
 async fn system(
     State(engine): State<Engine>,
+    LocalDoor(local): LocalDoor,
     caller: Option<Caller>,
 ) -> Result<Json<SystemInfo>, ApiError> {
     let admin = caller.is_some_and(|Caller(actor)| actor.role() == Role::Admin);
@@ -320,7 +358,7 @@ async fn system(
         latest: system.latest,
         tool_url: system.tool_url,
         preview_url: system.preview_url,
-        local_mode: system.local_mode,
+        local_mode: local,
         services: Services {
             workspace: service(system.workspace),
             render: service(system.render),
@@ -355,10 +393,13 @@ struct Me {
 
 /// Who is calling. Unlike other routes this answers for people still waiting for approval, so
 /// the tool can show them the waiting page.
-async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>, ApiError> {
-    let local_mode = engine.local_mode();
+async fn me(
+    State(engine): State<Engine>,
+    LocalDoor(local_mode): LocalDoor,
+    headers: HeaderMap,
+) -> Result<Json<Me>, ApiError> {
     let state = if local_mode {
-        SessionState::Active(Actor::Local)
+        SessionState::Active(engine.local_actor())
     } else if let Some(token) = auth::bearer(&headers) {
         let engine = engine.clone();
         let actor = projects::blocking(move || engine.token_actor(&token))

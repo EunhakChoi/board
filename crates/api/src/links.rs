@@ -10,6 +10,7 @@ use board_engine::{Engine, SESSION_SECS};
 use board_model::{Role, ShareLink};
 use serde::{Deserialize, Serialize};
 
+use crate::auth::LocalDoor;
 use crate::auth::session_cookie;
 use crate::projects::blocking;
 use crate::{ApiError, Caller};
@@ -51,7 +52,7 @@ pub async fn create(
     Path(key): Path<String>,
     Json(input): Json<NewLinkInput>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
-    let base = engine.tool_url().unwrap_or_default().to_owned();
+    let base = engine.tool_url().unwrap_or_default();
     let created =
         blocking(move || engine.create_share_link(&actor, &key, input.role, &input.label)).await?;
     Ok((
@@ -108,11 +109,11 @@ pub struct Entered {
 /// `POST /api/links/{token}/enter`: lets someone in under `name` (sets the session cookie).
 pub async fn enter(
     State(engine): State<Engine>,
+    LocalDoor(local): LocalDoor,
     Path(token): Path<String>,
     Json(input): Json<EnterInput>,
 ) -> Result<Response, ApiError> {
     let secure = engine.tool_url().is_some_and(|u| u.starts_with("https://"));
-    let local = engine.local_mode();
     let (project, session) = blocking(move || {
         let project = engine.shared_link(&token)?.project;
         // In local mode everyone is the admin already; no guest needed.

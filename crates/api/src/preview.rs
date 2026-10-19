@@ -15,6 +15,7 @@ use axum::routing::get;
 use board_engine::{Build, Engine, PREVIEW_PREFIX, Preview};
 use serde::{Deserialize, Serialize};
 
+use crate::auth::LocalDoor;
 use crate::projects::blocking;
 use crate::{ApiError, Caller};
 
@@ -51,12 +52,26 @@ impl From<Preview> for PreviewOut {
 /// `GET /api/projects/{key}/preview?rev=&retry=`: starts the build if needed; poll until ready.
 pub async fn status(
     State(engine): State<Engine>,
+    LocalDoor(local): LocalDoor,
     Caller(actor): Caller,
     Path(key): Path<String>,
     Query(query): Query<PreviewQuery>,
 ) -> Result<Json<PreviewOut>, ApiError> {
     let rev = query.rev.unwrap_or_else(|| "main".to_owned());
-    let preview = blocking(move || engine.preview(&actor, &key, &rev, query.retry)).await?;
+    // Through the remote door of a local board, previews come from that same address.
+    let shared = (!local && engine.local_mode())
+        .then(|| engine.tool_url())
+        .flatten();
+    let mut preview = {
+        let key = key.clone();
+        blocking(move || engine.preview(&actor, &key, &rev, query.retry)).await?
+    };
+    if let (Some(base), Some(token)) = (shared, &preview.token) {
+        preview.base_url = Some(format!(
+            "{base}{}",
+            board_engine::preview_path(token, &key, &preview.commit)
+        ));
+    }
     Ok(Json(preview.into()))
 }
 

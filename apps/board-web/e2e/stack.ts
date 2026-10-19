@@ -68,6 +68,12 @@ export default async function setup() {
     await freePort(),
     await freePort(),
   ];
+  const [remote, shareApi, sharePreview, shareRemote] = [
+    await freePort(),
+    await freePort(),
+    await freePort(),
+    await freePort(),
+  ];
   const stopIdp = startIdp(idp);
   const log = openSync(join(home, "stack.log"), "a");
   const start = (command: string, args: string[], env: Record<string, string>): ChildProcess =>
@@ -86,7 +92,21 @@ export default async function setup() {
       BOARD_HOME: join(home, "server"),
       BOARD_BIND: `127.0.0.1:${api}`,
       BOARD_PREVIEW_BIND: `127.0.0.1:${preview}`,
+      BOARD_REMOTE_BIND: `127.0.0.1:${remote}`,
       BOARD_PUBLIC_URL: `http://localhost:${api}`,
+      BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
+      BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
+      BOARD_WORKSPACE_TOKEN: token,
+      BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
+      BOARD_UPDATE_CHECK: "false",
+    }),
+    // A third, local one that gets shared from its Team page (`sharing.spec.ts`).
+    start(join(root, "target/debug/board-server"), [], {
+      BOARD_HOME: join(home, "share"),
+      BOARD_BIND: `127.0.0.1:${shareApi}`,
+      BOARD_PREVIEW_BIND: `127.0.0.1:${sharePreview}`,
+      BOARD_REMOTE_BIND: `127.0.0.1:${shareRemote}`,
+      BOARD_PUBLIC_URL: `http://localhost:${shareApi}`,
       BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
       BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
       BOARD_WORKSPACE_TOKEN: token,
@@ -119,6 +139,7 @@ export default async function setup() {
     const base = `http://127.0.0.1:${api}`;
     await waitFor(`${base}/api/health`, () => true, 20);
     await waitFor(`http://127.0.0.1:${publicApi}/api/health`, () => true, 20);
+    await waitFor(`http://127.0.0.1:${shareApi}/api/health`, () => true, 20);
     await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 20);
     await waitFor(`http://127.0.0.1:${render}/health`, () => true, 20);
     execFileSync(
@@ -162,5 +183,7 @@ export default async function setup() {
   }
   process.env.BOARD_E2E_URL = `http://localhost:${api}`;
   process.env.BOARD_E2E_PUBLIC_URL = `http://localhost:${publicApi}`;
+  process.env.BOARD_E2E_SHARE_URL = `http://localhost:${shareApi}`;
+  process.env.BOARD_E2E_SHARE_REMOTE = `http://127.0.0.1:${shareRemote}`;
   return teardown;
 }
