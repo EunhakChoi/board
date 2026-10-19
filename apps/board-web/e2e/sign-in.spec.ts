@@ -146,7 +146,10 @@ test("a private project shows only to the members the admin picks", async ({ bro
   await expect(eve.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(eve.getByRole("link", { name: /Shared/ })).toHaveCount(0);
 
-  await access.getByRole("checkbox").first().check();
+  // The checkbox follows the saved list, so it turns on a moment after the click.
+  const member = access.getByRole("checkbox").first();
+  await member.click();
+  await expect(member).toBeChecked();
   await eve.reload();
   await expect(eve.getByRole("link", { name: /Shared/ })).toBeVisible();
 });
