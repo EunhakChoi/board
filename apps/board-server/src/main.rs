@@ -98,6 +98,7 @@ async fn run(config: Config) -> Result<(), String> {
                 .map(|token| format!("{}/setup?token={token}", config.tool_url()));
         }
     }
+    engine.restore_sharing().map_err(|e| e.to_string())?;
     if config.update_check {
         update::spawn(engine.clone());
     }
@@ -107,6 +108,29 @@ async fn run(config: Config) -> Result<(), String> {
     let preview_listener = tokio::net::TcpListener::bind(config.preview_bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.preview_bind))?;
+    announce(&config, setup_link);
+    let origin = board_api::PreviewOrigin {
+        frame_ancestors: config.tool_origins(),
+        sandbox: false,
+    };
+    let remote = serve_remote(
+        config.remote_bind,
+        board_api::remote_app(engine.clone(), config.web_dir.clone()),
+    )
+    .await?;
+    let previews = axum::serve(
+        preview_listener,
+        board_api::preview_router(engine.clone(), &origin),
+    )
+    .with_graceful_shutdown(shutdown());
+    let api = axum::serve(listener, board_api::app(engine, config.web_dir.clone()))
+        .with_graceful_shutdown(shutdown());
+    let (api, previews, remote) = tokio::join!(api.into_future(), previews.into_future(), remote);
+    api.and(previews).and(remote).map_err(|e| e.to_string())
+}
+
+/// Says where the server listens, and prints the setup link while there is no admin.
+fn announce(config: &Config, setup_link: Option<String>) {
     println!(
         "board-server {} listening on {} ({}), previews on {}",
         board_model::VERSION,
@@ -118,23 +142,40 @@ async fn run(config: Config) -> Result<(), String> {
         },
         config.preview_url,
     );
+    if let Some(addr) = config.remote_bind {
+        println!(
+            "Remote door on {addr}: point a tunnel or reverse proxy here, then turn sharing on in Settings."
+        );
+    }
     if let Some(link) = setup_link {
         // Printed only here: whoever opens it first becomes the admin.
         println!("No admin yet. Open this one-time setup link to become the admin:\n  {link}");
     }
-    let origin = board_api::PreviewOrigin {
-        frame_ancestors: config.tool_origins(),
-        sandbox: false,
+}
+
+/// Listens on the remote door, when there is one; the future runs until shutdown.
+async fn serve_remote(
+    addr: Option<std::net::SocketAddr>,
+    app: axum::Router,
+) -> Result<impl Future<Output = std::io::Result<()>>, String> {
+    let listener = match addr {
+        Some(addr) => Some(
+            tokio::net::TcpListener::bind(addr)
+                .await
+                .map_err(|e| format!("cannot listen on {addr}: {e}"))?,
+        ),
+        None => None,
     };
-    let previews = axum::serve(
-        preview_listener,
-        board_api::preview_router(engine.clone(), &origin),
-    )
-    .with_graceful_shutdown(shutdown());
-    let api = axum::serve(listener, board_api::app(engine, config.web_dir.clone()))
-        .with_graceful_shutdown(shutdown());
-    let (api, previews) = tokio::join!(api.into_future(), previews.into_future());
-    api.and(previews).map_err(|e| e.to_string())
+    Ok(async move {
+        match listener {
+            Some(listener) => {
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(shutdown())
+                    .await
+            }
+            None => Ok(()),
+        }
+    })
 }
 
 /// Preview tokens last an hour; the tool asks for a fresh one when it reopens a preview.

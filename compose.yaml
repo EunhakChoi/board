@@ -2,6 +2,8 @@
 #
 # Ports are published on this machine's loopback only; everyone who can reach them acts as the
 # built-in admin (no sign-in). Change them with BOARD_PORT / BOARD_PREVIEW_PORT.
+# BOARD_REMOTE_PORT (5284) is the remote door: closed until sharing is turned on in Settings, then
+# it signs everyone in. Point tunnels and reverse proxies there, never at 5280.
 
 name: board
 
@@ -46,6 +48,7 @@ services:
     ports:
       - 127.0.0.1:${BOARD_PORT:-5280}:5280
       - 127.0.0.1:${BOARD_PREVIEW_PORT:-5281}:5281
+      - 127.0.0.1:${BOARD_REMOTE_PORT:-5284}:5284
     # With BOARD_DATA_DIR (a folder on this machine) set BOARD_USER to its owner, e.g. "1000:1000".
     user: ${BOARD_USER:-board}
     volumes:

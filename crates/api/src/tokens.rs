@@ -79,7 +79,7 @@ pub async fn start(
     State(engine): State<Engine>,
     Json(input): Json<NameInput>,
 ) -> Result<Json<DeviceStarted>, ApiError> {
-    let base = engine.tool_url().unwrap_or_default().to_owned();
+    let base = engine.tool_url().unwrap_or_default();
     let started = blocking(move || engine.start_device_login(&input.name)).await?;
     Ok(Json(DeviceStarted {
         verification_url: format!("{base}/device"),

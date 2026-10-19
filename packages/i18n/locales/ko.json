@@ -322,5 +322,16 @@
   "web.account.deviceCreate": "로그인 link 만들기",
   "web.account.deviceOnce": "15분 안에 다른 기기에서 열기. 1회용.",
   "cli.doctor.invitesOnly": "로그인: 초대 link (provider 미설정)",
-  "cli.doctor.previewsShared": "도구 · 미리보기 모두 {url} (미리보기는 sandbox 로 제공)"
+  "cli.doctor.previewsShared": "도구 · 미리보기 모두 {url} (미리보기는 sandbox 로 제공)",
+  "web.sharing.title": "공유",
+  "web.sharing.on": "켜짐",
+  "web.sharing.off": "꺼짐",
+  "web.sharing.fixed": "서버 설정 (--public) 으로 정해져 있어요.",
+  "web.sharing.lead": "다른 기기는 직접 준비한 주소로 들어와요: {target} 로 연결한 reverse proxy 나 tunnel. 그 주소로 오는 사람은 모두 초대 link 로 로그인해요.",
+  "web.sharing.ownerName": "팀에서 쓸 내 이름",
+  "web.sharing.address": "사람들이 여는 주소",
+  "web.sharing.start": "공유 켜기",
+  "web.sharing.openAt": "공유 주소",
+  "web.sharing.onLead": "아래에서 사람을 초대하세요. 이 기기는 로그인 없이 내 계정으로 계속 쓸 수 있어요.",
+  "web.sharing.stop": "공유 끄기"
 }

@@ -58,6 +58,19 @@ printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> 
 docker compose up -d
 ```
 
+## 이 기기에서 바로 공유
+
+로컬 board 는 재시작 없이 다른 사람에게 열 수 있음. 두 번째 port 인 **원격 문**
+(`127.0.0.1:5284`, `BOARD_REMOTE_BIND`) 사용: 공유를 켜기 전엔 닫혀 있고, 켜면 이 문으로 오는
+사람은 모두 초대 link 로 로그인.
+
+1. tunnel 또는 reverse proxy 를 `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
+2. **팀 › 공유** 에서 내 이름과 사람들이 열 주소 입력 후 공유 켜기.
+3. 같은 화면에서 사람 초대.
+
+이 기기는 로그인 없이 계속 사용 (2 에서 만든 owner 계정으로). 공유를 끄면 원격 문이 닫힘, 계정은
+유지. 미리보기도 같은 주소로 sandbox 상태로 제공. 팀 전용 server 는 [외부 공개 모드](public.ko.md) 참고.
+
 ## CLI
 
 CLI 는 아직 배포 전 — clone 에서 실행 (Node.js 24+, pnpm 12):

@@ -2,6 +2,7 @@ import { Check, KeyRound, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { CopyOnce } from "@/components/CopyOnce";
+import { SharingPanel } from "@/components/SharingPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,15 +34,16 @@ export function Team() {
         <AppHeader />
         <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
           <h1 className="text-2xl font-semibold">{t("web.team.title")}</h1>
+          <SharingPanel />
           <Webhooks />
         </main>
       </div>
     );
   }
-  return <Members />;
+  return <Members sharing={me.data?.localMode === true} />;
 }
 
-function Members() {
+function Members({ sharing }: { sharing: boolean }) {
   const t = useT();
   const users = useUsers();
   const all = users.data?.users ?? [];
@@ -58,6 +60,7 @@ function Members() {
             {t("web.common.error", { message: users.error.message })}
           </p>
         )}
+        {sharing && <SharingPanel />}
         <Section title={t("web.team.requests")} count={pending.length}>
           {pending.length === 0 ? (
             <Empty text={t("web.team.noRequests")} />

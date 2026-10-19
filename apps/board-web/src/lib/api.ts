@@ -16,6 +16,8 @@ export type AllowRule = Schemas["AllowRule"];
 export type Role = Schemas["Role"];
 export type Notification = Schemas["Notification"];
 export type Webhook = Schemas["Webhook"];
+export type ShareMode = Schemas["ShareMode"];
+export type Sharing = Schemas["Sharing"];
 export type Theme = "light" | "dark";
 export type TargetKind = "screen" | "story";
 

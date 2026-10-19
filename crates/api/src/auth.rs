@@ -19,7 +19,30 @@ pub const SESSION_COOKIE: &str = "board_session";
 /// site cannot forge such a request.
 pub const CLIENT_HEADER: &str = "x-board-client";
 
-/// Who is calling: the built-in admin in local mode, otherwise the session's member.
+/// Marks requests that came through the remote door (what tunnels and reverse proxies reach).
+#[derive(Debug, Clone, Copy)]
+pub struct Remote;
+
+/// True for a request through the local door of a local board: it acts as this machine's admin.
+#[derive(Debug, Clone, Copy)]
+pub struct LocalDoor(pub bool);
+
+impl FromRequestParts<Engine> for LocalDoor {
+    type Rejection = std::convert::Infallible;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        engine: &Engine,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> {
+        std::future::ready(Ok(LocalDoor(local_door(parts, engine))))
+    }
+}
+
+fn local_door(parts: &Parts, engine: &Engine) -> bool {
+    engine.local_mode() && parts.extensions.get::<Remote>().is_none()
+}
+
+/// Who is calling: this machine's admin through the local door, otherwise the session's member.
 #[derive(Debug)]
 pub struct Caller(pub Actor);
 
@@ -27,8 +50,8 @@ impl FromRequestParts<Engine> for Caller {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, ApiError> {
-        if engine.local_mode() {
-            return Ok(Caller(Actor::Local));
+        if local_door(parts, engine) {
+            return Ok(Caller(engine.local_actor()));
         }
         // CLI tokens: no cookie, so no cross-site forgery to guard against.
         if let Some(token) = bearer(&parts.headers) {
@@ -78,7 +101,7 @@ impl OptionalFromRequestParts<Engine> for Caller {
         parts: &mut Parts,
         engine: &Engine,
     ) -> Result<Option<Self>, ApiError> {
-        if !engine.local_mode()
+        if !local_door(parts, engine)
             && bearer(&parts.headers).is_none()
             && cookie(&parts.headers, SESSION_COOKIE).is_none()
         {

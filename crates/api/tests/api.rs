@@ -1528,3 +1528,134 @@ async fn one_address_serves_previews_sandboxed_from_the_tool() {
     let (status, _) = call(engine, "/api/health").await;
     assert_eq!(status, StatusCode::OK);
 }
+
+async fn remote(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) {
+    let response = board_api::remote_app(engine.clone(), None)
+        .oneshot(request)
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// An admin invites someone, who joins through the remote door; returns their session cookie.
+async fn join_remotely(engine: &Engine) -> String {
+    let (_, made) = post(
+        engine.clone(),
+        "/api/admin/invites",
+        &json!({ "role": "admin" }),
+    )
+    .await;
+    let token = made["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let accepted = board_api::remote_app(engine.clone(), None)
+        .oneshot(
+            Request::post(format!("/api/invites/{token}/accept"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "name": "Eve" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    accepted.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn sharing_opens_a_remote_door_that_signs_people_in() {
+    let engine = engine(true)
+        .with_tool_url("http://localhost:5280")
+        .with_preview(preview_settings());
+    let me = || Request::get("/api/auth/me").body(Body::empty()).unwrap();
+    let (status, body) = remote(&engine, me()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["code"], "sharing_off");
+
+    let share = json!({ "mode": "address", "url": "https://b.example.com/", "ownerName": "Kim" });
+    let request = Request::put("/api/admin/sharing")
+        .header("content-type", "application/json")
+        .body(Body::from(share.to_string()))
+        .unwrap();
+    let (status, bytes, _) = send(engine.clone(), request).await;
+    let shared: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(status, StatusCode::OK, "{shared}");
+    assert_eq!(shared["url"], "https://b.example.com");
+    assert_eq!(shared["owner"]["name"], "Kim");
+
+    // This machine now acts as the owner; the remote door wants a sign-in.
+    let (_, local) = call(engine.clone(), "/api/auth/me").await;
+    assert_eq!(
+        (&local["kind"], &local["name"]),
+        (&json!("user"), &json!("Kim"))
+    );
+    let (status, _) = remote(&engine, me()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (_, system) = remote(
+        &engine,
+        Request::get("/api/system").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(system["localMode"], false);
+    assert_eq!(system["toolUrl"], "https://b.example.com");
+
+    // Someone let in remotely sees previews on the shared address, and cannot move it.
+    let cookie = join_remotely(&engine).await;
+    let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, preview) = remote(
+        &engine,
+        Request::get("/api/projects/web/preview")
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert!(
+        preview["baseUrl"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://b.example.com/_preview/"),
+        "{preview}"
+    );
+    let (status, _) = remote(
+        &engine,
+        Request::delete("/api/admin/sharing")
+            .header("cookie", &cookie)
+            .header("x-board-client", "web")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, bytes, _) = send(
+        engine.clone(),
+        Request::delete("/api/admin/sharing")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    let (status, _) = remote(&engine, me()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
