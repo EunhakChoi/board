@@ -7,6 +7,7 @@ mod update;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use board_collab::Hub;
 use board_db::{CaptureStore, CommentStore, Db};
 use board_engine::{Engine, Ports, PreviewSettings, SignInSettings};
 use board_oidc::Oidc;
@@ -51,6 +52,7 @@ async fn run(config: Config) -> Result<(), String> {
             config.data_dir().join("comments"),
         )),
         accounts: db,
+        realtime: Arc::new(Hub::new()),
         renderer: Arc::new(RenderClient::new(
             &config.render_url,
             config.render_token.clone(),

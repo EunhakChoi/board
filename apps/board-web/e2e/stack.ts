@@ -41,6 +41,22 @@ async function waitFor(
   throw new Error(`timed out waiting for ${url}: ${JSON.stringify(last)}`);
 }
 
+/** Signs `who` in to the public server through the stand-in provider; returns a CLI token. */
+async function tokenFor(base: string, who: string): Promise<string> {
+  const start = await fetch(`${base}/api/auth/oidc/start`, { redirect: "manual" });
+  const page = await (await fetch(start.headers.get("location") ?? "")).text();
+  const back = new RegExp(`href="([^"]+)">${who}@`).exec(page)?.[1]?.replaceAll("&amp;", "&");
+  const callback = await fetch(back ?? "", { redirect: "manual" });
+  const cookie = (callback.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const created = await fetch(`${base}/api/me/cli-tokens`, {
+    method: "POST",
+    headers: { cookie, "x-board-client": "e2e", "content-type": "application/json" },
+    body: JSON.stringify({ name: "e2e setup" }),
+  });
+  const { token } = (await created.json()) as { token: string };
+  return token;
+}
+
 export default async function setup() {
   const home = mkdtempSync(join(tmpdir(), "board-e2e-"));
   const [api, preview, workspace, render, publicApi, publicPreview, idp] = [
@@ -111,6 +127,22 @@ export default async function setup() {
       {
         cwd: join(root, "templates/recommended"),
         env: { ...process.env, BOARD_URL: base },
+        stdio: ["ignore", log, log],
+      },
+    );
+    // The same template on the public server, for the realtime tests (two people, one board).
+    const publicBase = `http://127.0.0.1:${publicApi}`;
+    execFileSync(
+      process.execPath,
+      [join(root, "apps/board-cli/src/main.ts"), "import", "--key", "demo"],
+      {
+        cwd: join(root, "templates/recommended"),
+        env: {
+          ...process.env,
+          BOARD_URL: publicBase,
+          BOARD_TOKEN: await tokenFor(publicBase, "boss"),
+          BOARD_CONFIG_DIR: join(home, "cli"),
+        },
         stdio: ["ignore", log, log],
       },
     );

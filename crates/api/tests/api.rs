@@ -37,6 +37,7 @@ fn engine(local_mode: bool) -> Engine {
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
             comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
             accounts: db,
+            realtime: Arc::new(board_collab::Hub::new()),
         },
         local_mode,
     )
@@ -1198,4 +1199,64 @@ async fn private_projects_hide_from_non_members() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn realtime_room_relays_presence_and_events() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    async fn read(
+        socket: &mut (
+                 impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin
+             ),
+    ) -> Value {
+        loop {
+            if let Message::Text(text) = socket.next().await.unwrap().unwrap() {
+                return serde_json::from_str(&text).unwrap();
+            }
+        }
+    }
+
+    let engine = engine(true);
+    engine
+        .create_project(&board_model::Actor::Local, "web", "Web", None)
+        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, board_api::router(engine.clone())).into_future());
+    let url = format!("ws://{addr}/api/ws?project=web");
+    let (mut ann, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    let (mut bob, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    assert_eq!(read(&mut ann).await["type"], "hello");
+    assert_eq!(read(&mut bob).await["peers"].as_array().unwrap().len(), 1);
+    assert_eq!(read(&mut ann).await["type"], "join");
+
+    bob.send(Message::Text(
+        r#"{"type":"presence","data":{"cursor":[3,4]}}"#.into(),
+    ))
+    .await
+    .unwrap();
+    let presence = read(&mut ann).await;
+    assert_eq!(presence["data"]["cursor"], json!([3, 4]));
+
+    // A command elsewhere reaches both as an event.
+    engine
+        .update_project(&board_model::Actor::Local, "web", Some("Web 2"), None)
+        .unwrap();
+    let event = read(&mut ann).await;
+    assert_eq!(
+        (event["kind"].as_str(), event["seq"].as_u64()),
+        (Some("project.updated"), Some(2)),
+        "version 1 was event 1"
+    );
+    assert_eq!(read(&mut bob).await["kind"], "project.updated");
+
+    // Pages on other sites cannot open the channel with the visitor's cookies.
+    let mut request = url.as_str().into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", "https://evil.test".parse().unwrap());
+    assert!(tokio_tungstenite::connect_async(request).await.is_err());
 }

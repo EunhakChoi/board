@@ -11,6 +11,7 @@ mod error;
 mod links;
 mod preview;
 mod projects;
+mod socket;
 mod tokens;
 mod web;
 
@@ -32,6 +33,7 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/health"),
     ("get", "/api/version"),
     ("get", "/api/system"),
+    ("get", "/api/ws"),
     ("get", "/api/auth/me"),
     ("get", "/api/auth/oidc/start"),
     ("get", "/api/auth/oidc/callback"),
@@ -113,6 +115,7 @@ fn routes() -> Router<Engine> {
         .route("/api/health", get(health))
         .route("/api/version", get(version))
         .route("/api/system", get(system))
+        .route("/api/ws", get(socket::socket))
         .route("/api/auth/me", get(me))
         .route("/api/auth/oidc/start", get(auth::start))
         .route("/api/auth/oidc/callback", get(auth::callback))

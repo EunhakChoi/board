@@ -1,8 +1,18 @@
 import { Maximize, Minus, Plus } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Cursors, usePointerShare } from "@/components/Presence";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { type Box, fit, type View, zoomAt } from "@/lib/layout";
+import { throttle, useFollowed, useRoom } from "@/lib/realtime";
 
 /**
  * A pan and zoom surface. Children are laid out in board coordinates; `content` is their bounds,
@@ -45,6 +55,44 @@ export function Board({ content, children }: { content: Box; children: ReactNode
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  // Presence: share the pointer and the view's center in board units, and follow someone's view.
+  const { share } = useRoom();
+  const followed = useFollowed();
+  const pointer = usePointerShare((clientX, clientY) => {
+    const rect = viewport.current?.getBoundingClientRect();
+    return {
+      x: (clientX - (rect?.left ?? 0) - view.x) / view.k,
+      y: (clientY - (rect?.top ?? 0) - view.y) / view.k,
+    };
+  });
+  const shareViewport = useMemo(
+    () =>
+      throttle((v: View) => {
+        const el = viewport.current;
+        if (!el) return;
+        share({
+          viewport: {
+            x: (el.clientWidth / 2 - v.x) / v.k,
+            y: (el.clientHeight / 2 - v.y) / v.k,
+            zoom: v.k,
+          },
+        });
+      }, 100),
+    [share],
+  );
+  useEffect(() => shareViewport(view), [view, shareViewport]);
+  const target = followed?.presence.viewport;
+  useEffect(() => {
+    const el = viewport.current;
+    if (!target || !el) return;
+    moved.current = true;
+    setView({
+      k: target.zoom,
+      x: el.clientWidth / 2 - target.x * target.zoom,
+      y: el.clientHeight / 2 - target.y * target.zoom,
+    });
+  }, [target]);
+
   const zoomBy = (factor: number) => {
     const el = viewport.current;
     if (!el) return;
@@ -69,7 +117,9 @@ export function Board({ content, children }: { content: Box; children: ReactNode
           drag.current = { x: event.clientX, y: event.clientY, view };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
+        onPointerLeave={pointer.onPointerLeave}
         onPointerMove={(event) => {
+          pointer.onPointerMove(event);
           const start = drag.current;
           if (!start) return;
           setView({
@@ -88,6 +138,7 @@ export function Board({ content, children }: { content: Box; children: ReactNode
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}
         >
           {children}
+          <Cursors place={(c) => ({ left: c.x, top: c.y })} scale={view.k} />
         </div>
       </div>
       <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm">

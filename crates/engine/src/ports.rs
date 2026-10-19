@@ -514,3 +514,61 @@ pub trait Identity: Send + Sync {
         nonce: &str,
     ) -> Result<Claims, WorkspaceError>;
 }
+
+/// Someone in a project room, as the others see them.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Peer {
+    /// This connection (one person can have several tabs).
+    pub id: String,
+    /// `local`, a user id or `guest:<id>` (same as comment authors).
+    pub person: String,
+    pub name: String,
+    /// `local`, `user` or `guest`.
+    pub kind: String,
+    pub role: board_model::Role,
+    pub avatar_url: Option<String>,
+}
+
+/// What a connection receives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outgoing {
+    /// A JSON message.
+    Text(String),
+    /// Close the connection (access was taken away).
+    Close,
+}
+
+/// A connection that joined a room.
+#[derive(Debug)]
+pub struct Joined {
+    pub client: u64,
+    /// The first message: who is here, the latest sequence number and missed events.
+    pub hello: String,
+    pub receiver: tokio::sync::mpsc::UnboundedReceiver<Outgoing>,
+}
+
+/// Whose connections to close.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Kick {
+    /// Every connection of this person (`local`, user id or `guest:<id>`).
+    Person(String),
+    /// Every guest in this project (their link was revoked; the rest reconnect).
+    Guests(String),
+}
+
+/// The realtime hub (`board-collab`): rooms per project, presence relayed as is, events with a
+/// sequence number so a reconnecting client can catch up.
+pub trait Realtime: Send + Sync {
+    fn join(&self, project: &str, peer: Peer, since: Option<u64>) -> Joined;
+    /// Relays a presence message (cursor, selection, viewport, chat …) to the others in the room.
+    fn presence(&self, project: &str, client: u64, data: serde_json::Value);
+    fn leave(&self, project: &str, client: u64);
+    /// An event everyone in the project room gets.
+    fn publish(&self, project: &str, kind: &str, data: serde_json::Value);
+    /// An event only admins get, wherever they are.
+    fn publish_admins(&self, kind: &str, data: serde_json::Value);
+    fn kick(&self, who: Kick);
+    /// Marks someone working on the project from their own checkout (until they push).
+    fn working(&self, project: &str, person: &board_model::Person, on: bool);
+}

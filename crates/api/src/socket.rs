@@ -1,0 +1,113 @@
+//! `GET /api/ws?project=`: the realtime channel of a project room (presence and events).
+
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Query, State};
+use axum::http::header::{HOST, ORIGIN};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::Response;
+use board_engine::{Engine, Joined, Outgoing};
+use serde::Deserialize;
+
+use crate::projects::blocking;
+use crate::{ApiError, Caller};
+
+/// Presence messages larger than this are dropped (a cursor and a short chat fit easily).
+const MAX_PRESENCE: usize = 4096;
+
+#[derive(Deserialize)]
+pub struct SocketQuery {
+    project: String,
+    since: Option<u64>,
+}
+
+pub async fn socket(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Query(query): Query<SocketQuery>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    // Browsers send cookies with cross-site socket requests; only the tool's own pages may open one.
+    if !same_origin(&headers) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "origin",
+            "realtime connections only from the board tool",
+        ));
+    }
+    let project = query.project.clone();
+    let joined = {
+        let engine = engine.clone();
+        blocking(move || engine.join_room(&actor, &query.project, query.since)).await?
+    };
+    Ok(upgrade.on_upgrade(move |socket| run(socket, engine, project, joined)))
+}
+
+/// The `Origin` (when sent) names the host the request went to.
+fn same_origin(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(ORIGIN).and_then(|v| v.to_str().ok()) else {
+        return true;
+    };
+    let host = headers
+        .get(HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    origin
+        .split_once("://")
+        .is_some_and(|(_, rest)| rest.trim_end_matches('/') == host)
+}
+
+async fn run(mut socket: WebSocket, engine: Engine, project: String, joined: Joined) {
+    let Joined {
+        client,
+        hello,
+        mut receiver,
+    } = joined;
+    if socket.send(Message::Text(hello.into())).await.is_ok() {
+        loop {
+            tokio::select! {
+                outgoing = receiver.recv() => match outgoing {
+                    Some(Outgoing::Text(text)) => {
+                        if socket.send(Message::Text(text.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Outgoing::Close) | None => {
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
+                },
+                incoming = socket.recv() => match incoming {
+                    Some(Ok(Message::Text(text))) => {
+                        if text.len() <= MAX_PRESENCE
+                            && let Ok(message) = serde_json::from_str::<serde_json::Value>(&text)
+                            && message["type"] == "presence"
+                        {
+                            engine.presence(&project, client, message["data"].clone());
+                        }
+                    }
+                    Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+                    Some(Ok(_)) => {}
+                },
+            }
+        }
+    }
+    engine.leave_room(&project, client);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn origin_must_match_the_host() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("board.test"));
+        assert!(same_origin(&headers), "no origin: not a browser");
+        headers.insert(ORIGIN, HeaderValue::from_static("https://board.test"));
+        assert!(same_origin(&headers));
+        headers.insert(ORIGIN, HeaderValue::from_static("https://evil.test"));
+        assert!(!same_origin(&headers));
+    }
+}

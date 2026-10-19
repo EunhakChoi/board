@@ -68,6 +68,10 @@ impl Engine {
         if !self.ports.accounts.revoke_share_link(project, id)? {
             return Err(EngineError::NotFound("share link"));
         }
+        // Everyone who came in through a link reconnects; only the revoked link's guests fail.
+        self.ports
+            .realtime
+            .kick(crate::Kick::Guests(project.to_owned()));
         Ok(())
     }
 

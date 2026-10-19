@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { CommentThread } from "@/components/CommentThread";
+import { Cursors, Selections, usePointerShare } from "@/components/Presence";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
@@ -19,6 +20,7 @@ import { useT } from "@/lib/i18n";
 import { elementAt, parseSource, repoPath } from "@/lib/layout";
 import { useProjectContext } from "@/lib/project";
 import { useAddComment, useAppDir, useCapture, useElements, usePreview } from "@/lib/queries";
+import { useRoom } from "@/lib/realtime";
 import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -200,6 +202,24 @@ function CaptureView({
   onFocus: (id: number) => void;
 }) {
   const [hover, setHover] = useState<Element | undefined>();
+  const { share } = useRoom();
+  const pointer = usePointerShare((clientX, clientY) => {
+    const rect = surface.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: ((clientX - rect.left) / rect.width) * size.w,
+      y: ((clientY - rect.top) / rect.height) * size.h,
+    };
+  });
+  const surface = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    share({
+      selection:
+        pick?.kind === "element"
+          ? { x: pick.element.x, y: pick.element.y, w: pick.element.w, h: pick.element.h }
+          : null,
+    });
+  }, [pick, share]);
   const box = (b: { x: number; y: number; w: number; h: number }) => ({
     left: `${(b.x / size.w) * 100}%`,
     top: `${(b.y / size.h) * 100}%`,
@@ -217,14 +237,19 @@ function CaptureView({
     // biome-ignore lint/a11y/noStaticElementInteractions: picking a spot on a picture needs a pointer
     // biome-ignore lint/a11y/useKeyWithClickEvents: same; the comment list stays keyboard-usable
     <div
+      ref={surface}
       data-testid="capture"
       className="relative mx-auto w-full cursor-crosshair overflow-hidden rounded-lg border bg-background shadow-sm"
       style={{ maxWidth: size.w, aspectRatio: `${size.w} / ${size.h}` }}
       onPointerMove={(event) => {
         const { x, y } = point(event);
         setHover(elementAt(elements, x, y));
+        pointer.onPointerMove(event);
       }}
-      onPointerLeave={() => setHover(undefined)}
+      onPointerLeave={() => {
+        setHover(undefined);
+        pointer.onPointerLeave();
+      }}
       onClick={(event) => {
         const { x, y } = point(event as unknown as React.PointerEvent<HTMLDivElement>);
         const element = elementAt(elements, x, y);
@@ -250,6 +275,10 @@ function CaptureView({
           style={{ left: `${(pick.x / size.w) * 100}%`, top: `${(pick.y / size.h) * 100}%` }}
         />
       )}
+      <Selections place={box} />
+      <Cursors
+        place={(c) => ({ left: `${(c.x / size.w) * 100}%`, top: `${(c.y / size.h) * 100}%` })}
+      />
       {anchors.map(({ id, index, anchor }) => (
         <div key={id} className="pointer-events-none absolute" style={box(anchor)}>
           {focus === id && <div className="absolute inset-0 border-2 border-warning" />}
