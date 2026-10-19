@@ -150,10 +150,16 @@ impl Engine {
             author: actor.person(),
             commit,
         };
-        Ok(self
+        let comment = self
             .ports
             .comments
-            .add(key, &comment, snapshot.as_deref())?)
+            .add(key, &comment, snapshot.as_deref())?;
+        self.publish(
+            key,
+            "comment.added",
+            serde_json::json!({ "id": comment.id }),
+        );
+        Ok(comment)
     }
 
     pub fn comments(
@@ -244,10 +250,13 @@ impl Engine {
             status,
             resolved_commit,
         };
-        self.ports
+        let comment = self
+            .ports
             .comments
             .reply(key, id, rev, &reply)?
-            .ok_or(EngineError::Changed(current.rev))
+            .ok_or(EngineError::Changed(current.rev))?;
+        self.publish(key, "comment.updated", serde_json::json!({ "id": id }));
+        Ok(comment)
     }
 
     /// After a new capture: moves open comments on it to where their element is now.

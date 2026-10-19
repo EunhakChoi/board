@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The realtime channel of a project room (WebSocket)
+         * @description Upgrade to a WebSocket. The server sends `hello` (you, peers with their latest presence, `seq`, `missed` events since `since`, `reload` when they no longer reach back, `working`), then `join`, `leave`, `presence` (`from`, `data`), `event` (`seq`, `kind`, `data`), `admin` (admins only) and `working`. Clients send `{"type":"presence","data":{…}}` (at most 4 KiB). Only the tool's own pages may connect (`Origin` must match).
+         */
+        get: operations["realtime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/me": {
         parameters: {
             query?: never;
@@ -1339,6 +1359,30 @@ export interface operations {
                     "application/json": components["schemas"]["SystemInfo"];
                 };
             };
+        };
+    };
+    realtime: {
+        parameters: {
+            query: {
+                project: string;
+                /** @description The last event `seq` this client saw */
+                since?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the WebSocket protocol */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     getMe: {

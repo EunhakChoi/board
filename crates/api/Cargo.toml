@@ -16,6 +16,9 @@ board-model = { path = "../model" }
 board-engine = { path = "../engine" }
 
 [dev-dependencies]
+board-collab = { path = "../collab" }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+tokio-tungstenite = "0.29.0"
 board-db = { path = "../db" }
 board-store = { path = "../store" }
 http-body-util.workspace = true

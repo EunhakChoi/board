@@ -21,6 +21,7 @@ use crate::{
 pub struct Fakes {
     pub workspace: Arc<MemoryWorkspace>,
     pub renderer: Arc<MemoryRenderer>,
+    pub realtime: Arc<MemoryRealtime>,
 }
 
 pub fn engine() -> Engine {
@@ -56,6 +57,7 @@ fn fakes() -> Fakes {
     Fakes {
         workspace: Arc::new(MemoryWorkspace::default()),
         renderer: Arc::new(MemoryRenderer::default()),
+        realtime: Arc::new(MemoryRealtime::default()),
     }
 }
 
@@ -70,6 +72,7 @@ fn engine_with(fakes: &Fakes) -> Engine {
             captures: Arc::new(MemoryCaptures::default()),
             comments: Arc::new(MemoryComments::default()),
             accounts: Arc::new(MemoryAccounts::default()),
+            realtime: fakes.realtime.clone(),
         },
         true,
     )
@@ -1075,5 +1078,45 @@ impl Identity for FakeIdentity {
             .unwrap()
             .take()
             .ok_or_else(|| IdpError::Failed("no claims scripted".into()))
+    }
+}
+
+/// Records what commands publish; rooms are not simulated.
+#[derive(Default)]
+pub struct MemoryRealtime {
+    pub events: Mutex<Vec<(String, String)>>,
+}
+
+impl crate::Realtime for MemoryRealtime {
+    fn join(&self, _: &str, _: crate::Peer, _: Option<u64>) -> crate::Joined {
+        let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+        crate::Joined {
+            client: 1,
+            hello: "{}".into(),
+            receiver,
+        }
+    }
+    fn presence(&self, _: &str, _: u64, _: serde_json::Value) {}
+    fn leave(&self, _: &str, _: u64) {}
+    fn publish(&self, project: &str, kind: &str, _: serde_json::Value) {
+        self.events
+            .lock()
+            .unwrap()
+            .push((project.into(), kind.into()));
+    }
+    fn publish_admins(&self, kind: &str, _: serde_json::Value) {
+        self.events.lock().unwrap().push(("*".into(), kind.into()));
+    }
+    fn kick(&self, who: crate::Kick) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(("*".into(), format!("kick {who:?}")));
+    }
+    fn working(&self, project: &str, person: &board_model::Person, on: bool) {
+        self.events
+            .lock()
+            .unwrap()
+            .push((project.into(), format!("working {} {on}", person.id)));
     }
 }

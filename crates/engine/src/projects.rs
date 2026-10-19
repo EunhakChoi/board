@@ -112,6 +112,10 @@ impl Engine {
         self.visible(actor, key, Command::ProjectView)?;
         let commit = self.resolve(key, rev.unwrap_or("main"))?;
         let archive = self.ports.store.archive(key, &commit)?;
+        if actor.role() >= board_model::Role::Editor {
+            // Shown as "working locally" until they push.
+            self.ports.realtime.working(key, &actor.person(), true);
+        }
         Ok(Checkout { commit, archive })
     }
 
@@ -156,7 +160,9 @@ impl Engine {
                     .flatten()
                     .unwrap_or_default(),
             })?;
-        self.record(key, &commit, VersionKind::Push, actor, message)
+        let version = self.record(key, &commit, VersionKind::Push, actor, message)?;
+        self.ports.realtime.working(key, &actor.person(), false);
+        Ok(version)
     }
 
     /// Versions of `main`, newest first.
@@ -191,6 +197,7 @@ impl Engine {
         if !self.ports.records.delete_project(key)? {
             return Err(EngineError::NotFound("project"));
         }
+        self.publish(key, "project.deleted", serde_json::json!({}));
         self.ports.store.remove(key)?;
         self.ports.captures.remove_project(key)?;
         self.ports.comments.remove_project(key)?;
@@ -250,6 +257,7 @@ impl Engine {
         self.ports
             .records
             .update_project(key, title, visibility.unwrap_or(project.visibility))?;
+        self.publish(key, "project.updated", serde_json::json!({}));
         self.ports
             .records
             .project(key)?
@@ -297,6 +305,11 @@ impl Engine {
             .records
             .add_version(key, commit, kind, actor.name(), note)?;
         self.ports.store.tag_version(key, version.number, commit)?;
+        self.publish(
+            key,
+            "version.created",
+            serde_json::json!({ "number": version.number, "actor": actor.name() }),
+        );
         Ok(version)
     }
 }

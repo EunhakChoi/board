@@ -265,5 +265,15 @@
   "web.access.private": "Private",
   "web.access.teamLead": "Everyone admitted to this board sees the project.",
   "web.access.privateLead": "Only the people picked below and admins see it. Share links still work.",
-  "web.access.nobody": "No other members yet."
+  "web.access.nobody": "No other members yet.",
+  "web.presence.here": "Here now",
+  "web.presence.working": "{names} working locally",
+  "web.presence.follow": "Follow {name}",
+  "web.presence.following": "Following {name}",
+  "web.presence.presenting": "{name} is presenting — you follow their view",
+  "web.presence.stop": "Stop following",
+  "web.presence.spotlight": "Spotlight",
+  "web.presence.spotlightOn": "Presenting",
+  "web.presence.spotlightHint": "Everyone here follows your view until they step away",
+  "web.presence.chat": "Say something (Enter)"
 }

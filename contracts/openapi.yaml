@@ -54,6 +54,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemInfo"
+  /api/ws:
+    get:
+      tags: [realtime]
+      operationId: realtime
+      summary: The realtime channel of a project room (WebSocket)
+      description: >-
+        Upgrade to a WebSocket. The server sends `hello` (you, peers with their latest presence,
+        `seq`, `missed` events since `since`, `reload` when they no longer reach back, `working`),
+        then `join`, `leave`, `presence` (`from`, `data`), `event` (`seq`, `kind`, `data`),
+        `admin` (admins only) and `working`. Clients send `{"type":"presence","data":{…}}`
+        (at most 4 KiB). Only the tool's own pages may connect (`Origin` must match).
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: The last event `seq` this client saw
+          schema:
+            type: integer
+      responses:
+        "101":
+          description: Switching to the WebSocket protocol
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/auth/me:
     get:
       tags: [auth]

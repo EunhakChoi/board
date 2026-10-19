@@ -195,6 +195,12 @@ impl Engine {
                 status,
             })?
         };
+        if user.status == UserStatus::Pending {
+            self.ports.realtime.publish_admins(
+                "access.requested",
+                serde_json::json!({ "user": user.id, "email": user.email, "name": user.name }),
+            );
+        }
         match user.status {
             UserStatus::Rejected => return Ok(SignIn::Refused(Refusal::Rejected)),
             UserStatus::Removed => return Ok(SignIn::Refused(Refusal::Removed)),

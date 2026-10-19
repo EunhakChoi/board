@@ -254,5 +254,15 @@
   "web.access.private": "비공개",
   "web.access.teamLead": "이 board 에 들어온 사람 모두 이 프로젝트를 봅니다.",
   "web.access.privateLead": "아래에서 고른 사람과 관리자만 봅니다. 공유 link 는 그대로 동작합니다.",
-  "web.access.nobody": "다른 팀원이 아직 없습니다."
+  "web.access.nobody": "다른 팀원이 아직 없습니다.",
+  "web.presence.here": "지금 보는 사람",
+  "web.presence.working": "{names} 로컬에서 작업 중",
+  "web.presence.follow": "{name} 따라가기",
+  "web.presence.following": "{name} 따라가는 중",
+  "web.presence.presenting": "{name} 발표 중 — 화면을 따라갑니다",
+  "web.presence.stop": "따라가기 중지",
+  "web.presence.spotlight": "spotlight",
+  "web.presence.spotlightOn": "발표 중",
+  "web.presence.spotlightHint": "여기 있는 모두가 내 화면을 따라옵니다 (각자 빠져나갈 수 있음)",
+  "web.presence.chat": "짧게 말하기 (Enter)"
 }

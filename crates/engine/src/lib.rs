@@ -11,6 +11,7 @@ pub mod policy;
 mod ports;
 mod preview;
 mod projects;
+mod realtime;
 mod sheet;
 mod tokens;
 
@@ -25,8 +26,8 @@ pub use links::{NewLink, SharedLink};
 pub use ports::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
     Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
-    NewComment, NewReply, NewShareLink, NewUser, ProjectStore, Records, RenderJob, Renderer,
-    Settings, Shot, StoreError, Workspace, WorkspaceError,
+    Joined, Kick, NewComment, NewReply, NewShareLink, NewUser, Outgoing, Peer, ProjectStore,
+    Realtime, Records, RenderJob, Renderer, Settings, Shot, StoreError, Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
@@ -44,6 +45,7 @@ pub struct Ports {
     pub captures: Arc<dyn Captures>,
     pub comments: Arc<dyn Comments>,
     pub accounts: Arc<dyn Accounts>,
+    pub realtime: Arc<dyn Realtime>,
 }
 
 impl std::fmt::Debug for Ports {

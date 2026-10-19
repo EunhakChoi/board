@@ -165,6 +165,18 @@ impl Engine {
             self.reanchor_comments(key, target.kind, &target.id, theme, &elements)?;
             Ok(result(target, theme, &shot, true))
         });
+        let captured: Vec<_> = results
+            .iter()
+            .filter(|r| r.captured)
+            .map(|r| serde_json::json!({ "kind": r.kind, "target": r.target, "theme": r.theme }))
+            .collect();
+        if !captured.is_empty() {
+            self.publish(
+                key,
+                "capture.updated",
+                serde_json::json!({ "captures": captured }),
+            );
+        }
         Ok(Rendered { commit, results })
     }
 

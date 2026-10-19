@@ -77,6 +77,7 @@ impl Engine {
             UserStatus::Rejected
         };
         self.ports.accounts.set_access(id, user.role, status)?;
+        self.access_changed(id, status);
         self.account(id)
     }
 
@@ -104,7 +105,18 @@ impl Engine {
             ));
         }
         self.ports.accounts.set_access(id, role, status)?;
+        self.access_changed(id, status);
         self.account(id)
+    }
+
+    /// Tells admins' Team pages, and closes the connections of someone who lost access.
+    fn access_changed(&self, id: &str, status: UserStatus) {
+        self.ports
+            .realtime
+            .publish_admins("access.changed", serde_json::json!({ "user": id }));
+        if matches!(status, UserStatus::Rejected | UserStatus::Removed) {
+            self.ports.realtime.kick(crate::Kick::Person(id.to_owned()));
+        }
     }
 
     fn account(&self, id: &str) -> Result<User, EngineError> {
