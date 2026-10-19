@@ -30,6 +30,7 @@ before(async () => {
   work = mkdtempSync(join(tmpdir(), "board-cli-"));
   const port = await freePort();
   const previewPort = await freePort();
+  const remotePort = await freePort();
   url = `http://127.0.0.1:${port}`;
   server = spawn(SERVER_BIN, [], {
     env: {
@@ -37,6 +38,7 @@ before(async () => {
       BOARD_HOME: join(work, "home"),
       BOARD_BIND: `127.0.0.1:${port}`,
       BOARD_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
+      BOARD_REMOTE_BIND: `127.0.0.1:${remotePort}`,
       BOARD_UPDATE_CHECK: "false",
     },
     stdio: "ignore",

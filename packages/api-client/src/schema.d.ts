@@ -1407,6 +1407,8 @@ export interface components {
             }[];
             /** @description A tunnel problem (at start, or while turning sharing off) */
             warning: string | null;
+            /** @description The domain asked for (`ngrok`) */
+            domain: string | null;
             /** @description Last characters of the saved ngrok authtoken */
             ngrokToken: string | null;
             /** @description Set by the server's environment (--public); the page only shows it */

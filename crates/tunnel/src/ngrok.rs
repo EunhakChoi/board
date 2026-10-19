@@ -67,7 +67,7 @@ impl Ngrok {
                 let forwarder = endpoint
                     .listen_and_forward(target)
                     .await
-                    .map_err(|e| format!("ngrok refused the tunnel: {e}"))?;
+                    .map_err(|e| refused(&e.to_string()))?;
                 Ok::<_, String>(Open { session, forwarder })
             })
             .await
@@ -94,6 +94,18 @@ impl Ngrok {
     }
 }
 
+/// Why ngrok refused the tunnel, with what to do for the usual case.
+fn refused(error: &str) -> String {
+    if error.contains("ERR_NGROK_334") || error.contains("already online") {
+        return format!(
+            "this domain is already open from another ngrok on the same account (a terminal, a \
+             service or a container). Stop that one first, or use another domain. Where it \
+             runs: https://dashboard.ngrok.com/endpoints ({error})"
+        );
+    }
+    format!("ngrok refused the tunnel: {error}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +123,6 @@ mod tests {
         assert!(err.contains("authtoken"), "{err}");
         ngrok.close().unwrap();
         assert!(Ngrok::new(runtime.handle().clone(), "not a url").is_err());
+        assert!(refused("rpc error: ERR_NGROK_334 already online").contains("Stop that one first"));
     }
 }

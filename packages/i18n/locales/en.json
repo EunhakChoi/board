@@ -361,5 +361,6 @@
   "web.sharing.lead.lan": "People on the same network open this machine's IP address over plain HTTP. For trying things out; links show the IP.",
   "cli.doctor.shared": "shared at {url}",
   "cli.doctor.sharedUnreachable": "shared at {url}, but that address does not answer",
-  "cli.doctor.sharedHint": "Check the tunnel or proxy points at the remote door (127.0.0.1:5284), or pick another way in Team › Sharing."
+  "cli.doctor.sharedHint": "Check the tunnel or proxy points at the remote door (127.0.0.1:5284), or pick another way in Team › Sharing.",
+  "web.sharing.apply": "Apply"
 }

@@ -36,6 +36,13 @@ test("sharing a local board opens a door that only invited people get through", 
   await expect(outsider.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(outsider.getByRole("link", { name: "Jun" })).toBeVisible();
 
+  // The address changes while shared, without turning sharing off.
+  const address = sharing.getByRole("textbox", { name: "Address people open" });
+  await expect(address).toHaveValue(remote());
+  await address.fill(`${remote()}/changed`);
+  await sharing.getByRole("button", { name: "Apply" }).click();
+  await expect(sharing.getByRole("link", { name: `${remote()}/changed` })).toBeVisible();
+
   await sharing.getByRole("button", { name: "Turn sharing off" }).click();
   await expect(sharing.getByRole("button", { name: "Turn sharing on" })).toBeVisible();
   const after = await outsider.request.get(`${remote()}/api/auth/me`);

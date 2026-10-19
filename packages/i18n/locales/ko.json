@@ -350,5 +350,6 @@
   "web.sharing.lead.lan": "같은 네트워크의 사람이 이 기기의 IP 주소로 HTTP 접속해요. 시험용이고, link 에 IP 가 보여요.",
   "cli.doctor.shared": "공유 중: {url}",
   "cli.doctor.sharedUnreachable": "공유 중: {url}, 하지만 그 주소가 응답 없음",
-  "cli.doctor.sharedHint": "tunnel · proxy 가 원격 문 (127.0.0.1:5284) 을 가리키는지 확인하거나, 팀 › 공유 에서 다른 방식 선택."
+  "cli.doctor.sharedHint": "tunnel · proxy 가 원격 문 (127.0.0.1:5284) 을 가리키는지 확인하거나, 팀 › 공유 에서 다른 방식 선택.",
+  "web.sharing.apply": "적용"
 }
