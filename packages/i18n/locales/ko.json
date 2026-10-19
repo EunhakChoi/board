@@ -345,5 +345,10 @@
   "web.sharing.lead.ngrok": "이 서버가 ngrok tunnel 을 직접 실행해요. link 를 가진 누구나 로그인 화면까지 올 수 있고, 초대받은 사람만 들어와요. 무료 ngrok 계정으로 충분해요.",
   "web.sharing.ngrokToken": "ngrok authtoken",
   "web.sharing.ngrokSaved": "저장됨 (…{last}). 비워 두면 그대로 사용",
-  "web.sharing.ngrokDomain": "도메인 (선택, ngrok 계정의 도메인)"
+  "web.sharing.ngrokDomain": "도메인 (선택, ngrok 계정의 도메인)",
+  "web.sharing.mode.lan": "같은 네트워크",
+  "web.sharing.lead.lan": "같은 네트워크의 사람이 이 기기의 IP 주소로 HTTP 접속해요. 시험용이고, link 에 IP 가 보여요.",
+  "cli.doctor.shared": "공유 중: {url}",
+  "cli.doctor.sharedUnreachable": "공유 중: {url}, 하지만 그 주소가 응답 없음",
+  "cli.doctor.sharedHint": "tunnel · proxy 가 원격 문 (127.0.0.1:5284) 을 가리키는지 확인하거나, 팀 › 공유 에서 다른 방식 선택."
 }

@@ -356,5 +356,10 @@
   "web.sharing.lead.ngrok": "This server runs the ngrok tunnel itself. Anyone with a link reaches the sign-in page; only invited people get in. A free ngrok account works.",
   "web.sharing.ngrokToken": "ngrok authtoken",
   "web.sharing.ngrokSaved": "Saved (…{last}); leave empty to keep it",
-  "web.sharing.ngrokDomain": "Domain (optional, from your ngrok account)"
+  "web.sharing.ngrokDomain": "Domain (optional, from your ngrok account)",
+  "web.sharing.mode.lan": "Local network",
+  "web.sharing.lead.lan": "People on the same network open this machine's IP address over plain HTTP. For trying things out; links show the IP.",
+  "cli.doctor.shared": "shared at {url}",
+  "cli.doctor.sharedUnreachable": "shared at {url}, but that address does not answer",
+  "cli.doctor.sharedHint": "Check the tunnel or proxy points at the remote door (127.0.0.1:5284), or pick another way in Team › Sharing."
 }

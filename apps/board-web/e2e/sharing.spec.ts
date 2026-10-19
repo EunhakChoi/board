@@ -55,3 +55,25 @@ test("sharing through Tailscale shows the machine's tailnet name", async ({ page
   await sharing.getByRole("radio", { name: "ngrok" }).click();
   await expect(sharing.getByLabel("ngrok authtoken")).toHaveAttribute("type", "password");
 });
+
+test("sharing on the local network opens the remote door on this machine's IP", async ({
+  page,
+}) => {
+  await page.goto(`${local()}/team`);
+  const sharing = page.getByRole("region", { name: "Sharing" });
+  await sharing.getByRole("radio", { name: "Local network" }).click();
+  await sharing.getByRole("button", { name: "Turn sharing on" }).click();
+  const link = sharing.getByRole("link", { name: /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/ });
+  await expect(link).toBeVisible();
+  const url = (await link.textContent()) ?? "";
+  const me = await page.request.get(`${url}/api/auth/me`);
+  expect(me.status()).toBe(401);
+  await sharing.getByRole("button", { name: "Turn sharing off" }).click();
+  await expect(sharing.getByRole("button", { name: "Turn sharing on" })).toBeVisible();
+  // Closed, or (on a connection kept alive) answering that sharing is off.
+  const after = await page.request
+    .get(`${url}/api/auth/me`)
+    .then((r) => r.status())
+    .catch(() => 0);
+  expect([0, 503]).toContain(after);
+});

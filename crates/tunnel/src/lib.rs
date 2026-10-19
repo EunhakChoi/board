@@ -127,7 +127,9 @@ impl Tailscale {
             ShareMode::Funnel => Err(
                 "Funnel needs HTTPS certificates on the tailnet (Tailscale, not Headscale)".into(),
             ),
-            ShareMode::Address | ShareMode::Ngrok => Err("not a Tailscale mode".into()),
+            ShareMode::Address | ShareMode::Ngrok | ShareMode::Lan => {
+                Err("not a Tailscale mode".into())
+            }
         }
     }
 
@@ -137,18 +139,17 @@ impl Tailscale {
         if let Some(socket) = &self.socket {
             command.arg(format!("--socket={socket}"));
         }
-        let mut child = command
+        command
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => {
-                    format!("{} not found: install Tailscale on this machine", self.cli)
-                }
-                _ => format!("cannot run {}: {e}", self.cli),
-            })?;
+            .stderr(Stdio::piped());
+        let mut child = spawn(&mut command).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                format!("{} not found: install Tailscale on this machine", self.cli)
+            }
+            _ => format!("cannot run {}: {e}", self.cli),
+        })?;
         let stdout = drain(child.stdout.take());
         let stderr = drain(child.stderr.take());
         let started = Instant::now();
@@ -206,6 +207,21 @@ impl Tailscale {
         let (command, port, _) = Self::plan(mode, &node)?;
         self.run(&[command, port, &self.target, "off"], TIMEOUT)
             .map(|_| ())
+    }
+}
+
+/// Starts `command`, again if the program was being written a moment ago (`ETXTBSY`: another
+/// thread forked while holding it open).
+fn spawn(command: &mut Command) -> std::io::Result<std::process::Child> {
+    let mut tries = 0;
+    loop {
+        match command.spawn() {
+            Err(e) if e.raw_os_error() == Some(26) && tries < 20 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            result => return result,
+        }
     }
 }
 

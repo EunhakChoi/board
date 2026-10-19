@@ -76,11 +76,13 @@ comes through it signs in with an invite link.
      one, your ngrok domain so the address stays the same. `BOARD_NGROK_AUTHTOKEN` also works.
    - **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing
      at `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
+   - **Local network** — the remote door also listens on this machine's LAN address, over plain
+     HTTP. For trying things out: links show the IP. (In Docker, publish port 5284 instead.)
 2. Enter your name (the first time) and turn sharing on.
 3. Invite people from the same page.
 
-The Tailscale choices need the `tailscale` CLI where board-server runs (`BOARD_TAILSCALE`,
-`BOARD_TAILSCALE_SOCKET`). In Docker use **My address** and run
+`board doctor` says whether the shared address answers. The Tailscale choices need the
+`tailscale` CLI where board-server runs (`BOARD_TAILSCALE`, `BOARD_TAILSCALE_SOCKET`). In Docker use **My address** and run
 `tailscale serve --bg http://127.0.0.1:5284` (or `tailscale funnel …`) on the host.
 
 This machine keeps working without sign-in, as you (the owner account made in step 2). Turning

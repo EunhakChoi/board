@@ -215,10 +215,28 @@ function portOpen(port: number): Promise<boolean> {
 }
 
 /** A public server: HTTPS on a fixed address, a provider that answers, an admin. */
+const isLocalUrl = (url: string) =>
+  ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+
+/** A local board that is shared: does its address reach the remote door? */
+async function sharingCheck(ctx: Context, url: string): Promise<Check> {
+  const reached = await (ctx.fetch ?? fetch)(`${url}/api/health`, {
+    signal: AbortSignal.timeout(5000),
+  })
+    .then((r) => r.ok)
+    .catch(() => false);
+  return reached
+    ? { state: "ok", text: t("cli.doctor.shared", { url }, ctx.locale) }
+    : {
+        state: "fail",
+        text: t("cli.doctor.sharedUnreachable", { url }, ctx.locale),
+        hint: t("cli.doctor.sharedHint", {}, ctx.locale),
+      };
+}
+
 function publicChecks(ctx: Context, info: Awaited<ReturnType<typeof system>>): Check[] {
   const checks: Check[] = [];
-  const local = (url: string) =>
-    ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+  const local = isLocalUrl;
   if (info.toolUrl) {
     checks.push(
       info.toolUrl.startsWith("https://") || local(info.toolUrl)
@@ -325,6 +343,8 @@ export async function doctor(ctx: Context): Promise<number> {
       });
     }
     if (!info.localMode) checks.push(...publicChecks(ctx, info));
+    else if (info.toolUrl && !isLocalUrl(info.toolUrl))
+      checks.push(await sharingCheck(ctx, info.toolUrl));
     if (info.latest && newer(info.latest, info.version)) {
       checks.push({
         state: "warn",
