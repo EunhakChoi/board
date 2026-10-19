@@ -2093,7 +2093,7 @@ components:
           description: Latest released version; null when unknown or update checks are off
     SystemInfo:
       type: object
-      required: [version, latest, toolUrl, previewUrl, localMode, services]
+      required: [version, latest, toolUrl, previewUrl, localMode, services, signIn]
       properties:
         version:
           type: string
@@ -2115,6 +2115,27 @@ components:
               $ref: "#/components/schemas/ServiceState"
             render:
               $ref: "#/components/schemas/ServiceState"
+        signIn:
+          description: How people sign in (public servers); null in local mode
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [provider, callbackUrl, ok, hasAdmin]
+              properties:
+                provider:
+                  type: string
+                callbackUrl:
+                  type: string
+                  description: Register this at the provider as the redirect URI
+                ok:
+                  type: boolean
+                  description: Whether the provider's discovery document loads
+                error:
+                  type: string
+                  description: Why it fails (admins only)
+                hasAdmin:
+                  type: boolean
+                  description: False until the setup link was used
     ServiceState:
       type: object
       required: [ok]

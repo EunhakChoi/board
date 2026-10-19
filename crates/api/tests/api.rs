@@ -1125,6 +1125,10 @@ async fn system_answers_before_sign_in_without_details() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(system["localMode"], false);
     assert!(system["services"]["workspace"].get("error").is_none());
+    assert_eq!(
+        system["signIn"],
+        json!({"provider": "scripted", "callbackUrl": "", "ok": true, "hasAdmin": false})
+    );
 }
 
 #[tokio::test]

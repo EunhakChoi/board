@@ -247,6 +247,19 @@ struct SystemInfo {
     preview_url: Option<String>,
     local_mode: bool,
     services: Services,
+    sign_in: Option<SignInInfo>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SignInInfo {
+    provider: String,
+    /// Register this at the provider as the redirect URI.
+    callback_url: String,
+    /// Whether the provider's discovery document loads.
+    #[serde(flatten)]
+    state: Service,
+    has_admin: bool,
 }
 
 #[derive(Serialize)]
@@ -291,6 +304,12 @@ async fn system(
             workspace: service(system.workspace),
             render: service(system.render),
         },
+        sign_in: system.sign_in.map(|sign_in| SignInInfo {
+            provider: sign_in.provider,
+            callback_url: sign_in.callback_url,
+            state: service(sign_in.state),
+            has_admin: sign_in.has_admin,
+        }),
     }))
 }
 

@@ -40,6 +40,10 @@ docker compose logs server | grep -A1 "setup link"
 Docker 없이: 같은 변수로 `board-server --public` (`BOARD_PUBLIC_PREVIEW_URL` 대신
 `BOARD_PREVIEW_URL`). 로그인 설정이나 고정 주소가 없으면 외부 공개 모드로 시작하지 않음.
 
+점검: 아무 PC 에서 `board doctor --server https://board.example.com`. service 외에 HTTPS 주소 여부,
+server → 로그인 provider 접속, 등록할 callback URL (OAuth client 와 정확히 일치해야 함), 관리자
+존재 여부 확인.
+
 ## 첫 관리자
 
 관리자가 생기기 전에는 아무도 못 들어옴. server 가 시작할 때 log 에 **1회용 설정 link** 를

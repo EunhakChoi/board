@@ -303,5 +303,10 @@
   "web.webhooks.remove": "Remove {url}",
   "web.webhooks.secretEnds": "secret",
   "web.webhooks.secret": "Signing secret",
-  "web.webhooks.secretOnce": "Copy the signing secret now; it is not shown again. Receivers check X-Board-Signature with it."
+  "web.webhooks.secretOnce": "Copy the signing secret now; it is not shown again. Receivers check X-Board-Signature with it.",
+  "cli.doctor.https": "Sign-in providers (Google) only send people back to HTTPS. Put board behind a fixed HTTPS address (e.g. an ngrok static domain) and set BOARD_PUBLIC_URL to it.",
+  "cli.doctor.provider": "Check BOARD_OIDC_ISSUER and that the server can reach the provider.",
+  "cli.doctor.callbackHost": "BOARD_PUBLIC_URL and the redirect URI must use the same address.",
+  "cli.doctor.callback": "This exact URL must be an authorized redirect URI of the OAuth client.",
+  "cli.doctor.noAdmin": "No admin yet: open the one-time setup link from the server log (or sign in with an address in BOARD_ADMIN_EMAILS)."
 }

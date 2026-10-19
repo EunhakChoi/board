@@ -513,6 +513,18 @@ pub trait Identity: Send + Sync {
         code_verifier: &str,
         nonce: &str,
     ) -> Result<Claims, WorkspaceError>;
+    /// Whether the provider answers (its discovery document loads).
+    fn health(&self) -> Result<(), WorkspaceError> {
+        Ok(())
+    }
+    /// The callback address registered at the provider.
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "implementations return a field of their own"
+    )]
+    fn callback_url(&self) -> &str {
+        ""
+    }
 }
 
 /// Someone in a project room, as the others see them.

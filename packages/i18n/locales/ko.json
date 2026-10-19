@@ -292,5 +292,10 @@
   "web.webhooks.remove": "{url} 삭제",
   "web.webhooks.secretEnds": "secret",
   "web.webhooks.secret": "서명 secret",
-  "web.webhooks.secretOnce": "서명 secret 은 지금만 표시됨 — 바로 복사. 받는 쪽은 이 값으로 X-Board-Signature 검증."
+  "web.webhooks.secretOnce": "서명 secret 은 지금만 표시됨 — 바로 복사. 받는 쪽은 이 값으로 X-Board-Signature 검증.",
+  "cli.doctor.https": "로그인 provider (Google) 는 HTTPS 로만 되돌려 보냄. 고정 HTTPS 주소 (예: ngrok 고정 domain) 뒤에 두고 BOARD_PUBLIC_URL 을 그 주소로 설정.",
+  "cli.doctor.provider": "BOARD_OIDC_ISSUER 와 server 에서 provider 접속 가능 여부 확인.",
+  "cli.doctor.callbackHost": "BOARD_PUBLIC_URL 과 redirect URI 는 같은 주소여야 함.",
+  "cli.doctor.callback": "이 URL 그대로 OAuth client 의 승인된 redirect URI 에 등록 필요.",
+  "cli.doctor.noAdmin": "관리자 없음: server log 의 1회용 설정 link 로 접속 (또는 BOARD_ADMIN_EMAILS 주소로 로그인)."
 }

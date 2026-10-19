@@ -135,6 +135,15 @@ impl Engine {
             local_mode: self.local_mode,
             workspace: state(self.ports.workspace.health()),
             render: state(self.ports.renderer.health()),
+            sign_in: match &self.sign_in {
+                Some(settings) => Some(SignInStatus {
+                    provider: settings.identity.provider().to_owned(),
+                    callback_url: settings.identity.callback_url().to_owned(),
+                    state: state(settings.identity.health()),
+                    has_admin: self.ports.accounts.has_admin()?,
+                }),
+                None => None,
+            },
         })
     }
 
@@ -169,6 +178,18 @@ pub struct System {
     pub local_mode: bool,
     pub workspace: ServiceState,
     pub render: ServiceState,
+    /// How people sign in, on a public server.
+    pub sign_in: Option<SignInStatus>,
+}
+
+/// The identity provider as `board doctor` sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignInStatus {
+    pub provider: String,
+    pub callback_url: String,
+    pub state: ServiceState,
+    /// False until someone used the setup link (or an admin address signed in).
+    pub has_admin: bool,
 }
 
 /// Whether an internal service answers.
