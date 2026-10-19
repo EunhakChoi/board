@@ -3,6 +3,7 @@
 mod accounts;
 mod captures;
 mod comments;
+mod notices;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -25,6 +26,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0006_share_links.sql"),
     include_str!("migrations/0007_cli_tokens.sql"),
     include_str!("migrations/0008_project_members.sql"),
+    include_str!("migrations/0009_notices.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.

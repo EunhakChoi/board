@@ -87,7 +87,7 @@ impl Engine {
         at: &At,
         body: &str,
     ) -> Result<Comment, EngineError> {
-        self.visible(actor, key, Command::CommentAdd)?;
+        let project = self.visible(actor, key, Command::CommentAdd)?;
         let body = check_body(body)?;
         if !matches!(kind, "screen" | "story") {
             return Err(EngineError::Invalid(format!(
@@ -159,6 +159,7 @@ impl Engine {
             "comment.added",
             serde_json::json!({ "id": comment.id }),
         );
+        self.comment_added(actor, &project, &comment);
         Ok(comment)
     }
 
@@ -213,7 +214,7 @@ impl Engine {
         kind: ReplyKind,
         body: &str,
     ) -> Result<Comment, EngineError> {
-        self.visible(actor, key, Command::CommentAdd)?;
+        let project = self.visible(actor, key, Command::CommentAdd)?;
         let current = self
             .ports
             .comments
@@ -245,7 +246,7 @@ impl Engine {
         };
         let reply = NewReply {
             author: actor.person(),
-            body,
+            body: body.clone(),
             kind,
             status,
             resolved_commit,
@@ -256,6 +257,7 @@ impl Engine {
             .reply(key, id, rev, &reply)?
             .ok_or(EngineError::Changed(current.rev))?;
         self.publish(key, "comment.updated", serde_json::json!({ "id": id }));
+        self.comment_answered(actor, &project, &comment, kind, &body);
         Ok(comment)
     }
 

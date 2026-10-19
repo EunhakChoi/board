@@ -48,7 +48,8 @@ export interface Working {
 interface RoomState {
   connected: boolean;
   me?: Peer;
-  peers: Map<string, { peer: Peer; presence: Presence }>;
+  /** By connection; `at` is when it last moved, so a person's latest tab wins. */
+  peers: Map<string, Entry>;
   working: Working[];
 }
 
@@ -74,12 +75,16 @@ export function useRoom(): Room {
 }
 
 /** People, not connections: someone with two tabs shows once. */
-export function usePeople(): { peer: Peer; presence: Presence }[] {
+type Entry = { peer: Peer; presence: Presence; at: number };
+
+/** Everyone else here, one entry per person: their most recently active tab. */
+export function usePeople(): Entry[] {
   const { peers, me } = useRoom();
-  const seen = new Map<string, { peer: Peer; presence: Presence }>();
+  const seen = new Map<string, Entry>();
   for (const entry of peers.values()) {
     if (entry.peer.person === me?.person) continue;
-    if (!seen.has(entry.peer.person)) seen.set(entry.peer.person, entry);
+    const known = seen.get(entry.peer.person);
+    if (!known || entry.at >= known.at) seen.set(entry.peer.person, entry);
   }
   return [...seen.values()];
 }
@@ -105,6 +110,7 @@ type Message =
   | { type: "leave"; id: string }
   | { type: "presence"; from: string; data: Presence }
   | { type: "event"; seq: number; kind: string; data: unknown }
+  | { type: "inbox" }
   | { type: "admin"; kind: string; data: unknown }
   | { type: "working"; working: Working[] };
 
@@ -188,9 +194,9 @@ export function RealtimeProvider({ project, children }: { project: string; child
           }
           for (const missed of message.missed) handle(missed);
           seq = message.seq;
-          const peers = new Map<string, { peer: Peer; presence: Presence }>();
+          const peers = new Map<string, Entry>();
           for (const { peer, presence } of message.peers)
-            peers.set(peer.id, { peer, presence: presence ?? {} });
+            peers.set(peer.id, { peer, presence: presence ?? {}, at: 0 });
           setState({ connected: true, me: message.you, peers, working: message.working });
           // Tell the others where this tab is right away.
           if (Object.keys(mine.current).length > 0) send(mine.current);
@@ -199,7 +205,7 @@ export function RealtimeProvider({ project, children }: { project: string; child
         case "join":
           setState((s) => {
             const peers = new Map(s.peers);
-            peers.set(message.peer.id, { peer: message.peer, presence: {} });
+            peers.set(message.peer.id, { peer: message.peer, presence: {}, at: Date.now() });
             return { ...s, peers };
           });
           // A newcomer learns where everyone is.
@@ -217,7 +223,7 @@ export function RealtimeProvider({ project, children }: { project: string; child
             const entry = s.peers.get(message.from);
             if (!entry) return s;
             const peers = new Map(s.peers);
-            peers.set(message.from, { peer: entry.peer, presence: message.data });
+            peers.set(message.from, { peer: entry.peer, presence: message.data, at: Date.now() });
             return { ...s, peers };
           });
           break;
@@ -227,6 +233,9 @@ export function RealtimeProvider({ project, children }: { project: string; child
           break;
         case "admin":
           void client.invalidateQueries({ queryKey: ["admin"] });
+          break;
+        case "inbox":
+          void client.invalidateQueries({ queryKey: ["notifications"] });
           break;
         case "working":
           setState((s) => ({ ...s, working: message.working }));
@@ -277,11 +286,11 @@ export function RealtimeProvider({ project, children }: { project: string; child
 }
 
 /** The latest presence of the person this tab follows. */
-export function useFollowed(): { peer: Peer; presence: Presence } | undefined {
-  const { following, peers } = useRoom();
+export function useFollowed(): Entry | undefined {
+  const { following } = useRoom();
+  const people = usePeople();
   if (!following) return undefined;
-  for (const entry of peers.values()) if (entry.peer.person === following) return entry;
-  return undefined;
+  return people.find((entry) => entry.peer.person === following);
 }
 
 /** Calls `fn` at most every `ms`; the last call always lands. */

@@ -1,18 +1,44 @@
-import { Check, Trash2, X } from "lucide-react";
+import { Check, Copy, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
-import type { Role, User } from "@/lib/api";
+import type { Role, User, Webhook } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { useAdminActions, useAllowRules, useMe, useUsers } from "@/lib/queries";
+import {
+  useAdminActions,
+  useAllowRules,
+  useMe,
+  useProjects,
+  useUsers,
+  useWebhookActions,
+  useWebhooks,
+} from "@/lib/queries";
 
 const ROLES: Role[] = ["admin", "editor", "commenter", "viewer"];
 
 /** `/team`: who is in, who is waiting, and who gets in on sight (admins). */
 export function Team() {
+  const t = useT();
+  const me = useMe();
+  if (me.data?.kind === "local") {
+    // Local mode has no accounts; webhooks still work.
+    return (
+      <div className="flex min-h-svh flex-col">
+        <AppHeader />
+        <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
+          <h1 className="text-2xl font-semibold">{t("web.team.title")}</h1>
+          <Webhooks />
+        </main>
+      </div>
+    );
+  }
+  return <Members />;
+}
+
+function Members() {
   const t = useT();
   const users = useUsers();
   const all = users.data?.users ?? [];
@@ -42,6 +68,7 @@ export function Team() {
           ))}
         </Section>
         <Allowlist />
+        <Webhooks />
         {out.length > 0 && (
           <Section title={t("web.team.removed")} count={out.length}>
             {out.map((user) => (
@@ -203,5 +230,177 @@ function Allowlist() {
       ))}
       {rules.data?.rules.length === 0 && <Empty text={t("web.team.allowEmpty")} />}
     </Section>
+  );
+}
+
+/** Addresses that get a signed POST when comments, versions or access requests happen. */
+function Webhooks() {
+  const t = useT();
+  const hooks = useWebhooks();
+  const projects = useProjects();
+  const { create } = useWebhookActions();
+  const [url, setUrl] = useState("");
+  const [project, setProject] = useState("");
+  const [events, setEvents] = useState<Set<string>>(new Set());
+  const [secret, setSecret] = useState<{ id: string; value: string } | undefined>();
+  const all = hooks.data?.events ?? [];
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    create.mutate(
+      { url: url.trim(), events: [...events], project: project || null },
+      {
+        onSuccess: (created) => {
+          setSecret({ id: created.webhook.id, value: created.secret });
+          setUrl("");
+          setEvents(new Set());
+        },
+      },
+    );
+  };
+  const toggle = (name: string) => {
+    const next = new Set(events);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setEvents(next);
+  };
+  return (
+    <Section title={t("web.webhooks.title")}>
+      <form onSubmit={submit} className="flex flex-col gap-3 p-3">
+        <div className="flex gap-2">
+          <Input
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://hooks.example.com/board"
+            aria-label={t("web.webhooks.url")}
+          />
+          <Button type="submit" disabled={create.isPending || !url.trim()}>
+            {t("web.webhooks.add")}
+          </Button>
+        </div>
+        <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <legend className="mb-1 text-xs text-muted-foreground">{t("web.webhooks.events")}</legend>
+          {all.map((name) => (
+            <label key={name} className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={events.has(name)}
+                onChange={() => toggle(name)}
+                className="accent-primary"
+              />
+              <code className="text-xs">{name}</code>
+            </label>
+          ))}
+        </fieldset>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-xs text-muted-foreground">{t("web.webhooks.project")}</span>
+          <select
+            value={project}
+            onChange={(event) => setProject(event.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+          >
+            <option value="">{t("web.webhooks.allProjects")}</option>
+            {(projects.data?.projects ?? []).map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {create.error && <p className="text-sm text-destructive">{create.error.message}</p>}
+      </form>
+      {(hooks.data?.webhooks ?? []).map((hook) => (
+        <WebhookRow
+          key={hook.id}
+          hook={hook}
+          secret={secret?.id === hook.id ? secret.value : undefined}
+          onSecret={(value) => setSecret({ id: hook.id, value })}
+        />
+      ))}
+      {hooks.data?.webhooks.length === 0 && <Empty text={t("web.webhooks.empty")} />}
+    </Section>
+  );
+}
+
+function WebhookRow({
+  hook,
+  secret,
+  onSecret,
+}: {
+  hook: Webhook;
+  secret: string | undefined;
+  onSecret: (secret: string) => void;
+}) {
+  const t = useT();
+  const { remove, rotate, test } = useWebhookActions();
+  const ok = hook.lastStatus !== null && hook.lastStatus >= 200 && hook.lastStatus < 300;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{hook.url}</span>
+        {hook.lastDeliveryAt && (
+          <Badge variant={ok ? "secondary" : "destructive"}>
+            {hook.lastStatus ?? t("web.webhooks.failed")}
+          </Badge>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => test.mutate(hook.id)}
+          disabled={test.isPending}
+        >
+          <Send />
+          {t("web.webhooks.test")}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => rotate.mutate(hook.id, { onSuccess: (r) => onSecret(r.secret) })}
+          aria-label={t("web.webhooks.rotate", { url: hook.url })}
+          title={t("web.webhooks.rotate", { url: hook.url })}
+        >
+          <RefreshCw />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => remove.mutate(hook.id)}
+          aria-label={t("web.webhooks.remove", { url: hook.url })}
+          title={t("web.webhooks.remove", { url: hook.url })}
+        >
+          <Trash2 />
+        </Button>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {hook.events.join(", ")}
+        {hook.project ? ` · ${hook.project}` : ""} · {t("web.webhooks.secretEnds")} …
+        {hook.secretLast4}
+      </div>
+      {hook.lastError && <p className="text-xs text-destructive">{hook.lastError}</p>}
+      {secret && <SecretOnce value={secret} />}
+    </div>
+  );
+}
+
+/** The signing secret right after it was made; it is not shown again. */
+function SecretOnce({ value }: { value: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex flex-col gap-1 rounded-md bg-muted p-2">
+      <p className="text-xs">{t("web.webhooks.secretOnce")}</p>
+      <div className="flex gap-2">
+        <Input readOnly value={value} aria-label={t("web.webhooks.secret")} />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void navigator.clipboard?.writeText(value);
+            setCopied(true);
+          }}
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </div>
+    </div>
   );
 }

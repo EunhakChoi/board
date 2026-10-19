@@ -7,6 +7,7 @@ import { findCheckout } from "./checkout.ts";
 import * as commands from "./commands.ts";
 import * as notes from "./comments.ts";
 import { type Theme, themesOf } from "./data.ts";
+import * as inbox from "./inbox.ts";
 import type { RenderOptions } from "./render.ts";
 import * as renders from "./render.ts";
 import * as structure from "./structure.ts";
@@ -220,6 +221,11 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         return await renders.capture(ctx, project(), render());
       case "comments":
         return await commentsCommand(ctx, rest, args, project, message, single);
+      case "inbox":
+        if (rest[0] === "read") await inbox.read(ctx, rest.slice(1));
+        else if (rest[0] === undefined) await inbox.list(ctx, args.flags.has("--all"));
+        else throw new commands.CliError(t("cli.usage.inbox", {}, locale));
+        break;
       case "login":
         await auth.login(ctx, str(args, "--token"), str(args, "--name"));
         break;

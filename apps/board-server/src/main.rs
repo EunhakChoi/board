@@ -3,6 +3,7 @@
 mod config;
 mod secret;
 mod update;
+mod webhook;
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -51,7 +52,9 @@ async fn run(config: Config) -> Result<(), String> {
             db.clone(),
             config.data_dir().join("comments"),
         )),
-        accounts: db,
+        accounts: db.clone(),
+        notices: db,
+        webhooks: Arc::new(webhook::Sender::new()),
         realtime: Arc::new(Hub::new()),
         renderer: Arc::new(RenderClient::new(
             &config.render_url,
@@ -70,7 +73,8 @@ async fn run(config: Config) -> Result<(), String> {
             secret,
             ttl_secs: PREVIEW_TOKEN_SECS,
         })
-        .with_tool_url(&config.tool_url());
+        .with_tool_url(&config.tool_url())
+        .with_secret(secret);
     let mut setup_link = None;
     if let Some(oidc) = &config.oidc {
         engine = engine.with_sign_in(SignInSettings {

@@ -66,3 +66,5 @@ No ids = every screen and story.
 | `board comments add <id> --at x,y\|selector -m text [--theme dark]` | Pins a comment to the smallest element at the point (or the selector) |
 | `board comments reply c12 -m text` | Replies |
 | `board comments resolve c12 [-m note]` · `reopen c12 [-m note]` | Resolves · reopens |
+| `board inbox [--all]` | Your notifications on a team server (new comments, answers in your threads, access requests for admins), each with a link; unread only unless `--all` |
+| `board inbox read [id...]` | Marks those notifications (or all) read |

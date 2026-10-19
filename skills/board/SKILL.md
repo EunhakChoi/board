@@ -35,6 +35,8 @@ board ls                # screens, stories, flows and whether their captures are
 - "Cannot reach the board server" → `board doctor` says which part is down.
 - "Sign in first" / "token was revoked" → a team server: ask the person to run `board login`
   (they approve it in the browser); CI uses `BOARD_TOKEN`.
+- On a team server, `board inbox` lists what concerns the person (new comments, answers in their
+  threads) with links — a quick way to find what to handle first.
 - Every command takes `--json` when you need to parse the output.
 
 ## Workflow 1 · Handle comments

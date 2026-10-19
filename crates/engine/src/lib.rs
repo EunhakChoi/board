@@ -7,6 +7,7 @@ mod captures;
 mod comments;
 mod error;
 mod links;
+mod notices;
 pub mod policy;
 mod ports;
 mod preview;
@@ -23,11 +24,13 @@ pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
 pub use links::{NewLink, SharedLink};
+pub use notices::{Inbox, WEBHOOK_EVENTS, WebhookSecret};
 pub use ports::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
     Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
-    Joined, Kick, NewComment, NewReply, NewShareLink, NewUser, Outgoing, Peer, ProjectStore,
-    Realtime, Records, RenderJob, Renderer, Settings, Shot, StoreError, Workspace, WorkspaceError,
+    Joined, Kick, NewComment, NewNotification, NewReply, NewShareLink, NewUser, NewWebhook,
+    Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer, Settings, Shot,
+    StoreError, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
@@ -46,6 +49,8 @@ pub struct Ports {
     pub comments: Arc<dyn Comments>,
     pub accounts: Arc<dyn Accounts>,
     pub realtime: Arc<dyn Realtime>,
+    pub notices: Arc<dyn Notices>,
+    pub webhooks: Arc<dyn WebhookSender>,
 }
 
 impl std::fmt::Debug for Ports {
@@ -63,6 +68,7 @@ pub struct Engine {
     tool_url: Option<Arc<str>>,
     sign_in: Option<Arc<SignInSettings>>,
     pending: Arc<auth::PendingSignIns>,
+    secret: Option<Arc<[u8; 32]>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -82,7 +88,15 @@ impl Engine {
             tool_url: None,
             sign_in: None,
             pending: Arc::default(),
+            secret: None,
         }
+    }
+
+    /// The server key: webhook signing secrets are derived from it.
+    #[must_use]
+    pub fn with_secret(mut self, key: [u8; 32]) -> Self {
+        self.secret = Some(Arc::new(key));
+        self
     }
 
     /// Turns sign-in on (a public server): accounts come from the identity provider.

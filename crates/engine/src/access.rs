@@ -137,7 +137,7 @@ impl Engine {
     }
 }
 
-fn admin(actor: &Actor) -> Result<(), EngineError> {
+pub(crate) fn admin(actor: &Actor) -> Result<(), EngineError> {
     if can(actor, Command::Admin, None) {
         Ok(())
     } else {

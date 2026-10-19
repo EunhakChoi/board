@@ -252,6 +252,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's notifications, newest first (empty in local mode and for guests) */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Marks these notifications read, or all of them when `ids` is left out */
+        post: operations["markNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Webhooks and the events they can choose (admin) */
+        get: operations["listWebhooks"];
+        put?: never;
+        /** Adds a webhook; its signing secret is shown only now (admin) */
+        post: operations["createWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes a webhook (admin) */
+        delete: operations["deleteWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Gives the webhook a new signing secret, shown only now; the old one stops working */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sends a `ping` delivery now and records the outcome */
+        post: operations["testWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/cli-tokens": {
         parameters: {
             query?: never;
@@ -1123,6 +1232,34 @@ export interface components {
             status: "pending" | "active" | "rejected" | "removed";
             createdAt: string;
         };
+        Notification: {
+            id: number;
+            /** @enum {string} */
+            kind: "comment.added" | "comment.replied" | "comment.resolved" | "comment.reopened" | "access.requested";
+            project: string | null;
+            actor: string;
+            /** @description One line for people */
+            text: string;
+            /** @description Path on the tool to open */
+            link: string;
+            data: {
+                [key: string]: unknown;
+            };
+            createdAt: string;
+            readAt: string | null;
+        };
+        Webhook: {
+            id: string;
+            url: string;
+            events: string[];
+            project: string | null;
+            secretLast4: string;
+            createdBy: string;
+            createdAt: string;
+            lastStatus: number | null;
+            lastError: string | null;
+            lastDeliveryAt: string | null;
+        };
         CliToken: {
             id: string;
             name: string;
@@ -1202,6 +1339,18 @@ export interface components {
         };
     };
     responses: {
+        /** @description The webhook and its signing secret (shown once) */
+        WebhookSecret: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    webhook: components["schemas"]["Webhook"];
+                    secret: string;
+                };
+            };
+        };
         /** @description Someone wrote to it since you read it; `detail.rev` is its revision now */
         Changed: {
             headers: {
@@ -1657,6 +1806,167 @@ export interface operations {
             };
             400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                unread?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notifications and how many are unread */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notifications: components["schemas"]["Notification"][];
+                        unread: number;
+                    };
+                };
+            };
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ids?: number[];
+                };
+            };
+        };
+        responses: {
+            /** @description How many stay unread */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        unread: number;
+                    };
+                };
+            };
+        };
+    };
+    listWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhooks (without secrets) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        webhooks: components["schemas"]["Webhook"][];
+                        events: string[];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    url: string;
+                    /** @description Empty or left out means every event */
+                    events?: string[];
+                    /** @description Only this project's events (needed for a private project) */
+                    project?: string | null;
+                };
+            };
+        };
+        responses: {
+            201: components["responses"]["WebhookSecret"];
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WebhookSecret"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The webhook with `lastStatus` / `lastError` of this delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Webhook"];
+                };
+            };
             404: components["responses"]["NotFound"];
         };
     };

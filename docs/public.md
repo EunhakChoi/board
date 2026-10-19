@@ -55,9 +55,31 @@ is printed on each start while there is still no admin.
 - Anyone else sees "Waiting for approval" while an admin approves or declines the **access
   request**.
 
+## Notifications and webhooks
+
+- **Inbox**: a new comment reaches everyone who can see the project; a reply, resolve or reopen
+  reaches the people in that thread; access requests reach the admins. Nobody is told about their
+  own action. The bell in the header shows them; agents read them with `board inbox`.
+- **Webhooks** (Team → Webhooks, admins; works in local mode too): pick the events
+  (`comment.added`, `comment.replied`, `comment.resolved`, `comment.reopened`,
+  `version.created`, `access.requested`) and optionally one project. A private project's events
+  only go to webhooks set to that project. Each delivery is a JSON `POST`:
+
+  ```json
+  { "event": "comment.added", "project": "web", "actor": "Ann",
+    "text": "Ann commented on screen home: …", "url": "https://board.example.com/p/web/…",
+    "data": { "comment": 12, "kind": "screen", "target": "home", "body": "…" } }
+  ```
+
+  Check `X-Board-Signature: sha256=<hex>`: the HMAC-SHA256 of `<X-Board-Timestamp>.<body>` with
+  the secret shown when the webhook was made. Failed deliveries are retried twice (after 2 s and
+  10 s); the Team page shows the last status. "Send test" posts a `ping`.
+
 ## Security notes
 
 - Sessions are `HttpOnly`, `SameSite=Lax` cookies, `Secure` over HTTPS, lasting 30 days. Changing
   requests also need the `x-board-client` header, which other sites cannot send.
 - Only token hashes are stored. Removing or declining someone ends their sessions at once.
 - The client secret can come from a file: `BOARD_OIDC_CLIENT_SECRET_FILE`.
+- Webhook secrets are derived from the server key (`BOARD_SECRET_KEY` or `data/secret.key`) and
+  never stored; changing that key changes every webhook secret.

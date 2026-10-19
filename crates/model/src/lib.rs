@@ -363,3 +363,43 @@ pub struct CliToken {
     pub created_at: String,
     pub last_used_at: Option<String>,
 }
+
+/// Something that happened that a member should know about (their inbox).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Notification {
+    pub id: u64,
+    /// The event: `comment.added`, `comment.replied`, `comment.resolved`, `comment.reopened`,
+    /// `access.requested`.
+    pub kind: String,
+    pub project: Option<String>,
+    /// Who did it.
+    pub actor: String,
+    /// One line for people (CLI, chat): "Ann commented on screen tasks-list: …".
+    pub text: String,
+    /// Where to look, as a path on the tool ("/p/web/t/screen/tasks-list?comment=12").
+    pub link: String,
+    /// Event details (comment id, target, body …) for clients that format it themselves.
+    pub data: serde_json::Value,
+    pub created_at: String,
+    pub read_at: Option<String>,
+}
+
+/// An address that gets a signed POST when chosen events happen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Webhook {
+    pub id: String,
+    pub url: String,
+    pub events: Vec<String>,
+    /// Only this project's events; `None` is every project that is not private.
+    pub project: Option<String>,
+    /// The last 4 characters of the signing secret, to tell secrets apart.
+    pub secret_last4: String,
+    pub created_by: String,
+    pub created_at: String,
+    /// HTTP status of the last delivery, if one got an answer.
+    pub last_status: Option<u16>,
+    pub last_error: Option<String>,
+    pub last_delivery_at: Option<String>,
+}

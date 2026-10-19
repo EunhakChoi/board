@@ -310,6 +310,9 @@ impl Engine {
             "version.created",
             serde_json::json!({ "number": version.number, "actor": actor.name() }),
         );
+        if let Ok(Some(project)) = self.ports.records.project(key) {
+            self.version_created(actor, &project, version.number, note);
+        }
         Ok(version)
     }
 }

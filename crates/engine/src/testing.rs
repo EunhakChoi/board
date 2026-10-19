@@ -22,6 +22,8 @@ pub struct Fakes {
     pub workspace: Arc<MemoryWorkspace>,
     pub renderer: Arc<MemoryRenderer>,
     pub realtime: Arc<MemoryRealtime>,
+    pub notices: Arc<MemoryNotices>,
+    pub sender: Arc<MemorySender>,
 }
 
 pub fn engine() -> Engine {
@@ -58,6 +60,8 @@ fn fakes() -> Fakes {
         workspace: Arc::new(MemoryWorkspace::default()),
         renderer: Arc::new(MemoryRenderer::default()),
         realtime: Arc::new(MemoryRealtime::default()),
+        notices: Arc::new(MemoryNotices::default()),
+        sender: Arc::new(MemorySender::default()),
     }
 }
 
@@ -73,9 +77,12 @@ fn engine_with(fakes: &Fakes) -> Engine {
             comments: Arc::new(MemoryComments::default()),
             accounts: Arc::new(MemoryAccounts::default()),
             realtime: fakes.realtime.clone(),
+            notices: fakes.notices.clone(),
+            webhooks: fakes.sender.clone(),
         },
         true,
     )
+    .with_secret([7; 32])
 }
 
 /// Records jobs. Screens render ready; with an image, the picture is `jpeg:<target>` and the
@@ -601,13 +608,20 @@ impl ProjectStore for MemoryStore {
 
 /// An engine with sign-in on (not local mode), behind a scripted identity provider.
 pub fn engine_with_sign_in(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>) {
+    let (engine, idp, _) = signed_in_with_fakes(admin_emails);
+    (engine, idp)
+}
+
+/// [`engine_with_sign_in`] with the fakes behind it.
+pub fn signed_in_with_fakes(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>, Fakes) {
     let idp = Arc::new(FakeIdentity::default());
-    let mut engine = engine_with(&fakes()).with_sign_in(SignInSettings {
+    let fakes = fakes();
+    let mut engine = engine_with(&fakes).with_sign_in(SignInSettings {
         identity: idp.clone(),
         admin_emails: admin_emails.iter().map(|e| (*e).to_owned()).collect(),
     });
     engine.local_mode = false;
-    (engine, idp)
+    (engine, idp, fakes)
 }
 
 /// Adds an allowlist rule straight to the accounts.
@@ -1107,6 +1121,12 @@ impl crate::Realtime for MemoryRealtime {
     fn publish_admins(&self, kind: &str, _: serde_json::Value) {
         self.events.lock().unwrap().push(("*".into(), kind.into()));
     }
+    fn notify(&self, people: &[String]) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(("*".into(), format!("notify {}", people.join(","))));
+    }
     fn kick(&self, who: crate::Kick) {
         self.events
             .lock()
@@ -1118,5 +1138,155 @@ impl crate::Realtime for MemoryRealtime {
             .lock()
             .unwrap()
             .push((project.into(), format!("working {} {on}", person.id)));
+    }
+}
+
+/// Notifications and webhooks in memory.
+#[derive(Default)]
+pub struct MemoryNotices {
+    notifications: Mutex<Vec<(String, board_model::Notification)>>,
+    hooks: Mutex<Vec<(board_model::Webhook, String)>>,
+}
+
+impl crate::Notices for MemoryNotices {
+    fn insert_notifications(&self, rows: &[crate::NewNotification]) -> Result<(), StoreError> {
+        let mut all = self.notifications.lock().unwrap();
+        for row in rows {
+            let id = all.len() as u64 + 1;
+            all.push((
+                row.user.clone(),
+                board_model::Notification {
+                    id,
+                    kind: row.kind.clone(),
+                    project: row.project.clone(),
+                    actor: row.actor.clone(),
+                    text: row.text.clone(),
+                    link: row.link.clone(),
+                    data: row.data.clone(),
+                    created_at: String::new(),
+                    read_at: None,
+                },
+            ));
+        }
+        Ok(())
+    }
+    fn notifications(
+        &self,
+        user: &str,
+        unread_only: bool,
+        limit: u32,
+    ) -> Result<Vec<board_model::Notification>, StoreError> {
+        Ok(self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .filter(|(u, n)| u == user && (!unread_only || n.read_at.is_none()))
+            .take(limit as usize)
+            .map(|(_, n)| n.clone())
+            .collect())
+    }
+    fn unread_count(&self, user: &str) -> Result<u32, StoreError> {
+        Ok(u32::try_from(self.notifications(user, true, u32::MAX)?.len()).unwrap_or(u32::MAX))
+    }
+    fn mark_read(&self, user: &str, ids: Option<&[u64]>) -> Result<(), StoreError> {
+        for (u, n) in self.notifications.lock().unwrap().iter_mut() {
+            if u == user && ids.is_none_or(|ids| ids.contains(&n.id)) {
+                n.read_at = Some("now".into());
+            }
+        }
+        Ok(())
+    }
+    fn webhooks(&self) -> Result<Vec<(board_model::Webhook, String)>, StoreError> {
+        Ok(self.hooks.lock().unwrap().clone())
+    }
+    fn insert_webhook(&self, hook: &crate::NewWebhook) -> Result<board_model::Webhook, StoreError> {
+        let webhook = board_model::Webhook {
+            id: hook.id.clone(),
+            url: hook.url.clone(),
+            events: hook.events.clone(),
+            project: hook.project.clone(),
+            secret_last4: hook.secret_last4.clone(),
+            created_by: hook.created_by.clone(),
+            created_at: String::new(),
+            last_status: None,
+            last_error: None,
+            last_delivery_at: None,
+        };
+        self.hooks
+            .lock()
+            .unwrap()
+            .push((webhook.clone(), hook.salt.clone()));
+        Ok(webhook)
+    }
+    fn delete_webhook(&self, id: &str) -> Result<bool, StoreError> {
+        let mut hooks = self.hooks.lock().unwrap();
+        let before = hooks.len();
+        hooks.retain(|(h, _)| h.id != id);
+        Ok(hooks.len() != before)
+    }
+    fn set_webhook_salt(&self, id: &str, salt: &str, last4: &str) -> Result<bool, StoreError> {
+        let mut hooks = self.hooks.lock().unwrap();
+        let Some((hook, old)) = hooks.iter_mut().find(|(h, _)| h.id == id) else {
+            return Ok(false);
+        };
+        salt.clone_into(old);
+        last4.clone_into(&mut hook.secret_last4);
+        Ok(true)
+    }
+    fn record_delivery(
+        &self,
+        id: &str,
+        status: Option<u16>,
+        error: Option<&str>,
+    ) -> Result<(), StoreError> {
+        if let Some((hook, _)) = self
+            .hooks
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|(h, _)| h.id == id)
+        {
+            hook.last_status = status;
+            hook.last_error = error.map(str::to_owned);
+            hook.last_delivery_at = Some("now".into());
+        }
+        Ok(())
+    }
+}
+
+/// One recorded POST: url, headers, body.
+pub type Post = (String, Vec<(String, String)>, String);
+
+/// Records webhook POSTs and answers 200.
+#[derive(Default)]
+pub struct MemorySender(pub Mutex<Vec<Post>>);
+
+impl MemorySender {
+    /// Waits up to two seconds for `n` posts (deliveries run on their own threads).
+    pub fn wait_for(&self, n: usize) -> Vec<Post> {
+        for _ in 0..200 {
+            let posts = self.0.lock().unwrap().clone();
+            if posts.len() >= n {
+                return posts;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl crate::WebhookSender for MemorySender {
+    fn post(&self, url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String> {
+        self.0.lock().unwrap().push((
+            url.to_owned(),
+            headers
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+                .collect(),
+            String::from_utf8_lossy(body).into_owned(),
+        ));
+        Ok(200)
     }
 }
