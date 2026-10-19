@@ -437,6 +437,12 @@ paths:
                 ownerName:
                   type: string
                   description: Needed the first time
+                authtoken:
+                  type: string
+                  description: "For `ngrok`: a new authtoken (kept, never returned); else the saved one"
+                domain:
+                  type: string
+                  description: "For `ngrok`: a domain of the account (else ngrok picks one)"
       responses:
         "200":
           description: Sharing
@@ -2431,11 +2437,11 @@ components:
           type: string
     ShareMode:
       type: string
-      enum: [address, tailscale, funnel]
-      description: "`address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel"
+      enum: [address, tailscale, funnel, ngrok]
+      description: "`address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server"
     Sharing:
       type: object
-      required: [fixed, mode, url, owner, modes, warning]
+      required: [fixed, mode, url, owner, modes, warning, ngrokToken]
       properties:
         modes:
           type: array
@@ -2454,6 +2460,9 @@ components:
         warning:
           type: [string, "null"]
           description: A tunnel problem (at start, or while turning sharing off)
+        ngrokToken:
+          type: [string, "null"]
+          description: Last characters of the saved ngrok authtoken
         fixed:
           type: boolean
           description: Set by the server's environment (--public); the page only shows it

@@ -1393,10 +1393,10 @@ export interface components {
             createdAt: string;
         };
         /**
-         * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel
+         * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server
          * @enum {string}
          */
-        ShareMode: "address" | "tailscale" | "funnel";
+        ShareMode: "address" | "tailscale" | "funnel" | "ngrok";
         Sharing: {
             /** @description The ways this machine can share */
             modes: {
@@ -1407,6 +1407,8 @@ export interface components {
             }[];
             /** @description A tunnel problem (at start, or while turning sharing off) */
             warning: string | null;
+            /** @description Last characters of the saved ngrok authtoken */
+            ngrokToken: string | null;
             /** @description Set by the server's environment (--public); the page only shows it */
             fixed: boolean;
             mode: components["schemas"]["ShareMode"] | null;
@@ -2127,6 +2129,10 @@ export interface operations {
                     url?: string;
                     /** @description Needed the first time */
                     ownerName?: string;
+                    /** @description For `ngrok`: a new authtoken (kept, never returned); else the saved one */
+                    authtoken?: string;
+                    /** @description For `ngrok`: a domain of the account (else ngrok picks one) */
+                    domain?: string;
                 };
             };
         };

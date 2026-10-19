@@ -51,4 +51,7 @@ test("sharing through Tailscale shows the machine's tailnet name", async ({ page
   await expect(sharing.getByRole("link", { name: "https://e2e.tail1.ts.net" })).toBeVisible();
   await sharing.getByRole("button", { name: "Turn sharing off" }).click();
   await expect(sharing.getByRole("button", { name: "Turn sharing on" })).toBeVisible();
+  // ngrok asks for the account's authtoken (not tried here: it needs a real account).
+  await sharing.getByRole("radio", { name: "ngrok" }).click();
+  await expect(sharing.getByLabel("ngrok authtoken")).toHaveAttribute("type", "password");
 });

@@ -21,6 +21,10 @@ export function SharingPanel() {
   const { start, stop } = useSharingActions();
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<ShareMode>("address");
+  const [authtoken, setAuthtoken] = useState("");
+  const [domain, setDomain] = useState("");
+  const tokenId = useId();
+  const domainId = useId();
   const [name, setName] = useState("");
   const nameId = useId();
   const urlId = useId();
@@ -30,9 +34,17 @@ export function SharingPanel() {
   const chosen = data.modes.find((m) => m.mode === mode);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const body = mode === "address" ? { mode, url } : { mode };
+    const body =
+      mode === "address"
+        ? { mode, url }
+        : mode === "ngrok"
+          ? { mode, ...(authtoken ? { authtoken } : {}), ...(domain ? { domain } : {}) }
+          : { mode };
     start.mutate(data.owner ? body : { ...body, ownerName: name }, {
-      onSuccess: () => setUrl(""),
+      onSuccess: () => {
+        setUrl("");
+        setAuthtoken("");
+      },
     });
   };
   const error = start.error ?? stop.error;
@@ -81,7 +93,7 @@ export function SharingPanel() {
                 ? t("web.sharing.lead", { target: `127.0.0.1:${REMOTE_PORT}` })
                 : t(`web.sharing.lead.${mode}`)}
             </p>
-            {chosen && mode !== "address" && (
+            {chosen && mode !== "address" && chosen.detail && (
               <p className={chosen.available ? "text-sm" : "text-sm text-destructive"}>
                 {chosen.available
                   ? t("web.sharing.willOpen", { url: chosen.detail })
@@ -111,6 +123,35 @@ export function SharingPanel() {
                   required
                 />
               </div>
+            )}
+            {mode === "ngrok" && (
+              <>
+                <div className="flex flex-col gap-1 text-sm">
+                  <label htmlFor={tokenId}>{t("web.sharing.ngrokToken")}</label>
+                  <Input
+                    id={tokenId}
+                    type="password"
+                    autoComplete="off"
+                    value={authtoken}
+                    onChange={(event) => setAuthtoken(event.target.value)}
+                    placeholder={
+                      data.ngrokToken
+                        ? t("web.sharing.ngrokSaved", { last: data.ngrokToken })
+                        : undefined
+                    }
+                    required={!data.ngrokToken}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 text-sm">
+                  <label htmlFor={domainId}>{t("web.sharing.ngrokDomain")}</label>
+                  <Input
+                    id={domainId}
+                    value={domain}
+                    onChange={(event) => setDomain(event.target.value)}
+                    placeholder="my-team.ngrok.app"
+                  />
+                </div>
+              </>
             )}
             <div>
               <Button type="submit" disabled={start.isPending || chosen?.available === false}>

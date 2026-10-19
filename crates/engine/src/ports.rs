@@ -675,8 +675,23 @@ pub trait Tunnels: Send + Sync {
     /// The ways this machine can share right now, for the sharing page.
     fn modes(&self) -> Vec<TunnelMode>;
     /// Opens `mode` to the remote door; returns the address people open.
-    fn open(&self, mode: crate::ShareMode) -> Result<String, String>;
+    fn open(&self, mode: crate::ShareMode, options: &TunnelOptions) -> Result<String, String>;
     fn close(&self, mode: crate::ShareMode) -> Result<(), String>;
+}
+
+/// What a tunnel needs from the person (ngrok: their authtoken, and a domain of theirs).
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct TunnelOptions {
+    pub authtoken: Option<String>,
+    pub domain: Option<String>,
+}
+
+impl std::fmt::Debug for TunnelOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TunnelOptions")
+            .field("domain", &self.domain)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One way to share, as this machine sees it.

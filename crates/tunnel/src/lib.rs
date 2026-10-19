@@ -1,5 +1,7 @@
 //! Tunnels to the remote door of a local board (`docs/local.md`, "Share it from this machine").
 //!
+//! ngrok runs inside the server with the person's authtoken ([`Ngrok`]).
+//!
 //! Tailscale runs through its CLI (`tailscale serve` / `tailscale funnel`, `--bg` so the tunnel
 //! outlives this process and comes back after a reboot). Works with Headscale too: without HTTPS
 //! certificates on the tailnet, private sharing uses plain HTTP inside the tailnet.
@@ -8,8 +10,45 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use board_engine::{ShareMode, TunnelMode, Tunnels};
+use board_engine::{ShareMode, TunnelMode, TunnelOptions, Tunnels};
 use serde::Deserialize;
+
+mod ngrok;
+
+pub use crate::ngrok::Ngrok;
+
+/// Every tunnel this machine can run.
+#[derive(Debug)]
+pub struct Machine {
+    pub tailscale: Tailscale,
+    pub ngrok: Ngrok,
+}
+
+impl Tunnels for Machine {
+    fn modes(&self) -> Vec<TunnelMode> {
+        let mut modes = self.tailscale.modes();
+        modes.push(TunnelMode {
+            mode: ShareMode::Ngrok,
+            available: true,
+            detail: String::new(),
+        });
+        modes
+    }
+
+    fn open(&self, mode: ShareMode, options: &TunnelOptions) -> Result<String, String> {
+        match mode {
+            ShareMode::Ngrok => self.ngrok.open(options),
+            _ => self.tailscale.open(mode),
+        }
+    }
+
+    fn close(&self, mode: ShareMode) -> Result<(), String> {
+        match mode {
+            ShareMode::Ngrok => self.ngrok.close(),
+            _ => self.tailscale.close(mode),
+        }
+    }
+}
 
 /// How long a CLI call may take. `tailscale funnel` waits for someone to enable Funnel in the
 /// admin console; we stop it and pass the link on instead.
@@ -88,7 +127,7 @@ impl Tailscale {
             ShareMode::Funnel => Err(
                 "Funnel needs HTTPS certificates on the tailnet (Tailscale, not Headscale)".into(),
             ),
-            ShareMode::Address => Err("not a tunnel".into()),
+            ShareMode::Address | ShareMode::Ngrok => Err("not a Tailscale mode".into()),
         }
     }
 
@@ -133,7 +172,7 @@ impl Tailscale {
     }
 }
 
-impl Tunnels for Tailscale {
+impl Tailscale {
     fn modes(&self) -> Vec<TunnelMode> {
         let node = self.node();
         [ShareMode::Tailscale, ShareMode::Funnel]

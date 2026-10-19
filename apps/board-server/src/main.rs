@@ -98,15 +98,7 @@ async fn run(config: Config) -> Result<(), String> {
                 .map(|token| format!("{}/setup?token={token}", config.tool_url()));
         }
     }
-    if let Some(addr) = config.remote_bind {
-        engine = engine.with_tunnels(Arc::new(tailscale(addr)));
-    }
-    engine.restore_sharing().map_err(|e| e.to_string())?;
-    if let Ok(status) = engine.sharing(&board_model::Actor::Local)
-        && let Some(warning) = status.warning
-    {
-        eprintln!("board-server: sharing: {warning}");
-    }
+    let engine = with_sharing(engine, config.remote_bind).await?;
     if config.update_check {
         update::spawn(engine.clone());
     }
@@ -137,14 +129,42 @@ async fn run(config: Config) -> Result<(), String> {
     api.and(previews).and(remote).map_err(|e| e.to_string())
 }
 
-/// The tailscale CLI, sending people to the remote door at `addr`.
-fn tailscale(addr: std::net::SocketAddr) -> board_tunnel::Tailscale {
+/// Lets a local board run tunnels to its remote door, and reopens sharing that was on.
+async fn with_sharing(
+    mut engine: Engine,
+    remote: Option<std::net::SocketAddr>,
+) -> Result<Engine, String> {
+    if let Some(addr) = remote {
+        let target = format!("http://127.0.0.1:{}", addr.port());
+        engine = engine.with_tunnels(Arc::new(board_tunnel::Machine {
+            tailscale: tailscale(&target),
+            ngrok: board_tunnel::Ngrok::new(tokio::runtime::Handle::current(), &target)?,
+        }));
+    }
+    // Tunnels block on the runtime, so they reopen from a blocking thread.
+    let restored = engine.clone();
+    tokio::task::spawn_blocking(move || {
+        restored.restore_sharing()?;
+        restored.sharing(&board_model::Actor::Local)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|status| {
+        if let Some(warning) = status.warning {
+            eprintln!("board-server: sharing: {warning}");
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(engine)
+}
+
+/// The tailscale CLI, sending people to the remote door at `target`.
+fn tailscale(target: &str) -> board_tunnel::Tailscale {
     board_tunnel::Tailscale {
         cli: std::env::var("BOARD_TAILSCALE").unwrap_or_else(|_| "tailscale".to_owned()),
         socket: std::env::var("BOARD_TAILSCALE_SOCKET").ok(),
         // tailscaled runs on the host: in docker the remote door is published on its loopback.
-        target: std::env::var("BOARD_TAILSCALE_TARGET")
-            .unwrap_or_else(|_| format!("http://127.0.0.1:{}", addr.port())),
+        target: std::env::var("BOARD_TAILSCALE_TARGET").unwrap_or_else(|_| target.to_owned()),
     }
 }
 
