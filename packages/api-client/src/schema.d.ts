@@ -1211,6 +1211,18 @@ export interface components {
                 workspace: components["schemas"]["ServiceState"];
                 render: components["schemas"]["ServiceState"];
             };
+            /** @description How people sign in (public servers); null in local mode */
+            signIn: null | {
+                provider: string;
+                /** @description Register this at the provider as the redirect URI */
+                callbackUrl: string;
+                /** @description Whether the provider's discovery document loads */
+                ok: boolean;
+                /** @description Why it fails (admins only) */
+                error?: string;
+                /** @description False until the setup link was used */
+                hasAdmin: boolean;
+            };
         };
         ServiceState: {
             ok: boolean;

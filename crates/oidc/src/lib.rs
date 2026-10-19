@@ -143,6 +143,12 @@ impl Identity for Oidc {
     fn provider(&self) -> &str {
         &self.provider
     }
+    fn health(&self) -> Result<(), WorkspaceError> {
+        self.discovery().map(|_| ())
+    }
+    fn callback_url(&self) -> &str {
+        &self.redirect_uri
+    }
 
     fn authorize_url(&self, request: &AuthRequest) -> Result<String, WorkspaceError> {
         let endpoint = &self.discovery()?.authorization_endpoint;

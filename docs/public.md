@@ -42,6 +42,10 @@ Without Docker: `board-server --public` with the same variables (`BOARD_PREVIEW_
 `BOARD_PUBLIC_PREVIEW_URL`). The server refuses to start in public mode without sign-in or a
 fixed address.
 
+Then check it from any machine: `board doctor --server https://board.example.com`. Besides the
+services it checks that the address is HTTPS, that the server reaches the sign-in provider, the
+callback URL to register (it must match the OAuth client exactly) and whether an admin exists.
+
 ## The first admin
 
 Until an admin exists, nobody gets in. On start the server prints a **one-time setup link** to

@@ -214,6 +214,50 @@ function portOpen(port: number): Promise<boolean> {
   });
 }
 
+/** A public server: HTTPS on a fixed address, a provider that answers, an admin. */
+function publicChecks(ctx: Context, info: Awaited<ReturnType<typeof system>>): Check[] {
+  const checks: Check[] = [];
+  const local = (url: string) =>
+    ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+  if (info.toolUrl) {
+    checks.push(
+      info.toolUrl.startsWith("https://") || local(info.toolUrl)
+        ? { state: "ok", text: `public address ${info.toolUrl}` }
+        : {
+            state: "fail",
+            text: `public address ${info.toolUrl} is not HTTPS`,
+            hint: t("cli.doctor.https", {}, ctx.locale),
+          },
+    );
+  }
+  const signIn = info.signIn;
+  if (!signIn) return checks;
+  const callbackHost = signIn.callbackUrl ? new URL(signIn.callbackUrl).host : "";
+  const toolHost = info.toolUrl ? new URL(info.toolUrl).host : "";
+  checks.push(
+    !signIn.ok
+      ? {
+          state: "fail",
+          text: `sign-in (${signIn.provider})${signIn.error ? `: ${signIn.error}` : ""}`,
+          hint: t("cli.doctor.provider", {}, ctx.locale),
+        }
+      : callbackHost !== toolHost
+        ? {
+            state: "fail",
+            text: `sign-in callback ${signIn.callbackUrl} is not on ${toolHost}`,
+            hint: t("cli.doctor.callbackHost", {}, ctx.locale),
+          }
+        : {
+            state: "ok",
+            text: `sign-in (${signIn.provider}), callback ${signIn.callbackUrl}`,
+            hint: t("cli.doctor.callback", {}, ctx.locale),
+          },
+  );
+  if (!signIn.hasAdmin)
+    checks.push({ state: "warn", text: t("cli.doctor.noAdmin", {}, ctx.locale) });
+  return checks;
+}
+
 export async function doctor(ctx: Context): Promise<number> {
   const checks: Check[] = [];
   const node = process.versions.node;
@@ -276,6 +320,7 @@ export async function doctor(ctx: Context): Promise<number> {
             },
       );
     }
+    if (!info.localMode) checks.push(...publicChecks(ctx, info));
     if (info.latest && newer(info.latest, info.version)) {
       checks.push({
         state: "warn",
