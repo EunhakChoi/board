@@ -913,3 +913,108 @@ async fn admins_manage_the_allowlist_and_access_requests() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
+
+#[tokio::test]
+async fn share_links_let_guests_into_one_project() {
+    let (engine, idp) = signed_in_engine();
+    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
+    let boss = boss.unwrap();
+    for key in ["web", "other"] {
+        let (status, _) = json_of(
+            &engine,
+            as_member(
+                "POST",
+                "/api/projects",
+                &boss,
+                Some(json!({"key": key, "title": key})),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let (status, created) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/projects/web/share-links",
+            &boss,
+            Some(json!({"role": "commenter", "label": "review"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let token = created["token"].as_str().unwrap().to_owned();
+    assert_eq!(created["url"], format!("https://board.test/l/{token}"));
+
+    let (status, shared) = call(engine.clone(), &format!("/api/links/{token}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (shared["projectTitle"].as_str(), shared["role"].as_str()),
+        (Some("web"), Some("commenter"))
+    );
+
+    let response = board_api::router(engine.clone())
+        .oneshot(
+            Request::post(format!("/api/links/{token}/enter"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"name":"Dana"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let guest = response.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &guest, None)).await;
+    assert_eq!(
+        (me["kind"].as_str(), me["project"].as_str()),
+        (Some("guest"), Some("web"))
+    );
+    let (_, projects) = json_of(&engine, as_member("GET", "/api/projects", &guest, None)).await;
+    let keys: Vec<_> = projects["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["key"].clone())
+        .collect();
+    assert_eq!(keys, [json!("web")], "a guest sees only the link's project");
+    let (status, _) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/other", &guest, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/web/share-links", &guest, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let id = created["link"]["id"].as_str().unwrap();
+    let (status, _, _) = send(
+        engine.clone(),
+        as_member(
+            "POST",
+            &format!("/api/projects/web/share-links/{id}/revoke"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &guest, None)).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "revoked: the guest is out"
+    );
+    let (status, _) = call(engine, &format!("/api/links/{token}")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

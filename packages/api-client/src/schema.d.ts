@@ -232,6 +232,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What a share link opens (no sign-in needed) */
+        get: operations["getSharedLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/links/{token}/enter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Comes in through a share link under a name; sets the session cookie */
+        post: operations["enterSharedLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -264,6 +298,41 @@ export interface paths {
         post?: never;
         /** Delete the project with its versions, captures and comments (admin; no undo) */
         delete: operations["deleteProject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/share-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's share links, revoked ones included (admins) */
+        get: operations["listShareLinks"];
+        put?: never;
+        /** Creates a share link (admins); its address is shown only now */
+        post: operations["createShareLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/share-links/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revokes a share link; everyone who came in through it is out at once (admins) */
+        post: operations["revokeShareLink"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -875,6 +944,17 @@ export interface components {
             status: "pending" | "active" | "rejected" | "removed";
             createdAt: string;
         };
+        ShareLink: {
+            id: string;
+            project: string;
+            role: components["schemas"]["Role"];
+            label: string;
+            createdBy: string;
+            createdAt: string;
+            revokedAt: string | null;
+            /** @description How many people came in through it */
+            guests: number;
+        };
         AllowRule: {
             id: number;
             /** @enum {string} */
@@ -892,6 +972,8 @@ export interface components {
             email?: string;
             avatarUrl?: string;
             role: components["schemas"]["Role"];
+            /** @description The one project a guest's share link opens */
+            project?: string;
             /** @description True while the server only listens on localhost and needs no sign-in */
             localMode: boolean;
         };
@@ -1011,6 +1093,7 @@ export interface components {
         };
     };
     parameters: {
+        LinkToken: string;
         UserId: string;
         /** @description `main` (default), `v<number>` or a commit id */
         Rev: string;
@@ -1362,6 +1445,66 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getSharedLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The project and the role the link gives */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        project: string;
+                        projectTitle: string;
+                        role: components["schemas"]["Role"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    enterSharedLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 1-40 characters, shown next to what the guest does */
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description In; the project to open */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        project: string;
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listProjects: {
         parameters: {
             query?: never;
@@ -1459,6 +1602,92 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listShareLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Links, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        links: components["schemas"]["ShareLink"][];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createShareLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "editor" | "commenter" | "viewer";
+                    label?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The link and its address */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        link: components["schemas"]["ShareLink"];
+                        token: string;
+                        url: string;
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeShareLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
             204: {
                 headers: {
                     [name: string]: unknown;

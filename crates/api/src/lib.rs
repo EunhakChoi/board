@@ -8,6 +8,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod links;
 mod preview;
 mod projects;
 mod web;
@@ -41,6 +42,11 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("patch", "/api/admin/users/{id}"),
     ("post", "/api/admin/users/{id}/approve"),
     ("post", "/api/admin/users/{id}/reject"),
+    ("get", "/api/links/{token}"),
+    ("post", "/api/links/{token}/enter"),
+    ("get", "/api/projects/{key}/share-links"),
+    ("post", "/api/projects/{key}/share-links"),
+    ("post", "/api/projects/{key}/share-links/{id}/revoke"),
     ("get", "/api/projects"),
     ("post", "/api/projects"),
     ("get", "/api/projects/{key}"),
@@ -110,6 +116,16 @@ fn routes() -> Router<Engine> {
         .route("/api/admin/users/{id}", patch(admin::change_user))
         .route("/api/admin/users/{id}/approve", post(admin::approve))
         .route("/api/admin/users/{id}/reject", post(admin::reject))
+        .route("/api/links/{token}", get(links::shared))
+        .route("/api/links/{token}/enter", post(links::enter))
+        .route(
+            "/api/projects/{key}/share-links",
+            get(links::list).post(links::create),
+        )
+        .route(
+            "/api/projects/{key}/share-links/{id}/revoke",
+            post(links::revoke),
+        )
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/{key}",
@@ -250,6 +266,9 @@ struct Me {
     #[serde(skip_serializing_if = "Option::is_none")]
     avatar_url: Option<String>,
     role: Role,
+    /// The one project a guest's share link opens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project: Option<String>,
     local_mode: bool,
 }
 
@@ -276,6 +295,7 @@ async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>
                 email: Some(user.email),
                 avatar_url: user.avatar_url,
                 role: user.role,
+                project: None,
                 local_mode,
             }));
         }
@@ -289,10 +309,10 @@ async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>
     };
     let role = actor.role();
     let name = actor.name().to_owned();
-    let (kind, id, email) = match actor {
-        Actor::Local => ("local", None, None),
-        Actor::User { id, email, .. } => ("user", Some(id), Some(email)),
-        Actor::Guest { id, .. } => ("guest", Some(id), None),
+    let (kind, id, email, project) = match actor {
+        Actor::Local => ("local", None, None, None),
+        Actor::User { id, email, .. } => ("user", Some(id), Some(email), None),
+        Actor::Guest { id, project, .. } => ("guest", Some(id), None, Some(project)),
     };
     Ok(Json(Me {
         kind,
@@ -301,6 +321,7 @@ async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>
         email,
         avatar_url: None,
         role,
+        project,
         local_mode,
     }))
 }

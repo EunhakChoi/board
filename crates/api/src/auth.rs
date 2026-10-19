@@ -159,7 +159,7 @@ pub async fn logout(
     Ok(response)
 }
 
-fn session_cookie(token: &str, secure: bool, max_age: u64) -> String {
+pub(crate) fn session_cookie(token: &str, secure: bool, max_age: u64) -> String {
     format!(
         "{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{}",
         if secure { "; Secure" } else { "" }

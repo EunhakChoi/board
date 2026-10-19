@@ -19,6 +19,7 @@ import { useT } from "@/lib/i18n";
 import { elementAt, parseSource, repoPath } from "@/lib/layout";
 import { useProjectContext } from "@/lib/project";
 import { useAddComment, useAppDir, useCapture, useElements, usePreview } from "@/lib/queries";
+import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Empty } from "./Screens";
@@ -335,10 +336,13 @@ function Composer({
   const t = useT();
   const [body, setBody] = useState("");
   const add = useAddComment(projectKey);
+  const canComment = useCan("commenter");
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (pick) input.current?.focus();
   }, [pick]);
+  if (!canComment)
+    return <p className="border-b p-4 text-sm text-muted-foreground">{t("web.links.viewOnly")}</p>;
   if (!pick)
     return <p className="border-b p-4 text-sm text-muted-foreground">{t("web.comments.pick")}</p>;
   const submit = () => {

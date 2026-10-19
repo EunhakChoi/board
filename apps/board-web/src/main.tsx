@@ -7,6 +7,7 @@ import { LocaleProvider } from "@/lib/i18n";
 import { Code } from "@/pages/Code";
 import { Components } from "@/pages/Components";
 import { Flows } from "@/pages/Flows";
+import { JoinLink } from "@/pages/JoinLink";
 import { ProjectLayout } from "@/pages/ProjectLayout";
 import { Projects } from "@/pages/Projects";
 import { Screens } from "@/pages/Screens";
@@ -19,6 +20,7 @@ import "./index.css";
 const router = createBrowserRouter([
   { path: "/signin", element: <SignIn /> },
   { path: "/setup", element: <Setup /> },
+  { path: "/l/:token", element: <JoinLink /> },
   {
     path: "/",
     element: (

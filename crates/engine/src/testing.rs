@@ -4,14 +4,15 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use board_model::{
-    Comment, CommentStatus, Project, Reply, Role, User, UserStatus, Version, VersionKind,
+    Comment, CommentStatus, Project, Reply, Role, ShareLink, User, UserStatus, Version, VersionKind,
 };
 
 use crate::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuiltFile, Capture, Captures,
-    Change, ChangeKind, Claims, Comments, Engine, FileChange, Identity, NewComment, NewReply,
-    NewUser, Ports, PreviewSettings, ProjectStore, Records, RenderJob, Renderer, Settings, Shot,
-    SignInSettings, StoreError, Workspace, WorkspaceError as IdpError, WorkspaceError,
+    Change, ChangeKind, Claims, Comments, Engine, FileChange, Guest, Identity, NewComment,
+    NewReply, NewShareLink, NewUser, Ports, PreviewSettings, ProjectStore, Records, RenderJob,
+    Renderer, Settings, Shot, SignInSettings, StoreError, Workspace, WorkspaceError as IdpError,
+    WorkspaceError,
 };
 
 /// The fakes behind an engine, for tests that steer or inspect them.
@@ -572,6 +573,9 @@ pub struct MemoryAccounts {
     sessions: Mutex<HashMap<String, (String, u64)>>,
     setup: Mutex<Option<String>>,
     rules: Mutex<Vec<AllowRule>>,
+    links: Mutex<Vec<(String, ShareLink)>>,
+    guests: Mutex<Vec<(Guest, String)>>,
+    guest_sessions: Mutex<HashMap<String, (String, u64)>>,
 }
 
 impl Accounts for MemoryAccounts {
@@ -711,6 +715,134 @@ impl Accounts for MemoryAccounts {
         let before = rules.len();
         rules.retain(|r| r.id != id);
         Ok(rules.len() < before)
+    }
+
+    fn insert_share_link(&self, link: &NewShareLink) -> Result<ShareLink, StoreError> {
+        let created = ShareLink {
+            id: link.id.clone(),
+            project: link.project.clone(),
+            role: link.role,
+            label: link.label.clone(),
+            created_by: link.created_by.clone(),
+            created_at: "2026-10-19T00:00:00Z".into(),
+            revoked_at: None,
+            guests: 0,
+        };
+        self.links
+            .lock()
+            .unwrap()
+            .push((link.token_hash.clone(), created.clone()));
+        Ok(created)
+    }
+
+    fn share_links(&self, project: &str) -> Result<Vec<ShareLink>, StoreError> {
+        let guests = self.guests.lock().unwrap();
+        Ok(self
+            .links
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .filter(|(_, l)| l.project == project)
+            .map(|(_, l)| ShareLink {
+                guests: u32::try_from(guests.iter().filter(|(_, link)| *link == l.id).count())
+                    .unwrap(),
+                ..l.clone()
+            })
+            .collect())
+    }
+
+    fn share_link_by_token(&self, token_hash: &str) -> Result<Option<ShareLink>, StoreError> {
+        Ok(self
+            .links
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(h, _)| h == token_hash)
+            .map(|(_, l)| l.clone()))
+    }
+
+    fn revoke_share_link(&self, project: &str, id: &str) -> Result<bool, StoreError> {
+        let mut links = self.links.lock().unwrap();
+        let Some((_, link)) = links
+            .iter_mut()
+            .find(|(_, l)| l.project == project && l.id == id && l.revoked_at.is_none())
+        else {
+            return Ok(false);
+        };
+        link.revoked_at = Some("2026-10-19T01:00:00Z".into());
+        let gone: Vec<String> = self
+            .guests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, l)| l == id)
+            .map(|(g, _)| g.id.clone())
+            .collect();
+        self.guest_sessions
+            .lock()
+            .unwrap()
+            .retain(|_, (guest, _)| !gone.contains(guest));
+        Ok(true)
+    }
+
+    fn insert_guest(&self, id: &str, link: &str, name: &str) -> Result<(), StoreError> {
+        self.guests.lock().unwrap().push((
+            Guest {
+                id: id.into(),
+                name: name.into(),
+            },
+            link.into(),
+        ));
+        Ok(())
+    }
+
+    fn insert_guest_session(
+        &self,
+        token_hash: &str,
+        guest: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError> {
+        self.guest_sessions
+            .lock()
+            .unwrap()
+            .insert(token_hash.into(), (guest.into(), expires_at));
+        Ok(())
+    }
+
+    fn guest_session(
+        &self,
+        token_hash: &str,
+        now: u64,
+    ) -> Result<Option<(Guest, ShareLink)>, StoreError> {
+        let Some((guest_id, _)) = self
+            .guest_sessions
+            .lock()
+            .unwrap()
+            .get(token_hash)
+            .filter(|(_, expires)| *expires > now)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let Some((guest, link_id)) = self
+            .guests
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(g, _)| g.id == guest_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let link = self
+            .links
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, l)| l.id == link_id && l.revoked_at.is_none())
+            .map(|(_, l)| l.clone());
+        Ok(link.map(|link| (guest, link)))
     }
 
     fn users(&self) -> Result<Vec<User>, StoreError> {

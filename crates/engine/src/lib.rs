@@ -6,6 +6,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod links;
 pub mod policy;
 mod ports;
 mod preview;
@@ -19,11 +20,12 @@ pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
+pub use links::{NewLink, SharedLink};
 pub use ports::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
-    Captures, Change, ChangeKind, Claims, Comments, FileChange, Identity, ImageKind, NewComment,
-    NewReply, NewUser, ProjectStore, Records, RenderJob, Renderer, Settings, Shot, StoreError,
-    Workspace, WorkspaceError,
+    Captures, Change, ChangeKind, Claims, Comments, FileChange, Guest, Identity, ImageKind,
+    NewComment, NewReply, NewShareLink, NewUser, ProjectStore, Records, RenderJob, Renderer,
+    Settings, Shot, StoreError, Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};

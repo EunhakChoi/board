@@ -288,6 +288,64 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/links/{token}:
+    get:
+      tags: [links]
+      operationId: getSharedLink
+      summary: What a share link opens (no sign-in needed)
+      parameters:
+        - $ref: "#/components/parameters/LinkToken"
+      responses:
+        "200":
+          description: The project and the role the link gives
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project, projectTitle, role]
+                properties:
+                  project:
+                    type: string
+                  projectTitle:
+                    type: string
+                  role:
+                    $ref: "#/components/schemas/Role"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/links/{token}/enter:
+    post:
+      tags: [links]
+      operationId: enterSharedLink
+      summary: Comes in through a share link under a name; sets the session cookie
+      parameters:
+        - $ref: "#/components/parameters/LinkToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: 1-40 characters, shown next to what the guest does
+      responses:
+        "200":
+          description: In; the project to open
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project]
+                properties:
+                  project:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects:
     get:
       tags: [projects]
@@ -365,6 +423,90 @@ paths:
       responses:
         "204":
           description: Deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/share-links:
+    get:
+      tags: [links]
+      operationId: listShareLinks
+      summary: A project's share links, revoked ones included (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      responses:
+        "200":
+          description: Links, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [links]
+                properties:
+                  links:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShareLink"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [links]
+      operationId: createShareLink
+      summary: Creates a share link (admins); its address is shown only now
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              additionalProperties: false
+              properties:
+                role:
+                  type: string
+                  enum: [editor, commenter, viewer]
+                label:
+                  type: string
+      responses:
+        "201":
+          description: The link and its address
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [link, token, url]
+                properties:
+                  link:
+                    $ref: "#/components/schemas/ShareLink"
+                  token:
+                    type: string
+                  url:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/share-links/{id}/revoke:
+    post:
+      tags: [links]
+      operationId: revokeShareLink
+      summary: Revokes a share link; everyone who came in through it is out at once (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Revoked
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -968,6 +1110,12 @@ paths:
           $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    LinkToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
     UserId:
       name: id
       in: path
@@ -1503,6 +1651,27 @@ components:
           description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+    ShareLink:
+      type: object
+      required: [id, project, role, label, createdBy, createdAt, revokedAt, guests]
+      properties:
+        id:
+          type: string
+        project:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        label:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        revokedAt:
+          type: [string, "null"]
+        guests:
+          type: integer
+          description: How many people came in through it
     AllowRule:
       type: object
       required: [id, kind, value]
@@ -1534,6 +1703,9 @@ components:
           type: string
         role:
           $ref: "#/components/schemas/Role"
+        project:
+          type: string
+          description: The one project a guest's share link opens
         localMode:
           type: boolean
           description: True while the server only listens on localhost and needs no sign-in

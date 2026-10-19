@@ -62,3 +62,36 @@ test("the admin approves a request and the waiting page lets them in", async ({ 
   await allowlist.getByRole("button", { name: "Add" }).click();
   await expect(allowlist.getByText("team.example", { exact: true })).toBeVisible();
 });
+
+test("a share link lets a guest in under a name until it is revoked", async ({ browser }) => {
+  const boss = await (await browser.newContext()).newPage();
+  await signIn(boss, "boss");
+  const created = await boss.request.post(`${base()}/api/projects`, {
+    headers: { "x-board-client": "e2e" },
+    data: { key: "shared", title: "Shared" },
+  });
+  expect(created.status()).toBe(201);
+  await boss.goto(`${base()}/p/shared/screens`);
+  await boss.getByRole("button", { name: "Share" }).click();
+  const panel = boss.getByRole("region", { name: "Share links" });
+  await panel.getByRole("radio", { name: "Comment" }).click();
+  await panel.getByRole("textbox", { name: "Label" }).fill("review");
+  await panel.getByRole("button", { name: "Create link" }).click();
+  const url = await panel.getByRole("textbox", { name: "Link address" }).inputValue();
+  expect(url).toContain("/l/");
+
+  const guest = await (await browser.newContext()).newPage();
+  await guest.goto(url);
+  await expect(guest.getByText("Shared")).toBeVisible();
+  await guest.getByRole("textbox", { name: "Your name" }).fill("Dana");
+  await guest.getByRole("button", { name: "Continue" }).click();
+  await expect(guest).toHaveURL(/\/p\/shared\/screens$/);
+  await expect(guest.getByText("Dana", { exact: true })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Capture" })).toHaveCount(0);
+  await expect(guest.getByRole("button", { name: "Share" })).toHaveCount(0);
+
+  await panel.getByRole("button", { name: "Revoke review" }).click();
+  await expect(panel.getByText("Revoked")).toBeVisible();
+  await guest.reload();
+  await expect(guest).toHaveURL(/\/signin/);
+});

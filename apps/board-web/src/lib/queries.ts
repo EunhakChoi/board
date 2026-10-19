@@ -278,3 +278,48 @@ export function useAdminActions() {
     }),
   };
 }
+
+export function useShareLinks(key: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["share-links", key],
+    enabled,
+    queryFn: () => unwrap(api.GET("/api/projects/{key}/share-links", path(key))),
+  });
+}
+
+export function useShareLinkActions(key: string) {
+  const client = useQueryClient();
+  const settled = () => client.invalidateQueries({ queryKey: ["share-links", key] });
+  return {
+    create: useMutation({
+      mutationFn: (body: { role: "editor" | "commenter" | "viewer"; label: string }) =>
+        unwrap(api.POST("/api/projects/{key}/share-links", { ...path(key), body })),
+      onSettled: settled,
+    }),
+    revoke: useMutation({
+      mutationFn: (id: string) =>
+        unwrapEmpty(
+          api.POST("/api/projects/{key}/share-links/{id}/revoke", {
+            params: { path: { key, id } },
+          }),
+        ),
+      onSettled: settled,
+    }),
+  };
+}
+
+/** What a share link opens, for the name page. */
+export function useSharedLink(token: string) {
+  return useQuery({
+    queryKey: ["shared-link", token],
+    retry: false,
+    queryFn: () => unwrap(api.GET("/api/links/{token}", { params: { path: { token } } })),
+  });
+}
+
+export function useEnterLink(token: string) {
+  return useMutation({
+    mutationFn: (name: string) =>
+      unwrap(api.POST("/api/links/{token}/enter", { params: { path: { token } }, body: { name } })),
+  });
+}

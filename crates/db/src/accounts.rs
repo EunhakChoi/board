@@ -1,12 +1,28 @@
 //! Accounts, sessions, the setup token and the allowlist.
 
-use board_engine::{Accounts, AllowRule, NewUser, StoreError};
-use board_model::{Role, User, UserStatus};
+use board_engine::{Accounts, AllowRule, Guest, NewShareLink, NewUser, StoreError};
+use board_model::{Role, ShareLink, User, UserStatus};
 use rusqlite::{OptionalExtension, Row, params};
 
 use crate::{Db, err, parse, text};
 
 const USER_FIELDS: &str = "id, email, name, avatar_url, role, status, created_at";
+
+const LINK_FIELDS: &str = "l.id, l.project, l.role, l.label, l.created_by, l.created_at, \
+     l.revoked_at, (SELECT COUNT(*) FROM guests g WHERE g.link = l.id)";
+
+fn link_row(row: &Row<'_>) -> rusqlite::Result<ShareLink> {
+    Ok(ShareLink {
+        id: row.get(0)?,
+        project: row.get(1)?,
+        role: parse(row, 2)?,
+        label: row.get(3)?,
+        created_by: row.get(4)?,
+        created_at: row.get(5)?,
+        revoked_at: row.get(6)?,
+        guests: row.get(7)?,
+    })
+}
 
 fn user_row(row: &Row<'_>) -> rusqlite::Result<User> {
     Ok(User {
@@ -220,6 +236,141 @@ impl Accounts for Db {
         rows.collect::<Result<_, _>>().map_err(err)
     }
 
+    fn insert_share_link(&self, link: &NewShareLink) -> Result<ShareLink, StoreError> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO share_links (id, project, token_hash, role, label, created_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                link.id,
+                link.project,
+                link.token_hash,
+                text(link.role),
+                link.label,
+                link.created_by
+            ],
+        )
+        .map_err(err)?;
+        conn.query_row(
+            &format!("SELECT {LINK_FIELDS} FROM share_links l WHERE l.id = ?1"),
+            params![link.id],
+            link_row,
+        )
+        .map_err(err)
+    }
+
+    fn share_links(&self, project: &str) -> Result<Vec<ShareLink>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(&format!(
+                "SELECT {LINK_FIELDS} FROM share_links l WHERE l.project = ?1
+                 ORDER BY l.created_at DESC, l.id DESC"
+            ))
+            .map_err(err)?;
+        let rows = statement
+            .query_map(params![project], link_row)
+            .map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+
+    fn share_link_by_token(&self, token_hash: &str) -> Result<Option<ShareLink>, StoreError> {
+        self.lock()?
+            .query_row(
+                &format!("SELECT {LINK_FIELDS} FROM share_links l WHERE l.token_hash = ?1"),
+                params![token_hash],
+                link_row,
+            )
+            .optional()
+            .map_err(err)
+    }
+
+    fn revoke_share_link(&self, project: &str, id: &str) -> Result<bool, StoreError> {
+        let conn = self.lock()?;
+        let revoked = conn
+            .execute(
+                "UPDATE share_links SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE project = ?1 AND id = ?2 AND revoked_at IS NULL",
+                params![project, id],
+            )
+            .map_err(err)?;
+        conn.execute(
+            "DELETE FROM guest_sessions
+             WHERE guest IN (SELECT id FROM guests WHERE link = ?1)",
+            params![id],
+        )
+        .map_err(err)?;
+        Ok(revoked == 1)
+    }
+
+    fn insert_guest(&self, id: &str, link: &str, name: &str) -> Result<(), StoreError> {
+        self.lock()?
+            .execute(
+                "INSERT INTO guests (id, link, name) VALUES (?1, ?2, ?3)",
+                params![id, link, name],
+            )
+            .map(drop)
+            .map_err(err)
+    }
+
+    fn insert_guest_session(
+        &self,
+        token_hash: &str,
+        guest: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError> {
+        let expires_at = i64::try_from(expires_at).map_err(err)?;
+        let conn = self.lock()?;
+        conn.execute(
+            "DELETE FROM guest_sessions WHERE expires_at <= CAST(strftime('%s', 'now') AS INTEGER)",
+            [],
+        )
+        .map_err(err)?;
+        conn.execute(
+            "INSERT INTO guest_sessions (token_hash, guest, expires_at) VALUES (?1, ?2, ?3)",
+            params![token_hash, guest, expires_at],
+        )
+        .map(drop)
+        .map_err(err)
+    }
+
+    fn guest_session(
+        &self,
+        token_hash: &str,
+        now: u64,
+    ) -> Result<Option<(Guest, ShareLink)>, StoreError> {
+        let now = i64::try_from(now).map_err(err)?;
+        self.lock()?
+            .query_row(
+                &format!(
+                    "SELECT g.id, g.name, {LINK_FIELDS}
+                     FROM guest_sessions s
+                     JOIN guests g ON g.id = s.guest
+                     JOIN share_links l ON l.id = g.link
+                     WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND l.revoked_at IS NULL"
+                ),
+                params![token_hash, now],
+                |row| {
+                    let guest = Guest {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                    };
+                    let link = ShareLink {
+                        id: row.get(2)?,
+                        project: row.get(3)?,
+                        role: parse(row, 4)?,
+                        label: row.get(5)?,
+                        created_by: row.get(6)?,
+                        created_at: row.get(7)?,
+                        revoked_at: row.get(8)?,
+                        guests: row.get(9)?,
+                    };
+                    Ok((guest, link))
+                },
+            )
+            .optional()
+            .map_err(err)
+    }
+
     fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError> {
         self.lock()?
             .query_row(
@@ -294,6 +445,41 @@ mod tests {
             "removal ends sessions"
         );
         assert!(!db.has_admin().unwrap());
+    }
+
+    #[test]
+    fn share_links_guests_and_revocation() {
+        use board_engine::Records;
+        let db = Db::memory().unwrap();
+        db.insert_project(&board_model::Project {
+            key: "web".into(),
+            title: "Web".into(),
+            visibility: board_model::Visibility::Team,
+            origin: board_model::Origin::Empty,
+            created_at: String::new(),
+        })
+        .unwrap();
+        let link = db
+            .insert_share_link(&NewShareLink {
+                id: "l1".into(),
+                project: "web".into(),
+                token_hash: "t1".into(),
+                role: Role::Viewer,
+                label: "review".into(),
+                created_by: "Boss".into(),
+            })
+            .unwrap();
+        assert_eq!((link.role, link.guests), (Role::Viewer, 0));
+        assert_eq!(db.share_link_by_token("t1").unwrap(), Some(link));
+        db.insert_guest("g1", "l1", "Dana").unwrap();
+        db.insert_guest_session("s1", "g1", 2_000_000_000).unwrap();
+        let (guest, link) = db.guest_session("s1", 1_000).unwrap().unwrap();
+        assert_eq!((guest.name.as_str(), link.guests), ("Dana", 1));
+        assert_eq!(db.share_links("web").unwrap().len(), 1);
+        assert!(db.revoke_share_link("web", "l1").unwrap());
+        assert!(!db.revoke_share_link("web", "l1").unwrap());
+        assert_eq!(db.guest_session("s1", 1_000).unwrap(), None);
+        assert!(db.share_links("web").unwrap()[0].revoked_at.is_some());
     }
 
     #[test]

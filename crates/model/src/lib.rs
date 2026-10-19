@@ -333,3 +333,20 @@ impl User {
         }
     }
 }
+
+/// A link that lets people in without an account, into one project with a fixed role.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareLink {
+    pub id: String,
+    pub project: String,
+    /// `editor`, `commenter` or `viewer`.
+    pub role: Role,
+    /// What the admin called it ("design review"), may be empty.
+    pub label: String,
+    pub created_by: String,
+    pub created_at: String,
+    pub revoked_at: Option<String>,
+    /// How many people came in through it.
+    pub guests: u32,
+}
