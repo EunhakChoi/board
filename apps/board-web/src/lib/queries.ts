@@ -398,7 +398,9 @@ export function useProjectAccessActions(key: string) {
         );
       },
       // The checkbox follows the click at once; the refetch confirms it.
-      onMutate: ({ user, member }) => {
+      onMutate: async ({ user, member }) => {
+        // A fetch still in flight would bring back the old list.
+        await client.cancelQueries({ queryKey: ["members", key] });
         client.setQueryData<{ members: string[] }>(["members", key], (old) => {
           const rest = (old?.members ?? []).filter((id) => id !== user);
           return { members: member ? [...rest, user] : rest };
