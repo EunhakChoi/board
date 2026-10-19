@@ -201,6 +201,25 @@ impl Accounts for Db {
         rows.collect::<Result<_, _>>().map_err(err)
     }
 
+    fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError> {
+        let removed = self
+            .lock()?
+            .execute("DELETE FROM allow_rules WHERE id = ?1", params![id])
+            .map_err(err)?;
+        Ok(removed == 1)
+    }
+
+    fn users(&self) -> Result<Vec<User>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(&format!(
+                "SELECT {USER_FIELDS} FROM users ORDER BY created_at, id"
+            ))
+            .map_err(err)?;
+        let rows = statement.query_map([], user_row).map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+
     fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError> {
         self.lock()?
             .query_row(
@@ -295,5 +314,7 @@ mod tests {
         let rules = db.allow_rules().unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].value, "example.com");
+        assert!(db.remove_allow_rule(rules[0].id).unwrap());
+        assert!(!db.remove_allow_rule(rules[0].id).unwrap());
     }
 }

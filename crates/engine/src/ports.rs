@@ -384,6 +384,10 @@ pub trait Accounts: Send + Sync {
     fn take_setup_token(&self, token_hash: &str) -> Result<bool, StoreError>;
     fn allow_rules(&self) -> Result<Vec<AllowRule>, StoreError>;
     fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError>;
+    /// False when there was no such rule.
+    fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError>;
+    /// Every account, oldest first.
+    fn users(&self) -> Result<Vec<board_model::User>, StoreError>;
 }
 
 /// What the identity provider says about the person who signed in.

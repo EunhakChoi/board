@@ -795,3 +795,121 @@ async fn redirect_of(engine: Engine, request: Request<Body>) -> (StatusCode, Opt
         .map(|v| v.to_str().unwrap().to_owned());
     (response.status(), location)
 }
+
+/// A JSON request with the session cookie and the client header.
+fn as_member(method: &str, path: &str, cookie: &str, body: Option<Value>) -> Request<Body> {
+    let request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("cookie", cookie)
+        .header("x-board-client", "test")
+        .header("content-type", "application/json");
+    request
+        .body(body.map_or_else(Body::empty, |b| Body::from(b.to_string())))
+        .unwrap()
+}
+
+async fn json_of(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) {
+    let (status, body, _) = send(engine.clone(), request).await;
+    (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn admins_manage_the_allowlist_and_access_requests() {
+    let (engine, idp) = signed_in_engine();
+    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
+    let boss = boss.unwrap();
+    let (eve, _) = browser_sign_in(&engine, &idp, "eve", "").await;
+    let eve = eve.unwrap();
+
+    let (status, rule) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/allow-rules",
+            &boss,
+            Some(json!({"kind": "domain", "value": "Team.example"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(rule["value"], "team.example");
+    let (status, _) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/allow-rules",
+            &boss,
+            Some(json!({"kind": "domain", "value": "nodot"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, list) = json_of(
+        &engine,
+        as_member("GET", "/api/admin/allow-rules", &boss, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["rules"].as_array().unwrap().len(), 1);
+
+    // eve waits; members cannot see the admin routes.
+    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/users", &eve, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (_, users) = json_of(&engine, as_member("GET", "/api/admin/users", &boss, None)).await;
+    let pending = users["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["status"] == "pending")
+        .unwrap()
+        .clone();
+    assert_eq!(pending["email"], "eve@example.com");
+    let id = pending["id"].as_str().unwrap();
+    let (status, user) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            &format!("/api/admin/users/{id}/approve"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, user["status"].as_str()),
+        (StatusCode::OK, Some("active"))
+    );
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &eve, None)).await;
+    assert_eq!(status, StatusCode::OK, "approved: eve is in at once");
+
+    let (status, user) = json_of(
+        &engine,
+        as_member(
+            "PATCH",
+            &format!("/api/admin/users/{id}"),
+            &boss,
+            Some(json!({"status": "removed"})),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, user["status"].as_str()),
+        (StatusCode::OK, Some("removed"))
+    );
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &eve, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "removal ends the session");
+
+    let rule_id = rule["id"].as_i64().unwrap();
+    let (status, _, _) = send(
+        engine.clone(),
+        as_member(
+            "DELETE",
+            &format!("/api/admin/allow-rules/{rule_id}"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}

@@ -126,6 +126,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/allow-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Domains and addresses let in on their first sign-in (admins) */
+        get: operations["listAllowRules"];
+        put?: never;
+        /** Adds a domain or address to the allowlist (admins) */
+        post: operations["addAllowRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/allow-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes an allowlist rule (admins); people already in stay in */
+        delete: operations["removeAllowRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every account (admins); `pending` ones are access requests */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Changes a member's role, removes them or lets them back in (admins)
+         * @description Removing someone ends their sessions at once. The last admin cannot be demoted or removed.
+         */
+        patch: operations["changeUser"];
+        trace?: never;
+    };
+    "/api/admin/users/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approves an access request; the person gets in at once (admins) */
+        post: operations["approveUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Declines an access request (admins) */
+        post: operations["rejectUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -756,6 +862,25 @@ export interface components {
         };
         /** @enum {string} */
         Role: "admin" | "editor" | "commenter" | "viewer";
+        User: {
+            id: string;
+            email: string;
+            name: string;
+            avatarUrl?: string | null;
+            role: components["schemas"]["Role"];
+            /**
+             * @description `pending` = access request waiting for an admin
+             * @enum {string}
+             */
+            status: "pending" | "active" | "rejected" | "removed";
+            createdAt: string;
+        };
+        AllowRule: {
+            id: number;
+            /** @enum {string} */
+            kind: "domain" | "email";
+            value: string;
+        };
         Me: {
             /**
              * @description `local` is the built-in admin of local mode (no sign-in); `pending` signed in and waits for an admin to approve the access request
@@ -886,6 +1011,7 @@ export interface components {
         };
     };
     parameters: {
+        UserId: string;
         /** @description `main` (default), `v<number>` or a commit id */
         Rev: string;
         CommentId: number;
@@ -1052,6 +1178,188 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    listAllowRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The allowlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rules: components["schemas"]["AllowRule"][];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    addAllowRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "domain" | "email";
+                    /** @description `example.com` or `someone@example.com` */
+                    value: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The rule (the existing one when it was there already) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowRule"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    removeAllowRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accounts, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: components["schemas"]["User"][];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    changeUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role?: components["schemas"]["Role"];
+                    /** @enum {string} */
+                    status?: "active" | "rejected" | "removed";
+                };
+            };
+        };
+        responses: {
+            /** @description The account now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listProjects: {

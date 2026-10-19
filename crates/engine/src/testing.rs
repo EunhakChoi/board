@@ -706,10 +706,30 @@ impl Accounts for MemoryAccounts {
         Ok(self.rules.lock().unwrap().clone())
     }
 
+    fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError> {
+        let mut rules = self.rules.lock().unwrap();
+        let before = rules.len();
+        rules.retain(|r| r.id != id);
+        Ok(rules.len() < before)
+    }
+
+    fn users(&self) -> Result<Vec<User>, StoreError> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|u| u.2.clone())
+            .collect())
+    }
+
     fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError> {
         let mut rules = self.rules.lock().unwrap();
+        if let Some(rule) = rules.iter().find(|r| r.kind == kind && r.value == value) {
+            return Ok(rule.clone());
+        }
         let rule = AllowRule {
-            id: i64::try_from(rules.len()).unwrap() + 1,
+            id: rules.iter().map(|r| r.id).max().unwrap_or(0) + 1,
             kind: kind.into(),
             value: value.into(),
         };
