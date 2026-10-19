@@ -356,8 +356,13 @@ async fn system(
     Ok(Json(SystemInfo {
         version: VERSION,
         latest: system.latest,
-        tool_url: system.tool_url,
-        preview_url: system.preview_url,
+        tool_url: system.tool_url.clone(),
+        // Through the remote door of a local board, previews come from the shared address.
+        preview_url: if !local && system.local_mode {
+            system.tool_url.clone()
+        } else {
+            system.preview_url
+        },
         local_mode: local,
         services: Services {
             workspace: service(system.workspace),

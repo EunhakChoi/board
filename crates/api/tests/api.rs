@@ -1611,6 +1611,7 @@ async fn sharing_opens_a_remote_door_that_signs_people_in() {
     .await;
     assert_eq!(system["localMode"], false);
     assert_eq!(system["toolUrl"], "https://b.example.com");
+    assert_eq!(system["previewUrl"], "https://b.example.com");
 
     // Someone let in remotely sees previews on the shared address, and cannot move it.
     let cookie = join_remotely(&engine).await;
