@@ -1,7 +1,7 @@
 //! Accounts, sessions, the setup token and the allowlist.
 
-use board_engine::{Accounts, AllowRule, Guest, NewShareLink, NewUser, StoreError};
-use board_model::{Role, ShareLink, User, UserStatus};
+use board_engine::{Accounts, AllowRule, Device, Guest, NewShareLink, NewUser, StoreError};
+use board_model::{CliToken, Role, ShareLink, User, UserStatus};
 use rusqlite::{OptionalExtension, Row, params};
 
 use crate::{Db, err, parse, text};
@@ -21,6 +21,31 @@ fn link_row(row: &Row<'_>) -> rusqlite::Result<ShareLink> {
         created_at: row.get(5)?,
         revoked_at: row.get(6)?,
         guests: row.get(7)?,
+    })
+}
+
+const TOKEN_FIELDS: &str = "id, name, via, created_at, last_used_at";
+
+fn token_row(row: &Row<'_>) -> rusqlite::Result<CliToken> {
+    Ok(CliToken {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        via: row.get(2)?,
+        created_at: row.get(3)?,
+        last_used_at: row.get(4)?,
+    })
+}
+
+const DEVICE_FIELDS: &str = "user_code, name, status, user_id, expires_at";
+
+fn device_row(row: &Row<'_>) -> rusqlite::Result<Device> {
+    let expires: i64 = row.get(4)?;
+    Ok(Device {
+        user_code: row.get(0)?,
+        name: row.get(1)?,
+        status: row.get(2)?,
+        user: row.get(3)?,
+        expires_at: u64::try_from(expires).unwrap_or(0),
     })
 }
 
@@ -234,6 +259,153 @@ impl Accounts for Db {
             .map_err(err)?;
         let rows = statement.query_map([], user_row).map_err(err)?;
         rows.collect::<Result<_, _>>().map_err(err)
+    }
+
+    fn insert_cli_token(
+        &self,
+        id: &str,
+        user: &str,
+        name: &str,
+        token_hash: &str,
+        via: &str,
+    ) -> Result<CliToken, StoreError> {
+        self.lock()?
+            .query_row(
+                &format!(
+                    "INSERT INTO cli_tokens (id, user_id, name, token_hash, via)
+                     VALUES (?1, ?2, ?3, ?4, ?5) RETURNING {TOKEN_FIELDS}"
+                ),
+                params![id, user, name, token_hash, via],
+                token_row,
+            )
+            .map_err(err)
+    }
+
+    fn cli_tokens(&self, user: &str) -> Result<Vec<CliToken>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(&format!(
+                "SELECT {TOKEN_FIELDS} FROM cli_tokens WHERE user_id = ?1 ORDER BY created_at, id"
+            ))
+            .map_err(err)?;
+        let rows = statement.query_map(params![user], token_row).map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+
+    fn delete_cli_token(&self, user: &str, id: &str) -> Result<bool, StoreError> {
+        let deleted = self
+            .lock()?
+            .execute(
+                "DELETE FROM cli_tokens WHERE user_id = ?1 AND id = ?2",
+                params![user, id],
+            )
+            .map_err(err)?;
+        Ok(deleted == 1)
+    }
+
+    fn delete_cli_token_by_hash(&self, token_hash: &str) -> Result<(), StoreError> {
+        self.lock()?
+            .execute(
+                "DELETE FROM cli_tokens WHERE token_hash = ?1",
+                params![token_hash],
+            )
+            .map(drop)
+            .map_err(err)
+    }
+
+    fn token_user(&self, token_hash: &str) -> Result<Option<User>, StoreError> {
+        let conn = self.lock()?;
+        let user: Option<String> = conn
+            .query_row(
+                "UPDATE cli_tokens SET last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE token_hash = ?1 RETURNING user_id",
+                params![token_hash],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        let Some(user) = user else {
+            return Ok(None);
+        };
+        conn.query_row(
+            &format!("SELECT {USER_FIELDS} FROM users WHERE id = ?1"),
+            params![user],
+            user_row,
+        )
+        .optional()
+        .map_err(err)
+    }
+
+    fn insert_device(
+        &self,
+        code_hash: &str,
+        user_code: &str,
+        name: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError> {
+        let expires_at = i64::try_from(expires_at).map_err(err)?;
+        let conn = self.lock()?;
+        conn.execute(
+            "DELETE FROM device_codes WHERE expires_at <= CAST(strftime('%s', 'now') AS INTEGER)",
+            [],
+        )
+        .map_err(err)?;
+        conn.execute(
+            "INSERT INTO device_codes (code_hash, user_code, name, status, expires_at)
+             VALUES (?1, ?2, ?3, 'pending', ?4)",
+            params![code_hash, user_code, name, expires_at],
+        )
+        .map(drop)
+        .map_err(err)
+    }
+
+    fn device_by_user_code(&self, user_code: &str) -> Result<Option<Device>, StoreError> {
+        self.lock()?
+            .query_row(
+                &format!("SELECT {DEVICE_FIELDS} FROM device_codes WHERE user_code = ?1"),
+                params![user_code],
+                device_row,
+            )
+            .optional()
+            .map_err(err)
+    }
+
+    fn device_by_code(&self, code_hash: &str) -> Result<Option<Device>, StoreError> {
+        self.lock()?
+            .query_row(
+                &format!("SELECT {DEVICE_FIELDS} FROM device_codes WHERE code_hash = ?1"),
+                params![code_hash],
+                device_row,
+            )
+            .optional()
+            .map_err(err)
+    }
+
+    fn decide_device(
+        &self,
+        user_code: &str,
+        user: &str,
+        approve: bool,
+    ) -> Result<bool, StoreError> {
+        let decided = self
+            .lock()?
+            .execute(
+                "UPDATE device_codes SET status = ?3, user_id = ?2
+                 WHERE user_code = ?1 AND status = 'pending'",
+                params![user_code, user, if approve { "approved" } else { "denied" }],
+            )
+            .map_err(err)?;
+        Ok(decided == 1)
+    }
+
+    fn delete_device(&self, code_hash: &str) -> Result<(), StoreError> {
+        self.lock()?
+            .execute(
+                "DELETE FROM device_codes WHERE code_hash = ?1",
+                params![code_hash],
+            )
+            .map(drop)
+            .map_err(err)
     }
 
     fn insert_share_link(&self, link: &NewShareLink) -> Result<ShareLink, StoreError> {
@@ -480,6 +652,41 @@ mod tests {
         assert!(!db.revoke_share_link("web", "l1").unwrap());
         assert_eq!(db.guest_session("s1", 1_000).unwrap(), None);
         assert!(db.share_links("web").unwrap()[0].revoked_at.is_some());
+    }
+
+    #[test]
+    fn cli_tokens_and_device_logins() {
+        let db = Db::memory().unwrap();
+        db.insert_user(&new_user("u1", "ann", Role::Editor, UserStatus::Active))
+            .unwrap();
+        let token = db
+            .insert_cli_token("t1", "u1", "laptop", "h1", "device")
+            .unwrap();
+        assert_eq!(token.last_used_at, None);
+        assert_eq!(db.token_user("h1").unwrap().unwrap().id, "u1");
+        assert!(
+            db.cli_tokens("u1").unwrap()[0].last_used_at.is_some(),
+            "use is recorded"
+        );
+        assert!(
+            !db.delete_cli_token("u2", "t1").unwrap(),
+            "only the owner revokes"
+        );
+        assert!(db.delete_cli_token("u1", "t1").unwrap());
+        assert_eq!(db.token_user("h1").unwrap(), None);
+
+        db.insert_device("d1", "BCDF-GHJK", "ci", 2_000_000_000)
+            .unwrap();
+        assert_eq!(db.device_by_code("d1").unwrap().unwrap().status, "pending");
+        assert!(db.decide_device("BCDF-GHJK", "u1", true).unwrap());
+        assert!(!db.decide_device("BCDF-GHJK", "u1", false).unwrap());
+        let device = db.device_by_user_code("BCDF-GHJK").unwrap().unwrap();
+        assert_eq!(
+            (device.status.as_str(), device.user.as_deref()),
+            ("approved", Some("u1"))
+        );
+        db.delete_device("d1").unwrap();
+        assert_eq!(db.device_by_code("d1").unwrap(), None);
     }
 
     #[test]

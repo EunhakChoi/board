@@ -23,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0004_comments.sql"),
     include_str!("migrations/0005_accounts.sql"),
     include_str!("migrations/0006_share_links.sql"),
+    include_str!("migrations/0007_cli_tokens.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.

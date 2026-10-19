@@ -405,6 +405,33 @@ pub trait Accounts: Send + Sync {
         guest: &str,
         expires_at: u64,
     ) -> Result<(), StoreError>;
+    fn insert_cli_token(
+        &self,
+        id: &str,
+        user: &str,
+        name: &str,
+        token_hash: &str,
+        via: &str,
+    ) -> Result<board_model::CliToken, StoreError>;
+    fn cli_tokens(&self, user: &str) -> Result<Vec<board_model::CliToken>, StoreError>;
+    /// False when the user has no such token.
+    fn delete_cli_token(&self, user: &str, id: &str) -> Result<bool, StoreError>;
+    fn delete_cli_token_by_hash(&self, token_hash: &str) -> Result<(), StoreError>;
+    /// The account behind a CLI token; records the use.
+    fn token_user(&self, token_hash: &str) -> Result<Option<board_model::User>, StoreError>;
+    fn insert_device(
+        &self,
+        code_hash: &str,
+        user_code: &str,
+        name: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError>;
+    fn device_by_user_code(&self, user_code: &str) -> Result<Option<Device>, StoreError>;
+    fn device_by_code(&self, code_hash: &str) -> Result<Option<Device>, StoreError>;
+    /// Approves (for `user`) or denies a waiting device login. False when it is not waiting.
+    fn decide_device(&self, user_code: &str, user: &str, approve: bool)
+    -> Result<bool, StoreError>;
+    fn delete_device(&self, code_hash: &str) -> Result<(), StoreError>;
     /// The guest behind a live session, with the (unrevoked) link they came through.
     fn guest_session(
         &self,
@@ -422,6 +449,17 @@ pub struct NewShareLink {
     pub role: board_model::Role,
     pub label: String,
     pub created_by: String,
+}
+
+/// A CLI login waiting for someone to approve it in the browser (device flow).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Device {
+    pub user_code: String,
+    pub name: String,
+    /// `pending`, `approved` or `denied`.
+    pub status: String,
+    pub user: Option<String>,
+    pub expires_at: u64,
 }
 
 /// Someone who came in through a share link.

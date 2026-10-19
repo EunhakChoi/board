@@ -33,6 +33,8 @@ board ls                # screens, stories, flows and whether their captures are
 - No checkout yet: `board projects`, then `board checkout <project> <dir>`.
 - If `board status` says main moved, `board pull` before editing — it saves a refused push later.
 - "Cannot reach the board server" → `board doctor` says which part is down.
+- "Sign in first" / "token was revoked" → a team server: ask the person to run `board login`
+  (they approve it in the browser); CI uses `BOARD_TOKEN`.
 - Every command takes `--json` when you need to parse the output.
 
 ## Workflow 1 · Handle comments

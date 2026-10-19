@@ -28,12 +28,16 @@ interface Settings {
   updateNoticeAt?: string;
 }
 
-function settingsFile(ctx: Context): string {
-  const env = ctx.env;
-  const dir =
+/** Where the CLI keeps settings and credentials (`BOARD_CONFIG_DIR`, else `~/.config/board`). */
+export function configDir(env: NodeJS.ProcessEnv): string {
+  return (
     env.BOARD_CONFIG_DIR ??
-    join(env.XDG_CONFIG_HOME ?? join(env.HOME ?? homedir(), ".config"), "board");
-  return join(dir, "settings.json");
+    join(env.XDG_CONFIG_HOME ?? join(env.HOME ?? homedir(), ".config"), "board")
+  );
+}
+
+function settingsFile(ctx: Context): string {
+  return join(configDir(ctx.env), "settings.json");
 }
 
 export function readSettings(ctx: Context): Settings {

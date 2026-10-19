@@ -4,12 +4,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use board_model::{
-    Comment, CommentStatus, Project, Reply, Role, ShareLink, User, UserStatus, Version, VersionKind,
+    CliToken, Comment, CommentStatus, Project, Reply, Role, ShareLink, User, UserStatus, Version,
+    VersionKind,
 };
 
 use crate::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuiltFile, Capture, Captures,
-    Change, ChangeKind, Claims, Comments, Engine, FileChange, Guest, Identity, NewComment,
+    Change, ChangeKind, Claims, Comments, Device, Engine, FileChange, Guest, Identity, NewComment,
     NewReply, NewShareLink, NewUser, Ports, PreviewSettings, ProjectStore, Records, RenderJob,
     Renderer, Settings, Shot, SignInSettings, StoreError, Workspace, WorkspaceError as IdpError,
     WorkspaceError,
@@ -576,6 +577,8 @@ pub struct MemoryAccounts {
     links: Mutex<Vec<(String, ShareLink)>>,
     guests: Mutex<Vec<(Guest, String)>>,
     guest_sessions: Mutex<HashMap<String, (String, u64)>>,
+    tokens: Mutex<Vec<(String, String, CliToken)>>,
+    devices: Mutex<HashMap<String, Device>>,
 }
 
 impl Accounts for MemoryAccounts {
@@ -715,6 +718,122 @@ impl Accounts for MemoryAccounts {
         let before = rules.len();
         rules.retain(|r| r.id != id);
         Ok(rules.len() < before)
+    }
+
+    fn insert_cli_token(
+        &self,
+        id: &str,
+        user: &str,
+        name: &str,
+        token_hash: &str,
+        via: &str,
+    ) -> Result<CliToken, StoreError> {
+        let token = CliToken {
+            id: id.into(),
+            name: name.into(),
+            via: via.into(),
+            created_at: "2026-10-19T00:00:00Z".into(),
+            last_used_at: None,
+        };
+        self.tokens
+            .lock()
+            .unwrap()
+            .push((token_hash.into(), user.into(), token.clone()));
+        Ok(token)
+    }
+
+    fn cli_tokens(&self, user: &str) -> Result<Vec<CliToken>, StoreError> {
+        Ok(self
+            .tokens
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| t.1 == user)
+            .map(|t| t.2.clone())
+            .collect())
+    }
+
+    fn delete_cli_token(&self, user: &str, id: &str) -> Result<bool, StoreError> {
+        let mut tokens = self.tokens.lock().unwrap();
+        let before = tokens.len();
+        tokens.retain(|t| !(t.1 == user && t.2.id == id));
+        Ok(tokens.len() < before)
+    }
+
+    fn delete_cli_token_by_hash(&self, token_hash: &str) -> Result<(), StoreError> {
+        self.tokens.lock().unwrap().retain(|t| t.0 != token_hash);
+        Ok(())
+    }
+
+    fn token_user(&self, token_hash: &str) -> Result<Option<User>, StoreError> {
+        let user = self
+            .tokens
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.0 == token_hash)
+            .map(|t| t.1.clone());
+        match user {
+            Some(id) => self.user(&id),
+            None => Ok(None),
+        }
+    }
+
+    fn insert_device(
+        &self,
+        code_hash: &str,
+        user_code: &str,
+        name: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError> {
+        self.devices.lock().unwrap().insert(
+            code_hash.into(),
+            Device {
+                user_code: user_code.into(),
+                name: name.into(),
+                status: "pending".into(),
+                user: None,
+                expires_at,
+            },
+        );
+        Ok(())
+    }
+
+    fn device_by_user_code(&self, user_code: &str) -> Result<Option<Device>, StoreError> {
+        Ok(self
+            .devices
+            .lock()
+            .unwrap()
+            .values()
+            .find(|d| d.user_code == user_code)
+            .cloned())
+    }
+
+    fn device_by_code(&self, code_hash: &str) -> Result<Option<Device>, StoreError> {
+        Ok(self.devices.lock().unwrap().get(code_hash).cloned())
+    }
+
+    fn decide_device(
+        &self,
+        user_code: &str,
+        user: &str,
+        approve: bool,
+    ) -> Result<bool, StoreError> {
+        let mut devices = self.devices.lock().unwrap();
+        let Some(device) = devices
+            .values_mut()
+            .find(|d| d.user_code == user_code && d.status == "pending")
+        else {
+            return Ok(false);
+        };
+        device.status = if approve { "approved" } else { "denied" }.into();
+        device.user = Some(user.into());
+        Ok(true)
+    }
+
+    fn delete_device(&self, code_hash: &str) -> Result<(), StoreError> {
+        self.devices.lock().unwrap().remove(code_hash);
+        Ok(())
     }
 
     fn insert_share_link(&self, link: &NewShareLink) -> Result<ShareLink, StoreError> {

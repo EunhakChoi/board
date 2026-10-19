@@ -1018,3 +1018,98 @@ async fn share_links_let_guests_into_one_project() {
     let (status, _) = call(engine, &format!("/api/links/{token}")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn device_login_issues_a_cli_token() {
+    let (engine, idp) = signed_in_engine();
+    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
+    let boss = boss.unwrap();
+    let (status, started) = post(
+        engine.clone(),
+        "/api/auth/device",
+        &json!({"name": "laptop"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let code = started["userCode"].as_str().unwrap().to_owned();
+    assert_eq!(
+        started["verificationUrlComplete"],
+        format!("https://board.test/device?code={code}")
+    );
+    let device = json!({"deviceCode": started["deviceCode"]});
+    let (status, pending) = post(engine.clone(), "/api/auth/device/token", &device).await;
+    assert_eq!(
+        (status, pending["code"].as_str()),
+        (StatusCode::BAD_REQUEST, Some("authorization_pending"))
+    );
+
+    let (status, request) = json_of(
+        &engine,
+        as_member("GET", &format!("/api/auth/device/{code}"), &boss, None),
+    )
+    .await;
+    assert_eq!(
+        (status, request["name"].as_str()),
+        (StatusCode::OK, Some("laptop"))
+    );
+    let (status, _, _) = send(
+        engine.clone(),
+        as_member(
+            "POST",
+            &format!("/api/auth/device/{code}/approve"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, issued) = post(engine.clone(), "/api/auth/device/token", &device).await;
+    assert_eq!(status, StatusCode::OK);
+    let token = issued["token"].as_str().unwrap().to_owned();
+
+    // The token acts as boss, without the client header.
+    let bearer = |path: &str| {
+        Request::get(path.to_owned())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (status, body, _) = send(engine.clone(), bearer("/api/auth/me")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["email"],
+        "boss@example.com"
+    );
+    let created = Request::post("/api/projects")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"key":"cli","title":"CLI"}"#))
+        .unwrap();
+    let (status, _, _) = send(engine.clone(), created).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (_, tokens) = json_of(&engine, as_member("GET", "/api/me/cli-tokens", &boss, None)).await;
+    assert_eq!(tokens["tokens"][0]["via"], "device");
+
+    let logout = Request::post("/api/auth/logout")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _, _) = send(engine.clone(), logout).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body, _) = send(engine, bearer("/api/projects")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["code"],
+        "invalid_token"
+    );
+}
+
+#[tokio::test]
+async fn system_answers_before_sign_in_without_details() {
+    let (engine, _) = signed_in_engine();
+    let (status, system) = call(engine, "/api/system").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(system["localMode"], false);
+    assert!(system["services"]["workspace"].get("error").is_none());
+}

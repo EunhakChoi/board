@@ -232,6 +232,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/cli-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's CLI tokens */
+        get: operations["listCliTokens"];
+        put?: never;
+        /** Creates a personal CLI token; the secret is shown only now */
+        post: operations["createCliToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/cli-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revokes one of the caller's CLI tokens */
+        delete: operations["revokeCliToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A CLI starts a login to be approved in the browser (no sign-in needed) */
+        post: operations["startDeviceLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The CLI asks whether its login was approved
+         * @description `400` with code `authorization_pending` (ask again after `interval`), `access_denied` or `expired_token`.
+         */
+        post: operations["pollDeviceLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A waiting CLI login, for the approval page */
+        get: operations["getDeviceLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device/{code}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lets the waiting CLI act as the caller */
+        post: operations["approveDeviceLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device/{code}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turns the waiting CLI login down */
+        post: operations["denyDeviceLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/links/{token}": {
         parameters: {
             query?: never;
@@ -944,6 +1067,14 @@ export interface components {
             status: "pending" | "active" | "rejected" | "removed";
             createdAt: string;
         };
+        CliToken: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            via: "device" | "manual";
+            createdAt: string;
+            lastUsedAt: string | null;
+        };
         ShareLink: {
             id: string;
             project: string;
@@ -1093,6 +1224,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The code the CLI printed (`BCDF-GHJK`) */
+        UserCode: string;
         LinkToken: string;
         UserId: string;
         /** @description `main` (default), `v<number>` or a commit id */
@@ -1442,6 +1575,218 @@ export interface operations {
             };
             400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCliTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tokens (without their secrets) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tokens: components["schemas"]["CliToken"][];
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+        };
+    };
+    createCliToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliToken"] & {
+                        token: string;
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+        };
+    };
+    revokeCliToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startDeviceLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description What the CLI calls itself (the machine), shown on the approval page */
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Codes and where to approve */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deviceCode: string;
+                        userCode: string;
+                        verificationUrl: string;
+                        verificationUrlComplete: string;
+                        /** @description Seconds between polls */
+                        interval: number;
+                        expiresIn: number;
+                    };
+                };
+            };
+        };
+    };
+    pollDeviceLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    deviceCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Approved; the token (handed out once) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                    };
+                };
+            };
+            400: components["responses"]["Invalid"];
+        };
+    };
+    getDeviceLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the CLI printed (`BCDF-GHJK`) */
+                code: components["parameters"]["UserCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The login */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        userCode: string;
+                        name: string;
+                        /** @enum {string} */
+                        status: "pending" | "approved" | "denied";
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveDeviceLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the CLI printed (`BCDF-GHJK`) */
+                code: components["parameters"]["UserCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    denyDeviceLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The code the CLI printed (`BCDF-GHJK`) */
+                code: components["parameters"]["UserCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Denied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
             404: components["responses"]["NotFound"];
         };
     };

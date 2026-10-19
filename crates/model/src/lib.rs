@@ -350,3 +350,16 @@ pub struct ShareLink {
     /// How many people came in through it.
     pub guests: u32,
 }
+
+/// A personal token the CLI (a coding agent) uses to act as a member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliToken {
+    pub id: String,
+    /// What it is for, e.g. the machine (`laptop`).
+    pub name: String,
+    /// `device` (approved in the browser) or `manual` (created on the web).
+    pub via: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}

@@ -11,6 +11,7 @@ mod error;
 mod links;
 mod preview;
 mod projects;
+mod tokens;
 mod web;
 
 use axum::extract::DefaultBodyLimit;
@@ -42,6 +43,14 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("patch", "/api/admin/users/{id}"),
     ("post", "/api/admin/users/{id}/approve"),
     ("post", "/api/admin/users/{id}/reject"),
+    ("get", "/api/me/cli-tokens"),
+    ("post", "/api/me/cli-tokens"),
+    ("delete", "/api/me/cli-tokens/{id}"),
+    ("post", "/api/auth/device"),
+    ("post", "/api/auth/device/token"),
+    ("get", "/api/auth/device/{code}"),
+    ("post", "/api/auth/device/{code}/approve"),
+    ("post", "/api/auth/device/{code}/deny"),
     ("get", "/api/links/{token}"),
     ("post", "/api/links/{token}/enter"),
     ("get", "/api/projects/{key}/share-links"),
@@ -116,6 +125,13 @@ fn routes() -> Router<Engine> {
         .route("/api/admin/users/{id}", patch(admin::change_user))
         .route("/api/admin/users/{id}/approve", post(admin::approve))
         .route("/api/admin/users/{id}/reject", post(admin::reject))
+        .route("/api/me/cli-tokens", get(tokens::list).post(tokens::create))
+        .route("/api/me/cli-tokens/{id}", delete(tokens::revoke))
+        .route("/api/auth/device", post(tokens::start))
+        .route("/api/auth/device/token", post(tokens::poll))
+        .route("/api/auth/device/{code}", get(tokens::request))
+        .route("/api/auth/device/{code}/approve", post(tokens::approve))
+        .route("/api/auth/device/{code}/deny", post(tokens::deny))
         .route("/api/links/{token}", get(links::shared))
         .route("/api/links/{token}/enter", post(links::enter))
         .route(
@@ -224,11 +240,13 @@ struct Service {
     error: Option<String>,
 }
 
+/// Answers before sign-in too (the sign-in page and `board login` need `localMode`); only
+/// admins see why a service fails.
 async fn system(
     State(engine): State<Engine>,
-    Caller(actor): Caller,
+    caller: Option<Caller>,
 ) -> Result<Json<SystemInfo>, ApiError> {
-    let admin = actor.role() == Role::Admin;
+    let admin = caller.is_some_and(|Caller(actor)| actor.role() == Role::Admin);
     let system = projects::blocking(move || engine.system().map_err(Into::into)).await?;
     let service = |state: ServiceState| match state {
         ServiceState::Ok => Service {
@@ -278,6 +296,12 @@ async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>
     let local_mode = engine.local_mode();
     let state = if local_mode {
         SessionState::Active(Actor::Local)
+    } else if let Some(token) = auth::bearer(&headers) {
+        let engine = engine.clone();
+        let actor = projects::blocking(move || engine.token_actor(&token))
+            .await?
+            .ok_or_else(ApiError::unauthorized)?;
+        SessionState::Active(actor)
     } else {
         let token = auth::cookie(&headers, SESSION_COOKIE).ok_or_else(ApiError::unauthorized)?;
         let engine = engine.clone();

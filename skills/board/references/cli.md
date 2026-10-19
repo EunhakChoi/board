@@ -9,6 +9,8 @@ are in) and `--server <url>` (default: the checkout's server, else `BOARD_URL`, 
 | Command | Does |
 |---|---|
 | `board setup [--yes]` | First-run guide: checks the server, offers to install this skill |
+| `board login [--token t]` | Signs in to a team server: prints a code, the person approves it in the browser (`--token` uses a personal token instead). Not needed in local mode |
+| `board whoami` · `board logout` | Who the CLI acts as · sign out and revoke the token |
 | `board doctor` | Checks node, git, the server, board-workspace, board-render, cookie separation (exit 1 on failure) |
 | `board serve [--server-only]` | Runs board-server with board-workspace and board-render |
 | `board skill install [--claude] [--codex]` | Installs this skill for Claude Code (`~/.claude/skills/board`) and / or Codex (`~/.codex/skills/board`) |
