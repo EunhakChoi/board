@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { type Comment, HttpError, snapshotImage } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n";
 import { useAnswer } from "@/lib/queries";
+import { isGuest, useCan } from "@/lib/role";
 import { cn } from "@/lib/utils";
 
 /** One comment with its replies, a reply box, and resolve / reopen. */
@@ -24,6 +25,7 @@ export function CommentThread({
   const { locale } = useLocale();
   const [reply, setReply] = useState("");
   const answer = useAnswer(projectKey);
+  const canComment = useCan("commenter");
   const changed = answer.error instanceof HttpError && answer.error.code === "changed";
   const when = (iso: string) =>
     new Date(iso).toLocaleString(locale === "ko" ? "ko-KR" : "en-US", {
@@ -47,6 +49,7 @@ export function CommentThread({
     >
       <header className="flex items-center gap-2">
         <span className="font-medium">{comment.author.name}</span>
+        {isGuest(comment.author) && <Badge variant="outline">{t("web.links.guest")}</Badge>}
         <span className="text-xs text-muted-foreground">{when(comment.createdAt)}</span>
         <span className="flex-1" />
         <Badge variant={comment.status === "open" ? "info" : "secondary"}>
@@ -71,7 +74,8 @@ export function CommentThread({
       {comment.replies.map((r) => (
         <div key={r.id} className="border-l-2 pl-3">
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{r.author.name}</span>{" "}
+            <span className="font-medium text-foreground">{r.author.name}</span>
+            {isGuest(r.author) && ` (${t("web.links.guest")})`}{" "}
             {r.kind === "resolve" && t("web.comments.resolvedBy")}
             {r.kind === "reopen" && t("web.comments.reopenedBy")} · {when(r.createdAt)}
           </p>
@@ -82,43 +86,47 @@ export function CommentThread({
       {answer.error && !changed && (
         <p className="text-xs text-destructive">{answer.error.message}</p>
       )}
-      <Textarea
-        value={reply}
-        onChange={(event) => setReply(event.target.value)}
-        placeholder={t("web.comments.replyPlaceholder")}
-        className="min-h-9"
-        onClick={(event) => event.stopPropagation()}
-      />
-      <div className="flex justify-end gap-2">
-        {comment.status === "open" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={answer.isPending}
-            onClick={() => act("resolve", reply)}
-          >
-            <Check />
-            {t("web.comments.resolve")}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={answer.isPending}
-            onClick={() => act("reopen", reply)}
-          >
-            <RotateCcw />
-            {t("web.comments.reopen")}
-          </Button>
-        )}
-        <Button
-          size="sm"
-          disabled={!reply.trim() || answer.isPending}
-          onClick={() => act("replies", reply)}
-        >
-          {t("web.comments.reply")}
-        </Button>
-      </div>
+      {canComment && (
+        <>
+          <Textarea
+            value={reply}
+            onChange={(event) => setReply(event.target.value)}
+            placeholder={t("web.comments.replyPlaceholder")}
+            className="min-h-9"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <div className="flex justify-end gap-2">
+            {comment.status === "open" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={answer.isPending}
+                onClick={() => act("resolve", reply)}
+              >
+                <Check />
+                {t("web.comments.resolve")}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={answer.isPending}
+                onClick={() => act("reopen", reply)}
+              >
+                <RotateCcw />
+                {t("web.comments.reopen")}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={!reply.trim() || answer.isPending}
+              onClick={() => act("replies", reply)}
+            >
+              {t("web.comments.reply")}
+            </Button>
+          </div>
+        </>
+      )}
     </article>
   );
 }

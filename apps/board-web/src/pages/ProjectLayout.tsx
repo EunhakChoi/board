@@ -2,12 +2,14 @@ import { Camera, ChevronRight, LoaderCircle, Moon, Sun } from "lucide-react";
 import { NavLink, Outlet, useParams, useSearchParams } from "react-router";
 import { AppHeader } from "@/components/AppHeader";
 import { BuildBanner } from "@/components/BuildBanner";
+import { SharePanel } from "@/components/SharePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useT } from "@/lib/i18n";
 import { ProjectContext, useProjectData } from "@/lib/project";
 import { useCapture, useProject } from "@/lib/queries";
+import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +29,7 @@ export function ProjectLayout() {
   const data = useProjectData(key);
   const [theme, setTheme] = useScreenTheme();
   const capture = useCapture(key);
+  const canEdit = useCan("editor");
   const keep = search.get("theme") ? `?theme=${search.get("theme")}` : "";
   return (
     <ProjectContext value={data}>
@@ -39,15 +42,18 @@ export function ProjectLayout() {
                   {t("web.capture.stale", { count: data.staleCount })}
                 </Badge>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={capture.isPending}
-                onClick={() => capture.mutate({ themes: ["light", "dark"] })}
-              >
-                {capture.isPending ? <LoaderCircle className="animate-spin" /> : <Camera />}
-                {t(capture.isPending ? "web.capture.running" : "web.capture.run")}
-              </Button>
+              <SharePanel projectKey={key} />
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={capture.isPending}
+                  onClick={() => capture.mutate({ themes: ["light", "dark"] })}
+                >
+                  {capture.isPending ? <LoaderCircle className="animate-spin" /> : <Camera />}
+                  {t(capture.isPending ? "web.capture.running" : "web.capture.run")}
+                </Button>
+              )}
               <Segmented
                 label={t("web.theme.toggle")}
                 value={theme}

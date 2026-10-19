@@ -388,6 +388,47 @@ pub trait Accounts: Send + Sync {
     fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError>;
     /// Every account, oldest first.
     fn users(&self) -> Result<Vec<board_model::User>, StoreError>;
+    fn insert_share_link(&self, link: &NewShareLink) -> Result<board_model::ShareLink, StoreError>;
+    /// A project's links, newest first, revoked ones included.
+    fn share_links(&self, project: &str) -> Result<Vec<board_model::ShareLink>, StoreError>;
+    fn share_link_by_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<board_model::ShareLink>, StoreError>;
+    /// Marks the link revoked and ends every session that came in through it. False when the
+    /// project has no such link or it was revoked already.
+    fn revoke_share_link(&self, project: &str, id: &str) -> Result<bool, StoreError>;
+    fn insert_guest(&self, id: &str, link: &str, name: &str) -> Result<(), StoreError>;
+    fn insert_guest_session(
+        &self,
+        token_hash: &str,
+        guest: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError>;
+    /// The guest behind a live session, with the (unrevoked) link they came through.
+    fn guest_session(
+        &self,
+        token_hash: &str,
+        now: u64,
+    ) -> Result<Option<(Guest, board_model::ShareLink)>, StoreError>;
+}
+
+/// A share link to create; the token arrives hashed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewShareLink {
+    pub id: String,
+    pub project: String,
+    pub token_hash: String,
+    pub role: board_model::Role,
+    pub label: String,
+    pub created_by: String,
+}
+
+/// Someone who came in through a share link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Guest {
+    pub id: String,
+    pub name: String,
 }
 
 /// What the identity provider says about the person who signed in.

@@ -212,7 +212,8 @@ impl Engine {
     /// Who the session `token` belongs to, or `None` for an unknown or expired session.
     pub fn session(&self, token: &str) -> Result<Option<SessionState>, EngineError> {
         let Some(user) = self.ports.accounts.session_user(&hash(token), now())? else {
-            return Ok(None);
+            // Not a member's session: maybe someone who came in through a share link.
+            return Ok(self.guest_actor(token)?.map(SessionState::Active));
         };
         Ok(Some(match user.status {
             UserStatus::Active => SessionState::Active(user.actor()),
@@ -282,7 +283,7 @@ pub(crate) fn random_token() -> String {
     URL_SAFE_NO_PAD.encode(random_bytes())
 }
 
-fn random_hex() -> String {
+pub(crate) fn random_hex() -> String {
     hex(&random_bytes())
 }
 
