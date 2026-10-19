@@ -9,16 +9,19 @@ option on top.
 
 ## What you need
 
-- **A fixed address** for the tool and one for previews. Previews run project code, so they need
-  their own origin: another host, or the same host on another port. Any of these works:
+- **A fixed address** people open, e.g. `https://board.example.com`. One is enough: previews
+  (which run project code) are then served from the same address under `/_preview/`, in a
+  sandboxed frame with an opaque origin, so project code cannot reach the tool or its session.
+  Optionally give previews their own origin with `BOARD_PUBLIC_PREVIEW_URL` (another host, or the
+  same host on another port). Ways to get the address:
 
-  | How | Tool | Previews |
-  |---|---|---|
-  | Your domain behind a proxy or Cloudflare Tunnel | `https://board.example.com` | `https://preview.board.example.com` |
-  | Tailscale Funnel (free, fixed name) | `https://pc.tailnet.ts.net` | `https://pc.tailnet.ts.net:8443` |
-  | Office LAN (testing; not encrypted) | `http://192.168.0.10:5280` | `http://192.168.0.10:5281` |
+  | How | Address |
+  |---|---|
+  | Your domain behind a proxy or Cloudflare Tunnel | `https://board.example.com` |
+  | Tailscale Funnel (free, fixed name) | `https://pc.tailnet.ts.net` (`tailscale funnel --bg 5280`) |
+  | ngrok (one free static domain) | `https://name.ngrok-free.app` (`ngrok http --url=… 5280`) |
+  | Office LAN (testing; not encrypted) | `http://192.168.0.10:5280` |
 
-  Tailscale Funnel: `tailscale funnel --bg 5280` and `tailscale funnel --bg --https=8443 5281`.
   Prefer an address with a name: links people get then show no IP address.
 - **Optional: an OpenID Connect client**, for signing in with Google instead of invite links:
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
@@ -34,7 +37,8 @@ Add to `.env` next to `compose.yaml`:
 
 ```bash
 BOARD_PUBLIC_URL=https://board.example.com
-BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
+# optional: previews on their own origin instead of the tool's address
+# BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
 # optional: sign in with Google (or BOARD_OIDC_ISSUER for another provider)
 BOARD_OIDC_CLIENT_ID=…
 BOARD_OIDC_CLIENT_SECRET=…

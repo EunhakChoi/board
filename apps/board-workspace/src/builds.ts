@@ -103,7 +103,9 @@ export class Builds {
     source: Readable,
   ): Promise<{ build: Build; started: boolean }> {
     const existing = this.get(request.project, request.commit);
-    if (existing && (existing.state !== "failed" || !request.retry)) {
+    // A build made for another base path (previews moved) cannot be served here: build again.
+    const reusable = existing?.base === request.base;
+    if (existing && reusable && (existing.state !== "failed" || !request.retry)) {
       source.resume();
       return { build: existing, started: false };
     }

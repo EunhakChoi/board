@@ -34,7 +34,7 @@ pub use ports::{
     NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
     Settings, Shot, StoreError, WebhookSender, Workspace, WorkspaceError,
 };
-pub use preview::{Preview, PreviewSettings};
+pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
 pub use sheet::SheetItem;
 pub use tokens::{DEVICE_INTERVAL_SECS, DevicePoll, DeviceRequest, DeviceStart, NewCliToken};
@@ -154,6 +154,14 @@ impl Engine {
                 None => None,
             },
         })
+    }
+
+    /// True when previews are served from the tool's own address (one address for both).
+    pub fn previews_on_tool(&self) -> bool {
+        match (&self.preview, &self.tool_url) {
+            (Some(preview), Some(tool)) => preview.origin.trim_end_matches('/') == tool.as_ref(),
+            _ => false,
+        }
     }
 
     /// Where people open the web tool, when known.

@@ -103,11 +103,12 @@ async function handle(
         : send(res, 409, { code: "conflict", message: "the build is still running" });
     }
     case "PUT": {
-      const base = url.searchParams.get("base") ?? `/${project}/${commit}/`;
-      if (!/^\/([A-Za-z0-9._~-]+\/)*$/.test(base)) {
+      // `./` (relative, what the server asks for) or an absolute path ending in /.
+      const base = url.searchParams.get("base") ?? "./";
+      if (base !== "./" && !/^\/([A-Za-z0-9._~-]+\/)*$/.test(base)) {
         return send(res, 400, {
           code: "invalid",
-          message: "base must be an absolute path ending in /",
+          message: "base must be ./ or an absolute path ending in /",
         });
       }
       const declared = Number(req.headers["content-length"] ?? "0");

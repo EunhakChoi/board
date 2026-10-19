@@ -62,16 +62,23 @@ impl Engine {
         let commit = self.resolve(key, rev)?;
         let workspace = &self.ports.workspace;
         let build = match workspace.build(key, &commit)? {
-            Some(build) if !(retry && build.state == BuildState::Failed) => build,
+            // A build made for another base (an older board) is made again.
+            Some(build)
+                if build.base == BUILD_BASE && !(retry && build.state == BuildState::Failed) =>
+            {
+                build
+            }
             _ => {
                 let source = self.ports.store.archive(key, &commit)?;
-                workspace.start_build(key, &commit, &base_path(key, &commit), source, retry)?
+                workspace.start_build(key, &commit, BUILD_BASE, source, retry)?
             }
         };
-        let ready = build.state == BuildState::Ready;
+        let token = (build.state == BuildState::Ready).then(|| token(settings, key, &commit));
         Ok(Preview {
-            base_url: ready.then(|| format!("{}{}", settings.origin, base_path(key, &commit))),
-            token: ready.then(|| token(settings, key, &commit)),
+            base_url: token
+                .as_ref()
+                .map(|t| format!("{}{}", settings.origin, preview_path(t, key, &commit))),
+            token,
             commit,
             build,
         })
@@ -105,9 +112,17 @@ pub(crate) fn token(settings: &PreviewSettings, key: &str, commit: &str) -> Stri
     sign(settings, key, commit, now() + settings.ttl_secs)
 }
 
-/// Path prefix a commit's build is served under.
-pub fn base_path(key: &str, commit: &str) -> String {
-    format!("/{key}/{commit}/")
+/// Where previews live on whichever origin serves them (the preview listener, or the tool itself
+/// when both share one address).
+pub const PREVIEW_PREFIX: &str = "/_preview";
+
+/// Preview builds are relative, so one build serves every viewer's path.
+pub const BUILD_BASE: &str = "./";
+
+/// Where a commit's build is served for the holder of `token`. The token rides in the path:
+/// a sandboxed preview sends no cookies, and relative URLs (assets, lazy chunks) keep it.
+pub fn preview_path(token: &str, key: &str, commit: &str) -> String {
+    format!("{PREVIEW_PREFIX}/{token}/{key}/{commit}/")
 }
 
 fn now() -> u64 {
@@ -204,7 +219,11 @@ mod tests {
         let ready = engine
             .preview(&Actor::Local, "shop", "main", false)
             .unwrap();
-        let base = format!("http://127.0.0.1:5281/shop/{}/", ready.commit);
+        let base = format!(
+            "http://127.0.0.1:5281/_preview/{}/shop/{}/",
+            ready.token.clone().unwrap(),
+            ready.commit
+        );
         assert_eq!(ready.base_url.as_deref(), Some(base.as_str()));
         let token = ready.token.unwrap();
         assert!(

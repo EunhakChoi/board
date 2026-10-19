@@ -3,7 +3,6 @@
 // When the page is settled it sets `<html data-board-ready>`; the renderer waits for that.
 
 import type { RequestHandler } from "msw";
-import { setupWorker } from "msw/browser";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { ProjectDef, ScreenDef, SetupKit } from "./project.ts";
@@ -39,7 +38,7 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     screen = project.screens.find((s) => s.id === screenId);
     if (!screen) return fail(container, `unknown screen "${screenId}"`);
     const page = project.pages.find((p) => p.id === screen?.page);
-    await startMocks([...(screen.mocks ?? []), ...(project.mocks ?? [])], params.get("t"));
+    await startMocks([...(screen.mocks ?? []), ...(project.mocks ?? [])]);
     if (screen.query) {
       const url = new URL(location.href);
       for (const [key, value] of Object.entries(screen.query)) url.searchParams.set(key, value);
@@ -50,7 +49,7 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     const story = project.stories?.find((s) => s.id === storyId);
     if (!story) return fail(container, `unknown story "${storyId}"`);
     const handlers = [...(story.mocks ?? []), ...(project.mocks ?? [])];
-    if (handlers.length > 0) await startMocks(handlers, params.get("t"));
+    if (handlers.length > 0) await startMocks(handlers);
     node = (options.wrapStory ?? ((n) => n))(story.render());
   } else {
     return fail(container, "pass ?screen=<id> or ?story=<id>");
@@ -65,23 +64,46 @@ export async function startFrame(options: FrameOptions): Promise<void> {
   document.documentElement.dataset.boardReady = "true";
 }
 
-async function startMocks(handlers: RequestHandler[], token: string | null): Promise<void> {
-  const worker = setupWorker(...handlers);
-  // The build may live under a path prefix (`/<project>/<commit>/`); the worker and its scope
-  // follow it. In a cross-site iframe the browser fetches the worker script without the preview
-  // cookie, so the access token rides along in its URL.
-  const base = import.meta.env.BASE_URL;
-  const url = `${base}mockServiceWorker.js${token ? `?t=${encodeURIComponent(token)}` : ""}`;
-  await worker.start({
-    quiet: true,
-    serviceWorker: { url, options: { scope: base } },
-    onUnhandledRequest(request, print) {
-      const url = new URL(request.url);
-      // Only API calls count; the page's own assets are not mocks.
-      if (url.origin === location.origin && /\.\w+$/.test(url.pathname)) return;
+/** Asset requests of the page itself are not API calls; a missing handler for them is fine. */
+function isAsset(url: URL): boolean {
+  return url.host === location.host && /\.\w+$/.test(url.pathname);
+}
+
+/** Mocks answer the page's fetch and XHR calls in the page itself. No service worker: previews
+ * may run in an opaque origin (one address for the tool and previews), where none can register,
+ * and their URL changes with every access token. */
+async function startMocks(handlers: RequestHandler[]): Promise<void> {
+  await startInterceptors(handlers);
+}
+
+async function startInterceptors(handlers: RequestHandler[]): Promise<void> {
+  const [
+    { BatchInterceptor },
+    { FetchInterceptor },
+    { XMLHttpRequestInterceptor },
+    { getResponse },
+  ] = await Promise.all([
+    import("@mswjs/interceptors"),
+    import("@mswjs/interceptors/fetch"),
+    import("@mswjs/interceptors/XMLHttpRequest"),
+    import("msw"),
+  ]);
+  const interceptor = new BatchInterceptor({
+    name: "board-frame",
+    interceptors: [new FetchInterceptor(), new XMLHttpRequestInterceptor()],
+  });
+  interceptor.apply();
+  interceptor.on("request", async ({ request, controller }) => {
+    const response = await getResponse(handlers, request);
+    // `passthrough()` lets the request go to the network.
+    if (response && response.headers.get("x-msw-intention") !== "passthrough") {
+      controller.respondWith(response);
+      return;
+    }
+    if (response) return;
+    const url = new URL(request.url);
+    if (!isAsset(url))
       console.warn(`${MISSING_MOCK} ${request.method} ${url.pathname}${url.search}`);
-      print.warning();
-    },
   });
 }
 

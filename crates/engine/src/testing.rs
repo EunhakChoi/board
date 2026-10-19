@@ -331,19 +331,21 @@ impl Workspace for MemoryWorkspace {
         &self,
         project: &str,
         commit: &str,
-        _base: &str,
+        base: &str,
         _source: Vec<u8>,
         retry: bool,
     ) -> Result<Build, WorkspaceError> {
         let mut builds = self.builds.lock().unwrap();
         let key = (project.to_owned(), commit.to_owned());
         if let Some(build) = builds.get(&key)
+            && build.base == base
             && !(retry && build.state == BuildState::Failed)
         {
             return Ok(build.clone());
         }
         *self.starts.lock().unwrap() += 1;
         let build = Build {
+            base: base.to_owned(),
             state: BuildState::Queued,
             steps: Vec::new(),
             error: String::new(),

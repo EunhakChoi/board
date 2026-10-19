@@ -57,6 +57,40 @@ const CONTENT_TYPES: Record<string, string> = {
 const SHARED = ["react", "react-dom"] as const;
 const BOARD_DIR = ".board";
 
+/**
+ * In a sandboxed preview (opaque origin) `localStorage`, `sessionStorage` and `document.cookie`
+ * throw. Apps touch them at import time, so the frame swaps in memory-only stand-ins first.
+ */
+export const OPAQUE_SHIM = `(() => {
+  if (self.origin !== "null") return;
+  const memory = () => {
+    const data = new Map();
+    return {
+      get length() { return data.size; },
+      key: (i) => [...data.keys()][i] ?? null,
+      getItem: (k) => (data.has(String(k)) ? data.get(String(k)) : null),
+      setItem: (k, v) => { data.set(String(k), String(v)); },
+      removeItem: (k) => { data.delete(String(k)); },
+      clear: () => { data.clear(); },
+    };
+  };
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try { window[name]; } catch { Object.defineProperty(window, name, { value: memory(), configurable: true }); }
+  }
+  try { document.cookie; } catch {
+    const jar = new Map();
+    Object.defineProperty(document, "cookie", {
+      configurable: true,
+      get: () => [...jar].map(([k, v]) => k + "=" + v).join("; "),
+      set: (text) => {
+        const [pair = ""] = String(text).split(";");
+        const at = pair.indexOf("=");
+        if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1));
+      },
+    });
+  }
+})();`;
+
 /** Set by board-workspace for preview builds. */
 export const PREVIEW_ENV = "BOARD_PREVIEW";
 
@@ -126,6 +160,17 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     },
     configResolved(resolved) {
       config = resolved;
+    },
+    transformIndexHtml: {
+      order: "pre",
+      handler(_html, ctx) {
+        if (resolve(ctx.filename) !== join(config.root, frameFile)) return undefined;
+        // Runs before any app module: where the build's root is (relative builds), and stand-ins
+        // for storage and cookies, which a sandboxed preview does not have.
+        const up = "../".repeat(frameFile.split("/").length - 1);
+        const root = `globalThis.__BOARD_ROOT__ = new URL(${JSON.stringify(up || "./")}, location.href).href;`;
+        return [{ tag: "script", children: root + OPAQUE_SHIM, injectTo: "head-prepend" }];
+      },
     },
     generateBundle() {
       const source = worker();

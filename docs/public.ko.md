@@ -8,16 +8,18 @@ Google (또는 다른 OpenID Connect provider) 로그인은 추가 선택.
 
 ## 준비물
 
-- **고정 주소** 2개 (도구용 · 미리보기용). 미리보기는 프로젝트 코드를 실행하므로 별도 origin
-  필요: 다른 host, 또는 같은 host 의 다른 port. 아래 중 하나:
+- **고정 주소** 1개 (예: `https://board.example.com`). 1개면 충분: 미리보기 (프로젝트 코드 실행)
+  는 같은 주소의 `/_preview/` 아래에서 sandbox frame (opaque origin) 으로 제공 → 프로젝트 코드가
+  도구 화면 · session 에 접근 불가. 미리보기에 별도 origin 을 주려면 `BOARD_PUBLIC_PREVIEW_URL`
+  (다른 host 또는 같은 host 의 다른 port). 주소 확보 방법:
 
-  | 방식 | 도구 | 미리보기 |
-  |---|---|---|
-  | 내 도메인 + reverse proxy 또는 Cloudflare Tunnel | `https://board.example.com` | `https://preview.board.example.com` |
-  | Tailscale Funnel (무료, 고정 이름) | `https://pc.tailnet.ts.net` | `https://pc.tailnet.ts.net:8443` |
-  | 사무실 LAN (시험용, 암호화 없음) | `http://192.168.0.10:5280` | `http://192.168.0.10:5281` |
+  | 방식 | 주소 |
+  |---|---|
+  | 내 도메인 + reverse proxy 또는 Cloudflare Tunnel | `https://board.example.com` |
+  | Tailscale Funnel (무료, 고정 이름) | `https://pc.tailnet.ts.net` (`tailscale funnel --bg 5280`) |
+  | ngrok (무료 고정 domain 1개) | `https://name.ngrok-free.app` (`ngrok http --url=… 5280`) |
+  | 사무실 LAN (시험용, 암호화 없음) | `http://192.168.0.10:5280` |
 
-  Tailscale Funnel: `tailscale funnel --bg 5280`, `tailscale funnel --bg --https=8443 5281`.
   이름 있는 주소 권장: 전달하는 link 에 IP 주소가 드러나지 않음.
 - **선택: OpenID Connect client** (초대 link 대신 Google 로그인을 쓸 때):
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
@@ -33,7 +35,8 @@ Google (또는 다른 OpenID Connect provider) 로그인은 추가 선택.
 
 ```bash
 BOARD_PUBLIC_URL=https://board.example.com
-BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
+# 선택: 미리보기를 별도 origin 으로 (기본은 도구 주소에서 sandbox 로 제공)
+# BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
 # 선택: Google 로그인 (다른 provider 는 BOARD_OIDC_ISSUER)
 BOARD_OIDC_CLIENT_ID=…
 BOARD_OIDC_CLIENT_SECRET=…

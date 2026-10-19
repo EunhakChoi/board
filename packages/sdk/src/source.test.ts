@@ -60,10 +60,13 @@ test("points absolute public paths at the build's base", () => {
   assert.ok(result);
   assert.match(result.code, /^import logo from "\/logo.png";/);
   assert.match(result.code, /type Path = "\/logo.png";/);
-  assert.match(result.code, /<img src=\{import\.meta\.env\.BASE_URL \+ "logo\.png"\} alt="" \/>/);
   assert.match(
     result.code,
-    /icon: \(import\.meta\.env\.BASE_URL \+ "logo\.png"\), "\/logo\.png": 1/,
+    /<img src=\{\(globalThis\.__BOARD_ROOT__ \?\? import\.meta\.env\.BASE_URL\) \+ "logo\.png"\} alt="" \/>/,
+  );
+  assert.match(
+    result.code,
+    /icon: \(\(globalThis\.__BOARD_ROOT__ \?\? import\.meta\.env\.BASE_URL\) \+ "logo\.png"\), "\/logo\.png": 1/,
   );
   assert.match(result.code, /other: "\/api\/x"/);
   assert.doesNotMatch(result.code, /data-src/);

@@ -71,9 +71,10 @@ impl Workspace for ReadyWorkspace {
         source: Vec<u8>,
         _: bool,
     ) -> Result<Build, WorkspaceError> {
-        assert!(base.starts_with('/') && base.ends_with('/'));
+        assert_eq!(base, "./", "preview builds are relative");
         assert!(source.starts_with(&[0x1f, 0x8b]), "gzip source");
         Ok(Build {
+            base: base.to_owned(),
             state: BuildState::Ready,
             steps: Vec::new(),
             error: String::new(),
@@ -332,69 +333,51 @@ async fn preview_builds_and_serves_with_a_scoped_token() {
     assert_eq!(status, StatusCode::OK, "{preview}");
     assert_eq!(preview["state"], "ready");
     let commit = preview["commit"].as_str().unwrap().to_owned();
+    let token = preview["token"].as_str().unwrap().to_owned();
     assert_eq!(
         preview["baseUrl"],
-        format!("http://127.0.0.1:5281/web/{commit}/")
+        format!("http://127.0.0.1:5281/_preview/{token}/web/{commit}/")
     );
-    let token = preview["token"].as_str().unwrap().to_owned();
 
     let origin = board_api::PreviewOrigin {
         frame_ancestors: vec!["http://localhost:5280".into()],
+        sandbox: false,
     };
-    let open = |path: String, cookie: Option<String>| {
+    let open = |path: String| {
         let router = board_api::preview_router(engine.clone(), &origin);
-        let mut request = Request::get(path);
-        if let Some(cookie) = cookie {
-            request = request.header("cookie", cookie);
-        }
-        router.oneshot(request.body(Body::empty()).unwrap())
+        router.oneshot(Request::get(path).body(Body::empty()).unwrap())
     };
 
-    let page = open(format!("/web/{commit}/.board/frame.html?t={token}"), None)
+    let page = open(format!("/_preview/{token}/web/{commit}/.board/frame.html"))
         .await
         .unwrap();
     assert_eq!(page.status(), StatusCode::OK);
     let headers = page.headers();
-    let cookie = headers["set-cookie"].to_str().unwrap().to_owned();
     assert!(
-        cookie.starts_with(&format!("board_preview={token}; Path=/web/{commit}/;")),
-        "{cookie}"
+        headers.get("set-cookie").is_none(),
+        "the token is in the path"
     );
-    assert!(cookie.contains("HttpOnly") && cookie.contains("Partitioned"));
     assert_eq!(
         headers["content-security-policy"],
         "frame-ancestors http://localhost:5280"
     );
     assert_eq!(headers["referrer-policy"], "no-referrer");
-
-    // Later requests carry the cookie instead of the token.
-    let with_cookie = open(
-        format!("/web/{commit}/.board/frame.html"),
-        Some(format!("other=1; board_preview={token}")),
-    )
-    .await
-    .unwrap();
-    assert_eq!(with_cookie.status(), StatusCode::OK);
-    assert!(with_cookie.headers().get("set-cookie").is_none());
-    let missing = open(
-        format!("/web/{commit}/nope.js"),
-        Some(format!("board_preview={token}")),
-    )
-    .await
-    .unwrap();
-    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
-
-    // No token, a token for another commit, or the API on the preview origin: refused.
-    let bare = open(format!("/web/{commit}/.board/frame.html"), None)
+    let missing = open(format!("/_preview/{token}/web/{commit}/nope.js"))
         .await
         .unwrap();
-    assert_eq!(bare.status(), StatusCode::FORBIDDEN);
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+    // A bad token, a token for another commit, or the API on the preview origin: refused.
+    let bad = open(format!("/_preview/x.y/web/{commit}/.board/frame.html"))
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::FORBIDDEN);
     let other = "0".repeat(40);
-    let wrong = open(format!("/web/{other}/.board/frame.html?t={token}"), None)
+    let wrong = open(format!("/_preview/{token}/web/{other}/.board/frame.html"))
         .await
         .unwrap();
     assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
-    let api = open("/api/projects".into(), None).await.unwrap();
+    let api = open("/api/projects".into()).await.unwrap();
     assert_eq!(api.status(), StatusCode::NOT_FOUND);
 }
 
@@ -1508,4 +1491,40 @@ async fn invite_links_without_a_provider() {
     )
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn one_address_serves_previews_sandboxed_from_the_tool() {
+    let mut settings = preview_settings();
+    settings.origin = "https://board.test".into();
+    let engine = engine(true)
+        .with_tool_url("https://board.test")
+        .with_preview(settings);
+    assert!(engine.previews_on_tool());
+    let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, preview) = call(engine.clone(), "/api/projects/web/preview").await;
+    let commit = preview["commit"].as_str().unwrap().to_owned();
+    let token = preview["token"].as_str().unwrap();
+    assert_eq!(
+        preview["baseUrl"],
+        format!("https://board.test/_preview/{token}/web/{commit}/")
+    );
+    let page = board_api::app(engine.clone(), None)
+        .oneshot(
+            Request::get(format!("/_preview/{token}/web/{commit}/.board/frame.html"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let csp = page.headers()["content-security-policy"].to_str().unwrap();
+    assert!(csp.starts_with("sandbox allow-scripts"), "{csp}");
+    assert!(!csp.contains("allow-same-origin"), "{csp}");
+    assert!(csp.ends_with("frame-ancestors 'self'"), "{csp}");
+    assert_eq!(page.headers()["access-control-allow-origin"], "*");
+    // The API still answers next to it.
+    let (status, _) = call(engine, "/api/health").await;
+    assert_eq!(status, StatusCode::OK);
 }
