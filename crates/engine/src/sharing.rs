@@ -19,6 +19,17 @@ use crate::{Engine, EngineError, SignInSettings};
 pub enum ShareMode {
     /// An address the person set up themselves (a reverse proxy or tunnel to the remote door).
     Address,
+    /// `tailscale serve`: people on the same tailnet (Tailscale or Headscale).
+    Tailscale,
+    /// `tailscale funnel`: anyone on the internet, at the machine's `ts.net` name.
+    Funnel,
+}
+
+impl ShareMode {
+    /// Run by the server through [`crate::Tunnels`], rather than set up by hand.
+    fn tunnel(self) -> bool {
+        self != Self::Address
+    }
 }
 
 /// Sharing that is on.
@@ -37,6 +48,10 @@ pub struct SharingStatus {
     pub sharing: Option<Sharing>,
     /// The account the local door acts as, once sharing was turned on.
     pub owner: Option<Owner>,
+    /// The ways this machine can share.
+    pub modes: Vec<crate::TunnelMode>,
+    /// Something that went wrong with the tunnel (at start, or while turning sharing off).
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +79,7 @@ pub(crate) struct Live {
     pub sharing: Option<Sharing>,
     /// Who the local door acts as.
     pub owner: Option<Actor>,
+    pub warning: Option<String>,
 }
 
 const SHARING: &str = "sharing";
@@ -99,21 +115,42 @@ impl Engine {
             return Ok(());
         }
         let owner = self.owner_actor()?;
-        let sharing = match self.ports.settings.get(SHARING)? {
+        let mut sharing = match self.ports.settings.get(SHARING)? {
             Some(text) => serde_json::from_str::<Sharing>(&text).ok(),
             None => None,
         };
+        // A tunnel is opened again: it may have stopped, or its address changed.
+        let mut warning = None;
+        if let Some(on) = sharing.as_mut().filter(|s| s.mode.tunnel()) {
+            match self.open_tunnel(on.mode) {
+                Ok(url) => on.url = url,
+                Err(error) => warning = Some(error.to_string()),
+            }
+        }
         self.write_live(|live| {
             live.owner = owner;
             live.sharing = sharing;
+            live.warning = warning;
         });
         Ok(())
     }
 
     pub fn sharing(&self, actor: &Actor) -> Result<SharingStatus, EngineError> {
         admin(actor)?;
+        let mut modes = vec![crate::TunnelMode {
+            mode: ShareMode::Address,
+            available: true,
+            detail: String::new(),
+        }];
+        if self.local_mode
+            && let Some(tunnels) = &self.tunnels
+        {
+            modes.extend(tunnels.modes());
+        }
         let live = self.read_live();
         Ok(SharingStatus {
+            modes,
+            warning: live.warning.clone(),
             fixed: !self.local_mode,
             sharing: live.sharing.clone(),
             owner: live.owner.as_ref().and_then(|o| match o {
@@ -133,15 +170,33 @@ impl Engine {
         request: &ShareRequest,
     ) -> Result<SharingStatus, EngineError> {
         self.check_changeable(actor)?;
-        let url = request.url.trim().trim_end_matches('/').to_owned();
-        if !(url.starts_with("https://") || url.starts_with("http://")) || url.contains(' ') {
-            return Err(EngineError::Invalid(
-                "the address is an http(s) URL, e.g. https://board.example.com".into(),
-            ));
-        }
-        if self.read_live().owner.is_none() {
-            let name = request.owner_name.as_deref().unwrap_or_default();
-            let user = self.insert_member(&crate::invites::check_name(name)?, Role::Admin)?;
+        let owner_name = match self.read_live().owner {
+            Some(_) => None,
+            None => Some(crate::invites::check_name(
+                request.owner_name.as_deref().unwrap_or_default(),
+            )?),
+        };
+        let current = self.read_live().sharing.clone();
+        let url = if request.mode.tunnel() {
+            // Another tunnel that was on gives way first.
+            if let Some(old) = current.filter(|c| c.mode.tunnel() && c.mode != request.mode) {
+                let _ = self.close_tunnel(old.mode);
+            }
+            self.open_tunnel(request.mode)?
+        } else {
+            let url = request.url.trim().trim_end_matches('/').to_owned();
+            if !(url.starts_with("https://") || url.starts_with("http://")) || url.contains(' ') {
+                return Err(EngineError::Invalid(
+                    "the address is an http(s) URL, e.g. https://board.example.com".into(),
+                ));
+            }
+            if let Some(old) = current.filter(|c| c.mode.tunnel()) {
+                let _ = self.close_tunnel(old.mode);
+            }
+            url
+        };
+        if let Some(name) = owner_name {
+            let user = self.insert_member(&name, Role::Admin)?;
             self.ports.settings.set(OWNER, &user.id)?;
             let owner = self.owner_actor()?;
             self.write_live(|live| live.owner = owner);
@@ -153,16 +208,44 @@ impl Engine {
         let text =
             serde_json::to_string(&sharing).map_err(|e| EngineError::Invalid(e.to_string()))?;
         self.ports.settings.set(SHARING, &text)?;
-        self.write_live(|live| live.sharing = Some(sharing));
+        self.write_live(|live| {
+            live.sharing = Some(sharing);
+            live.warning = None;
+        });
         self.sharing(&self.local_actor())
     }
 
     /// Turns sharing off: the remote door closes. Accounts and sessions stay for next time.
     pub fn stop_sharing(&self, actor: &Actor) -> Result<SharingStatus, EngineError> {
         self.check_changeable(actor)?;
+        let current = self.read_live().sharing.clone();
         self.ports.settings.set(SHARING, "")?;
-        self.write_live(|live| live.sharing = None);
+        // The remote door closes either way; a tunnel that would not stop is only reported.
+        let warning = current
+            .filter(|c| c.mode.tunnel())
+            .and_then(|c| self.close_tunnel(c.mode).err())
+            .map(|e| e.to_string());
+        self.write_live(|live| {
+            live.sharing = None;
+            live.warning = warning;
+        });
         self.sharing(&self.local_actor())
+    }
+
+    fn open_tunnel(&self, mode: ShareMode) -> Result<String, EngineError> {
+        let tunnels = self
+            .tunnels
+            .as_ref()
+            .ok_or_else(|| EngineError::Unavailable("this server cannot run tunnels".into()))?;
+        let url = tunnels.open(mode).map_err(EngineError::Unavailable)?;
+        Ok(url.trim_end_matches('/').to_owned())
+    }
+
+    fn close_tunnel(&self, mode: ShareMode) -> Result<(), EngineError> {
+        match &self.tunnels {
+            Some(tunnels) => tunnels.close(mode).map_err(EngineError::Unavailable),
+            None => Ok(()),
+        }
     }
 
     /// Only the person at this machine changes sharing (whoever comes through the local door):
@@ -254,6 +337,56 @@ mod tests {
         assert!(!engine.remote_open());
         assert_eq!(engine.tool_url().as_deref(), Some("http://localhost:5280"));
         assert_eq!(engine.local_actor(), owner, "the owner stays");
+    }
+
+    /// Tailscale that hands out one name and remembers what is open.
+    #[derive(Default)]
+    struct FakeTunnels(std::sync::Mutex<Vec<ShareMode>>);
+
+    impl crate::Tunnels for FakeTunnels {
+        fn modes(&self) -> Vec<crate::TunnelMode> {
+            vec![crate::TunnelMode {
+                mode: ShareMode::Tailscale,
+                available: true,
+                detail: "https://kim.tail1.ts.net".into(),
+            }]
+        }
+        fn open(&self, mode: ShareMode) -> Result<String, String> {
+            if mode == ShareMode::Funnel {
+                return Err("Funnel is not enabled: https://login.tailscale.com/f/funnel".into());
+            }
+            self.0.lock().unwrap().push(mode);
+            Ok("https://kim.tail1.ts.net/".into())
+        }
+        fn close(&self, mode: ShareMode) -> Result<(), String> {
+            self.0.lock().unwrap().retain(|m| *m != mode);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn tunnels_give_the_address_and_close_when_sharing_stops() {
+        let tunnels = Arc::new(FakeTunnels::default());
+        let engine = engine().with_tunnels(tunnels.clone());
+        let mut on = request("", Some("Kim"));
+        on.mode = ShareMode::Funnel;
+        assert!(matches!(
+            engine.start_sharing(&Actor::Local, &on),
+            Err(EngineError::Unavailable(m)) if m.contains("login.tailscale.com")
+        ));
+        assert_eq!(
+            engine.local_actor(),
+            Actor::Local,
+            "no owner when nothing opened"
+        );
+        on.mode = ShareMode::Tailscale;
+        let status = engine.start_sharing(&Actor::Local, &on).unwrap();
+        assert_eq!(status.sharing.unwrap().url, "https://kim.tail1.ts.net");
+        assert_eq!(status.modes.len(), 2);
+        assert_eq!(*tunnels.0.lock().unwrap(), vec![ShareMode::Tailscale]);
+        let owner = engine.local_actor();
+        engine.stop_sharing(&owner).unwrap();
+        assert!(tunnels.0.lock().unwrap().is_empty());
     }
 
     #[test]

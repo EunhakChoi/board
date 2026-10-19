@@ -344,5 +344,12 @@
   "web.sharing.start": "Turn sharing on",
   "web.sharing.openAt": "Shared at",
   "web.sharing.onLead": "Invite people below. This machine keeps working without sign-in, as you.",
-  "web.sharing.stop": "Turn sharing off"
+  "web.sharing.stop": "Turn sharing off",
+  "web.sharing.mode": "How others reach it",
+  "web.sharing.mode.address": "My address",
+  "web.sharing.mode.tailscale": "Tailscale network",
+  "web.sharing.mode.funnel": "Tailscale Funnel",
+  "web.sharing.lead.tailscale": "People on your tailnet (Tailscale or Headscale) open this machine's name. Nothing is reachable from the internet.",
+  "web.sharing.lead.funnel": "Anyone with a link can reach the sign-in page at this machine's ts.net name. Only invited people get in.",
+  "web.sharing.willOpen": "Address: {url}"
 }

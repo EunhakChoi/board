@@ -41,3 +41,14 @@ test("sharing a local board opens a door that only invited people get through", 
   const after = await outsider.request.get(`${remote()}/api/auth/me`);
   expect(after.status()).toBe(503);
 });
+
+test("sharing through Tailscale shows the machine's tailnet name", async ({ page }) => {
+  await page.goto(`${local()}/team`);
+  const sharing = page.getByRole("region", { name: "Sharing" });
+  await sharing.getByRole("radio", { name: "Tailscale network" }).click();
+  await expect(sharing.getByText("Address: https://e2e.tail1.ts.net")).toBeVisible();
+  await sharing.getByRole("button", { name: "Turn sharing on" }).click();
+  await expect(sharing.getByRole("link", { name: "https://e2e.tail1.ts.net" })).toBeVisible();
+  await sharing.getByRole("button", { name: "Turn sharing off" }).click();
+  await expect(sharing.getByRole("button", { name: "Turn sharing on" })).toBeVisible();
+});

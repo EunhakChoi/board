@@ -98,7 +98,15 @@ async fn run(config: Config) -> Result<(), String> {
                 .map(|token| format!("{}/setup?token={token}", config.tool_url()));
         }
     }
+    if let Some(addr) = config.remote_bind {
+        engine = engine.with_tunnels(Arc::new(tailscale(addr)));
+    }
     engine.restore_sharing().map_err(|e| e.to_string())?;
+    if let Ok(status) = engine.sharing(&board_model::Actor::Local)
+        && let Some(warning) = status.warning
+    {
+        eprintln!("board-server: sharing: {warning}");
+    }
     if config.update_check {
         update::spawn(engine.clone());
     }
@@ -127,6 +135,17 @@ async fn run(config: Config) -> Result<(), String> {
         .with_graceful_shutdown(shutdown());
     let (api, previews, remote) = tokio::join!(api.into_future(), previews.into_future(), remote);
     api.and(previews).and(remote).map_err(|e| e.to_string())
+}
+
+/// The tailscale CLI, sending people to the remote door at `addr`.
+fn tailscale(addr: std::net::SocketAddr) -> board_tunnel::Tailscale {
+    board_tunnel::Tailscale {
+        cli: std::env::var("BOARD_TAILSCALE").unwrap_or_else(|_| "tailscale".to_owned()),
+        socket: std::env::var("BOARD_TAILSCALE_SOCKET").ok(),
+        // tailscaled runs on the host: in docker the remote door is published on its loopback.
+        target: std::env::var("BOARD_TAILSCALE_TARGET")
+            .unwrap_or_else(|_| format!("http://127.0.0.1:{}", addr.port())),
+    }
 }
 
 /// Says where the server listens, and prints the setup link while there is no admin.

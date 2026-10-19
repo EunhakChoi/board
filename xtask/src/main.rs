@@ -16,6 +16,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("board-oidc", 2),
     ("board-workspace-client", 2),
     ("board-render-client", 2),
+    ("board-tunnel", 2),
     ("board-api", 3),
     ("board-server", 4),
     ("board-render", 4),

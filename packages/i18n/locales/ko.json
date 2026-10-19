@@ -333,5 +333,12 @@
   "web.sharing.start": "공유 켜기",
   "web.sharing.openAt": "공유 주소",
   "web.sharing.onLead": "아래에서 사람을 초대하세요. 이 기기는 로그인 없이 내 계정으로 계속 쓸 수 있어요.",
-  "web.sharing.stop": "공유 끄기"
+  "web.sharing.stop": "공유 끄기",
+  "web.sharing.mode": "접속 방식",
+  "web.sharing.mode.address": "내 주소",
+  "web.sharing.mode.tailscale": "Tailscale 사설망",
+  "web.sharing.mode.funnel": "Tailscale Funnel",
+  "web.sharing.lead.tailscale": "같은 tailnet (Tailscale 또는 Headscale) 에 있는 사람만 이 기기 이름으로 접속해요. 인터넷에는 열리지 않아요.",
+  "web.sharing.lead.funnel": "link 를 가진 누구나 이 기기의 ts.net 이름으로 로그인 화면까지 올 수 있어요. 초대받은 사람만 들어와요.",
+  "web.sharing.willOpen": "주소: {url}"
 }

@@ -427,13 +427,13 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [mode, url]
+              required: [mode]
               properties:
                 mode:
                   $ref: "#/components/schemas/ShareMode"
                 url:
                   type: string
-                  description: The address other machines open (it must reach the remote door)
+                  description: "For `address`: the address other machines open (it must reach the remote door)"
                 ownerName:
                   type: string
                   description: Needed the first time
@@ -448,6 +448,8 @@ paths:
           $ref: "#/components/responses/Invalid"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/Unavailable"
     delete:
       tags: [admin]
       operationId: stopSharing
@@ -2429,12 +2431,29 @@ components:
           type: string
     ShareMode:
       type: string
-      enum: [address]
-      description: "`address`: an address set up by hand (reverse proxy or tunnel to the remote door)"
+      enum: [address, tailscale, funnel]
+      description: "`address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel"
     Sharing:
       type: object
-      required: [fixed, mode, url, owner]
+      required: [fixed, mode, url, owner, modes, warning]
       properties:
+        modes:
+          type: array
+          description: The ways this machine can share
+          items:
+            type: object
+            required: [mode, available, detail]
+            properties:
+              mode:
+                $ref: "#/components/schemas/ShareMode"
+              available:
+                type: boolean
+              detail:
+                type: string
+                description: The address it would give, or why it cannot be used
+        warning:
+          type: [string, "null"]
+          description: A tunnel problem (at start, or while turning sharing off)
         fixed:
           type: boolean
           description: Set by the server's environment (--public); the page only shows it

@@ -546,7 +546,7 @@ export function useSharingActions() {
   };
   return {
     start: useMutation({
-      mutationFn: (body: { mode: ShareMode; url: string; ownerName?: string }) =>
+      mutationFn: (body: { mode: ShareMode; url?: string; ownerName?: string }) =>
         unwrap(api.PUT("/api/admin/sharing", { body })),
       onSettled: settled,
     }),
