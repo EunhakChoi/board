@@ -1,5 +1,5 @@
 import { Globe } from "lucide-react";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,16 @@ export function SharingPanel() {
   const nameId = useId();
   const urlId = useId();
   const data = sharing.data;
+  // While shared, the form starts from what is on, so a changed domain or address is applied as is.
+  const current = data?.mode ?? null;
+  const currentUrl = data?.url ?? "";
+  const currentDomain = data?.domain ?? "";
+  useEffect(() => {
+    if (!current) return;
+    setMode(current);
+    setUrl(current === "address" ? currentUrl : "");
+    setDomain(currentDomain);
+  }, [current, currentUrl, currentDomain]);
   if (!data) return null;
   const on = data.url !== null;
   const chosen = data.modes.find((m) => m.mode === mode);
@@ -41,10 +51,7 @@ export function SharingPanel() {
           ? { mode, ...(authtoken ? { authtoken } : {}), ...(domain ? { domain } : {}) }
           : { mode };
     start.mutate(data.owner ? body : { ...body, ownerName: name }, {
-      onSuccess: () => {
-        setUrl("");
-        setAuthtoken("");
-      },
+      onSuccess: () => setAuthtoken(""),
     });
   };
   const error = start.error ?? stop.error;
@@ -60,23 +67,19 @@ export function SharingPanel() {
       <div className="flex flex-col gap-3 rounded-xl border p-4">
         {data.fixed ? (
           <p className="text-sm text-muted-foreground">{t("web.sharing.fixed")}</p>
-        ) : on ? (
-          <>
-            <p className="text-sm">
-              {t("web.sharing.openAt")}{" "}
-              <a className="font-medium underline" href={data.url ?? undefined}>
-                {data.url}
-              </a>
-            </p>
-            <p className="text-sm text-muted-foreground">{t("web.sharing.onLead")}</p>
-            <div>
-              <Button variant="outline" disabled={stop.isPending} onClick={() => stop.mutate()}>
-                {t("web.sharing.stop")}
-              </Button>
-            </div>
-          </>
         ) : (
           <form className="flex flex-col gap-3" onSubmit={submit}>
+            {on && (
+              <>
+                <p className="text-sm">
+                  {t("web.sharing.openAt")}{" "}
+                  <a className="font-medium underline" href={data.url ?? undefined}>
+                    {data.url}
+                  </a>
+                </p>
+                <p className="text-sm text-muted-foreground">{t("web.sharing.onLead")}</p>
+              </>
+            )}
             {data.modes.length > 1 && (
               <Segmented
                 label={t("web.sharing.mode")}
@@ -153,10 +156,20 @@ export function SharingPanel() {
                 </div>
               </>
             )}
-            <div>
+            <div className="flex gap-2">
               <Button type="submit" disabled={start.isPending || chosen?.available === false}>
-                {t("web.sharing.start")}
+                {on ? t("web.sharing.apply") : t("web.sharing.start")}
               </Button>
+              {on && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={stop.isPending}
+                  onClick={() => stop.mutate()}
+                >
+                  {t("web.sharing.stop")}
+                </Button>
+              )}
             </div>
           </form>
         )}

@@ -19,6 +19,7 @@ pub struct SharingView {
     fixed: bool,
     mode: Option<ShareMode>,
     url: Option<String>,
+    domain: Option<String>,
     owner: Option<OwnerView>,
     modes: Vec<ModeView>,
     warning: Option<String>,
@@ -43,6 +44,7 @@ impl From<SharingStatus> for SharingView {
         Self {
             fixed: status.fixed,
             mode: status.sharing.as_ref().map(|s| s.mode),
+            domain: status.sharing.as_ref().and_then(|s| s.domain.clone()),
             url: status.sharing.map(|s| s.url),
             owner: status.owner.map(|o| OwnerView {
                 id: o.id,
