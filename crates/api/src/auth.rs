@@ -1,6 +1,6 @@
 //! Sign-in routes and working out who is calling (`docs/design/security.md` §2).
 
-use axum::extract::{FromRequestParts, Query, State};
+use axum::extract::{FromRequestParts, OptionalFromRequestParts, Query, State};
 use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
@@ -30,6 +30,18 @@ impl FromRequestParts<Engine> for Caller {
         if engine.local_mode() {
             return Ok(Caller(Actor::Local));
         }
+        // CLI tokens: no cookie, so no cross-site forgery to guard against.
+        if let Some(token) = bearer(&parts.headers) {
+            let engine = engine.clone();
+            return match blocking(move || engine.token_actor(&token)).await? {
+                Some(actor) => Ok(Caller(actor)),
+                None => Err(ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_token",
+                    "This CLI token was revoked or never existed; run board login",
+                )),
+            };
+        }
         let Some(token) = cookie(&parts.headers, SESSION_COOKIE) else {
             return Err(ApiError::unauthorized());
         };
@@ -58,8 +70,41 @@ impl FromRequestParts<Engine> for Caller {
     }
 }
 
+/// Anonymous callers are fine (`None`); a bad token or a refused account still fails.
+impl OptionalFromRequestParts<Engine> for Caller {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        engine: &Engine,
+    ) -> Result<Option<Self>, ApiError> {
+        if !engine.local_mode()
+            && bearer(&parts.headers).is_none()
+            && cookie(&parts.headers, SESSION_COOKIE).is_none()
+        {
+            return Ok(None);
+        }
+        match <Caller as FromRequestParts<Engine>>::from_request_parts(parts, engine).await {
+            Ok(caller) => Ok(Some(caller)),
+            Err(error) if error.status() == StatusCode::UNAUTHORIZED => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}
+
 fn safe(method: &Method) -> bool {
     matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
+}
+
+/// The token of an `Authorization: Bearer` header, if sent.
+pub fn bearer(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
 }
 
 /// The value of cookie `name`, if sent.
@@ -142,6 +187,10 @@ pub async fn logout(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let secure = engine.tool_url().is_some_and(|u| u.starts_with("https://"));
+    if let Some(token) = bearer(&headers) {
+        blocking(move || engine.revoke_own_token(&token)).await?;
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
     if let Some(token) = cookie(&headers, SESSION_COOKIE) {
         if !headers.contains_key(CLIENT_HEADER) {
             return Err(ApiError::new(

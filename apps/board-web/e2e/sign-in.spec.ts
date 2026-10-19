@@ -1,3 +1,7 @@
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 
 // The public server (`stack.ts`): sign-in through the stand-in provider, boss@example.com is an
@@ -94,4 +98,36 @@ test("a share link lets a guest in under a name until it is revoked", async ({ b
   await expect(panel.getByText("Revoked")).toBeVisible();
   await guest.reload();
   await expect(guest).toHaveURL(/\/signin/);
+});
+
+test("board login is approved in the browser and the CLI acts as that member", async ({
+  browser,
+}) => {
+  const root = resolve(import.meta.dirname, "../../..");
+  const config = mkdtempSync(join(tmpdir(), "board-cli-login-"));
+  const env = { ...process.env, BOARD_CONFIG_DIR: config, BOARD_URL: base() };
+  const cli = join(root, "apps/board-cli/src/main.ts");
+  const login = spawn(process.execPath, [cli, "login", "--name", "e2e-laptop"], { env });
+  let stderr = "";
+  login.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const exited = new Promise<number | null>((done) => login.on("exit", done));
+  const printed = () => /\b([A-Z]{4}-[A-Z]{4})\b/.exec(stderr)?.[1];
+  await expect.poll(printed, { message: `board login said: ${stderr}` }).toBeTruthy();
+  const code = printed() ?? "";
+
+  const boss = await (await browser.newContext()).newPage();
+  await signIn(boss, "boss");
+  await boss.goto(`${base()}/device?code=${code}`);
+  await expect(boss.getByText(/“e2e-laptop” act as boss@example\.com/)).toBeVisible();
+  await boss.getByRole("button", { name: "Approve" }).click();
+  await expect(boss.getByText("Approved.")).toBeVisible();
+  expect(await exited).toBe(0);
+
+  const whoami = execFileSync(process.execPath, [cli, "whoami"], { env }).toString();
+  expect(whoami).toContain("Boss <boss@example.com>, admin");
+  await boss.goto(`${base()}/account`);
+  await expect(boss.getByText("e2e-laptop")).toBeVisible();
+  rmSync(config, { recursive: true, force: true });
 });

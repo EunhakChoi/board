@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { detectLocale, type Locale, t } from "@board/i18n";
 import pkg from "../package.json" with { type: "json" };
+import * as auth from "./auth.ts";
+import { savedToken } from "./auth.ts";
 import { findCheckout } from "./checkout.ts";
 import * as commands from "./commands.ts";
 import * as notes from "./comments.ts";
@@ -38,6 +40,8 @@ const VALUE_FLAGS = new Set([
   "--context",
   "--sheet",
   "--on",
+  "--token",
+  "--name",
 ]);
 const LIST_FLAGS = new Set(["--include"]);
 
@@ -96,7 +100,6 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       out(t("cli.version", { version: pkg.version }, locale));
       return 0;
     }
-    const token = env.BOARD_TOKEN;
     const cwd = options.cwd ?? process.cwd();
     // A checkout belongs to one server, which wins over the general BOARD_URL.
     const server =
@@ -104,8 +107,11 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       findCheckout(cwd)?.state.server ??
       env.BOARD_URL ??
       "http://127.0.0.1:5280";
+    const base = server.replace(/\/$/, "");
+    // BOARD_TOKEN (CI) wins over what `board login` saved for this server.
+    const token = env.BOARD_TOKEN ?? savedToken(env, base);
     const ctx: commands.Context = {
-      server: server.replace(/\/$/, ""),
+      server: base,
       ...(token ? { token } : {}),
       cwd,
       locale,
@@ -214,6 +220,15 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         return await renders.capture(ctx, project(), render());
       case "comments":
         return await commentsCommand(ctx, rest, args, project, message, single);
+      case "login":
+        await auth.login(ctx, str(args, "--token"), str(args, "--name"));
+        break;
+      case "logout":
+        await auth.logout(ctx);
+        break;
+      case "whoami":
+        await auth.whoami(ctx);
+        break;
       case "projects":
         await commands.projects(ctx);
         break;

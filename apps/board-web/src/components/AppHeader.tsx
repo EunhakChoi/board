@@ -55,12 +55,19 @@ export function AppHeader({ children, actions }: { children?: ReactNode; actions
         </Button>
         {signedIn && (
           <>
-            <span
-              className="max-w-40 truncate text-sm text-muted-foreground"
-              title={signedIn.email}
-            >
-              {signedIn.name}
-            </span>
+            {signedIn.kind === "user" ? (
+              <Link
+                to="/account"
+                className="max-w-40 truncate text-sm text-muted-foreground hover:text-foreground"
+                title={signedIn.email}
+              >
+                {signedIn.name}
+              </Link>
+            ) : (
+              <span className="max-w-40 truncate text-sm text-muted-foreground">
+                {signedIn.name}
+              </span>
+            )}
             {signedIn.kind === "user" && (
               <Button
                 variant="ghost"

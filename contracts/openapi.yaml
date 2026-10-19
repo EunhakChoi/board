@@ -288,6 +288,194 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/me/cli-tokens:
+    get:
+      tags: [tokens]
+      operationId: listCliTokens
+      summary: The caller's CLI tokens
+      responses:
+        "200":
+          description: Tokens (without their secrets)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CliToken"
+        "400":
+          $ref: "#/components/responses/Invalid"
+    post:
+      tags: [tokens]
+      operationId: createCliToken
+      summary: Creates a personal CLI token; the secret is shown only now
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: The token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CliToken"
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+        "400":
+          $ref: "#/components/responses/Invalid"
+  /api/me/cli-tokens/{id}:
+    delete:
+      tags: [tokens]
+      operationId: revokeCliToken
+      summary: Revokes one of the caller's CLI tokens
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/auth/device:
+    post:
+      tags: [tokens]
+      operationId: startDeviceLogin
+      summary: A CLI starts a login to be approved in the browser (no sign-in needed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: What the CLI calls itself (the machine), shown on the approval page
+      responses:
+        "200":
+          description: Codes and where to approve
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deviceCode, userCode, verificationUrl, verificationUrlComplete, interval, expiresIn]
+                properties:
+                  deviceCode:
+                    type: string
+                  userCode:
+                    type: string
+                  verificationUrl:
+                    type: string
+                  verificationUrlComplete:
+                    type: string
+                  interval:
+                    type: integer
+                    description: Seconds between polls
+                  expiresIn:
+                    type: integer
+  /api/auth/device/token:
+    post:
+      tags: [tokens]
+      operationId: pollDeviceLogin
+      summary: The CLI asks whether its login was approved
+      description: >-
+        `400` with code `authorization_pending` (ask again after `interval`), `access_denied` or
+        `expired_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceCode]
+              additionalProperties: false
+              properties:
+                deviceCode:
+                  type: string
+      responses:
+        "200":
+          description: Approved; the token (handed out once)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Invalid"
+  /api/auth/device/{code}:
+    get:
+      tags: [tokens]
+      operationId: getDeviceLogin
+      summary: A waiting CLI login, for the approval page
+      parameters:
+        - $ref: "#/components/parameters/UserCode"
+      responses:
+        "200":
+          description: The login
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userCode, name, status]
+                properties:
+                  userCode:
+                    type: string
+                  name:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, approved, denied]
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/auth/device/{code}/approve:
+    post:
+      tags: [tokens]
+      operationId: approveDeviceLogin
+      summary: Lets the waiting CLI act as the caller
+      parameters:
+        - $ref: "#/components/parameters/UserCode"
+      responses:
+        "204":
+          description: Approved
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/auth/device/{code}/deny:
+    post:
+      tags: [tokens]
+      operationId: denyDeviceLogin
+      summary: Turns the waiting CLI login down
+      parameters:
+        - $ref: "#/components/parameters/UserCode"
+      responses:
+        "204":
+          description: Denied
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/links/{token}:
     get:
       tags: [links]
@@ -1110,6 +1298,13 @@ paths:
           $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    UserCode:
+      name: code
+      in: path
+      required: true
+      description: The code the CLI printed (`BCDF-GHJK`)
+      schema:
+        type: string
     LinkToken:
       name: token
       in: path
@@ -1651,6 +1846,21 @@ components:
           description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+    CliToken:
+      type: object
+      required: [id, name, via, createdAt, lastUsedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        via:
+          type: string
+          enum: [device, manual]
+        createdAt:
+          type: string
+        lastUsedAt:
+          type: [string, "null"]
     ShareLink:
       type: object
       required: [id, project, role, label, createdBy, createdAt, revokedAt, guests]

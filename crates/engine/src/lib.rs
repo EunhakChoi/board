@@ -12,6 +12,7 @@ mod ports;
 mod preview;
 mod projects;
 mod sheet;
+mod tokens;
 
 use std::sync::Arc;
 
@@ -23,13 +24,14 @@ pub use error::EngineError;
 pub use links::{NewLink, SharedLink};
 pub use ports::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
-    Captures, Change, ChangeKind, Claims, Comments, FileChange, Guest, Identity, ImageKind,
+    Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
     NewComment, NewReply, NewShareLink, NewUser, ProjectStore, Records, RenderJob, Renderer,
     Settings, Shot, StoreError, Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
 pub use sheet::SheetItem;
+pub use tokens::{DEVICE_INTERVAL_SECS, DevicePoll, DeviceRequest, DeviceStart, NewCliToken};
 
 /// Everything the engine needs from the outside world.
 #[derive(Clone)]

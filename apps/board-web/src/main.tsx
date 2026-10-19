@@ -4,8 +4,10 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AuthGate } from "@/components/AuthGate";
 import { LocaleProvider } from "@/lib/i18n";
+import { Account } from "@/pages/Account";
 import { Code } from "@/pages/Code";
 import { Components } from "@/pages/Components";
+import { Device } from "@/pages/Device";
 import { Flows } from "@/pages/Flows";
 import { JoinLink } from "@/pages/JoinLink";
 import { ProjectLayout } from "@/pages/ProjectLayout";
@@ -26,6 +28,22 @@ const router = createBrowserRouter([
     element: (
       <AuthGate>
         <Projects />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/device",
+    element: (
+      <AuthGate>
+        <Device />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/account",
+    element: (
+      <AuthGate>
+        <Account />
       </AuthGate>
     ),
   },

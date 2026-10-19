@@ -323,3 +323,48 @@ export function useEnterLink(token: string) {
       unwrap(api.POST("/api/links/{token}/enter", { params: { path: { token } }, body: { name } })),
   });
 }
+
+export function useDeviceLogin(code: string) {
+  return useQuery({
+    queryKey: ["device", code],
+    enabled: code.length > 0,
+    retry: false,
+    queryFn: () => unwrap(api.GET("/api/auth/device/{code}", { params: { path: { code } } })),
+  });
+}
+
+export function useDecideDevice(code: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (approve: boolean) =>
+      unwrapEmpty(
+        api.POST(approve ? "/api/auth/device/{code}/approve" : "/api/auth/device/{code}/deny", {
+          params: { path: { code } },
+        }),
+      ),
+    onSettled: () => client.invalidateQueries({ queryKey: ["device", code] }),
+  });
+}
+
+export function useCliTokens() {
+  return useQuery({
+    queryKey: ["cli-tokens"],
+    queryFn: () => unwrap(api.GET("/api/me/cli-tokens")),
+  });
+}
+
+export function useCliTokenActions() {
+  const client = useQueryClient();
+  const settled = () => client.invalidateQueries({ queryKey: ["cli-tokens"] });
+  return {
+    create: useMutation({
+      mutationFn: (name: string) => unwrap(api.POST("/api/me/cli-tokens", { body: { name } })),
+      onSettled: settled,
+    }),
+    revoke: useMutation({
+      mutationFn: (id: string) =>
+        unwrapEmpty(api.DELETE("/api/me/cli-tokens/{id}", { params: { path: { id } } })),
+      onSettled: settled,
+    }),
+  };
+}
