@@ -1113,3 +1113,89 @@ async fn system_answers_before_sign_in_without_details() {
     assert_eq!(system["localMode"], false);
     assert!(system["services"]["workspace"].get("error").is_none());
 }
+
+#[tokio::test]
+async fn private_projects_hide_from_non_members() {
+    let (engine, idp) = signed_in_engine();
+    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
+    let boss = boss.unwrap();
+    json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/allow-rules",
+            &boss,
+            Some(json!({"kind": "domain", "value": "example.com"})),
+        ),
+    )
+    .await;
+    let (ann, _) = browser_sign_in(&engine, &idp, "ann", "").await;
+    let ann = ann.unwrap();
+    json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/projects",
+            &boss,
+            Some(json!({"key": "secret", "title": "Secret"})),
+        ),
+    )
+    .await;
+    let (status, project) = json_of(
+        &engine,
+        as_member(
+            "PATCH",
+            "/api/projects/secret",
+            &boss,
+            Some(json!({"visibility": "private"})),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, project["visibility"].as_str()),
+        (StatusCode::OK, Some("private"))
+    );
+    let (status, _) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/secret", &ann, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &ann, None)).await;
+    let ann_id = me["id"].as_str().unwrap();
+    let (status, _, _) = send(
+        engine.clone(),
+        as_member(
+            "PUT",
+            &format!("/api/projects/secret/members/{ann_id}"),
+            &boss,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, members) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/secret/members", &boss, None),
+    )
+    .await;
+    assert_eq!(members["members"], json!([ann_id]));
+    let (status, _) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/secret", &ann, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = json_of(
+        &engine,
+        as_member(
+            "PATCH",
+            "/api/projects/secret",
+            &ann,
+            Some(json!({"title": "Mine"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}

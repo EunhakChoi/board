@@ -371,9 +371,54 @@ impl Settings for MemorySettings {
 struct MemoryRecords {
     projects: Mutex<Vec<Project>>,
     versions: Mutex<Vec<(String, Version)>>,
+    members: Mutex<Vec<(String, String)>>,
 }
 
 impl Records for MemoryRecords {
+    fn update_project(
+        &self,
+        key: &str,
+        title: &str,
+        visibility: board_model::Visibility,
+    ) -> Result<(), StoreError> {
+        for p in self
+            .projects
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|p| p.key == key)
+        {
+            p.title = title.into();
+            p.visibility = visibility;
+        }
+        Ok(())
+    }
+    fn members(&self, project: &str) -> Result<Vec<String>, StoreError> {
+        Ok(self
+            .members
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _)| p == project)
+            .map(|(_, u)| u.clone())
+            .collect())
+    }
+    fn is_member(&self, project: &str, user: &str) -> Result<bool, StoreError> {
+        Ok(self
+            .members
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(p, u)| p == project && u == user))
+    }
+    fn set_member(&self, project: &str, user: &str, member: bool) -> Result<(), StoreError> {
+        let mut members = self.members.lock().unwrap();
+        members.retain(|(p, u)| !(p == project && u == user));
+        if member {
+            members.push((project.into(), user.into()));
+        }
+        Ok(())
+    }
     fn delete_project(&self, key: &str) -> Result<bool, StoreError> {
         let mut projects = self.projects.lock().unwrap();
         let before = projects.len();

@@ -195,7 +195,7 @@
   "web.links.role.editor": "편집",
   "web.links.role.admin": "관리자",
   "web.links.label": "이름표",
-  "web.links.labelPlaceholder": "이름표, 예: 디자인 리뷰 (선택)",
+  "web.links.labelPlaceholder": "이름표 (선택)",
   "web.links.create": "link 만들기",
   "web.links.address": "link 주소",
   "web.links.copy": "link 복사",
@@ -247,5 +247,12 @@
   "web.account.unused": "사용 안 함",
   "web.account.revoke": "{name} 폐기",
   "web.account.none": "아직 token 이 없습니다.",
-  "web.account.nav": "계정"
+  "web.account.nav": "계정",
+  "web.links.panel": "공유",
+  "web.access.title": "공개 범위",
+  "web.access.team": "팀 전체",
+  "web.access.private": "비공개",
+  "web.access.teamLead": "이 board 에 들어온 사람 모두 이 프로젝트를 봅니다.",
+  "web.access.privateLead": "아래에서 고른 사람과 관리자만 봅니다. 공유 link 는 그대로 동작합니다.",
+  "web.access.nobody": "다른 팀원이 아직 없습니다."
 }

@@ -24,6 +24,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0005_accounts.sql"),
     include_str!("migrations/0006_share_links.sql"),
     include_str!("migrations/0007_cli_tokens.sql"),
+    include_str!("migrations/0008_project_members.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.
@@ -119,6 +120,54 @@ impl Settings for Db {
 }
 
 impl Records for Db {
+    fn update_project(
+        &self,
+        key: &str,
+        title: &str,
+        visibility: Visibility,
+    ) -> Result<(), StoreError> {
+        self.lock()?
+            .execute(
+                "UPDATE projects SET title = ?2, visibility = ?3 WHERE key = ?1",
+                params![key, title, text(visibility)],
+            )
+            .map(drop)
+            .map_err(err)
+    }
+
+    fn members(&self, project: &str) -> Result<Vec<String>, StoreError> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare("SELECT user_id FROM project_members WHERE project = ?1 ORDER BY user_id")
+            .map_err(err)?;
+        let rows = statement
+            .query_map(params![project], |row| row.get(0))
+            .map_err(err)?;
+        rows.collect::<Result<_, _>>().map_err(err)
+    }
+
+    fn is_member(&self, project: &str, user: &str) -> Result<bool, StoreError> {
+        self.lock()?
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM project_members WHERE project = ?1 AND user_id = ?2)",
+                params![project, user],
+                |row| row.get(0),
+            )
+            .map_err(err)
+    }
+
+    fn set_member(&self, project: &str, user: &str, member: bool) -> Result<(), StoreError> {
+        let sql = if member {
+            "INSERT INTO project_members (project, user_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING"
+        } else {
+            "DELETE FROM project_members WHERE project = ?1 AND user_id = ?2"
+        };
+        self.lock()?
+            .execute(sql, params![project, user])
+            .map(drop)
+            .map_err(err)
+    }
+
     fn delete_project(&self, key: &str) -> Result<bool, StoreError> {
         // Versions, captures, comments and replies go with it (ON DELETE CASCADE).
         let deleted = self

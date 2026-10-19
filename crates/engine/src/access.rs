@@ -149,7 +149,7 @@ fn valid_domain(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use board_model::{Role, UserStatus};
+    use board_model::{Role, UserStatus, Visibility};
 
     use super::*;
     use crate::testing::{FakeIdentity, engine_with_sign_in};
@@ -266,6 +266,67 @@ mod tests {
             engine.session(&eve_token).unwrap(),
             None | Some(SessionState::Refused(_))
         ));
+    }
+
+    #[test]
+    fn private_projects_show_only_to_members_and_admins() {
+        let (engine, idp) = engine_with_sign_in(&["boss@example.com"]);
+        let (_, boss) = join(&engine, &idp, "boss");
+        let admin = boss.actor();
+        crate::testing::allow(&engine, "domain", "example.com");
+        let (_, ann) = join(&engine, &idp, "ann");
+        let (_, bob) = join(&engine, &idp, "bob");
+        engine
+            .create_project(&admin, "secret", "Secret", None)
+            .unwrap();
+        let project = engine
+            .update_project(
+                &admin,
+                "secret",
+                Some(" Top secret "),
+                Some(Visibility::Private),
+            )
+            .unwrap();
+        assert_eq!(
+            (project.title.as_str(), project.visibility),
+            ("Top secret", Visibility::Private)
+        );
+        engine.set_member(&admin, "secret", &ann.id, true).unwrap();
+        assert_eq!(
+            engine.members(&admin, "secret").unwrap(),
+            std::slice::from_ref(&ann.id)
+        );
+
+        let keys = |actor: &Actor| -> Vec<String> {
+            engine
+                .projects(actor)
+                .unwrap()
+                .into_iter()
+                .map(|p| p.key)
+                .collect()
+        };
+        assert_eq!(keys(&ann.actor()), ["secret"]);
+        assert_eq!(keys(&bob.actor()), Vec::<String>::new());
+        assert_eq!(
+            engine.project(&bob.actor(), "secret"),
+            Err(EngineError::NotFound("project")),
+            "hidden, not forbidden"
+        );
+        assert_eq!(
+            engine.members(&ann.actor(), "secret"),
+            Err(EngineError::Forbidden)
+        );
+        assert_eq!(
+            engine.set_member(&admin, "secret", "nobody", true),
+            Err(EngineError::NotFound("user"))
+        );
+
+        engine.set_member(&admin, "secret", &ann.id, false).unwrap();
+        assert_eq!(keys(&ann.actor()), Vec::<String>::new());
+        engine
+            .update_project(&admin, "secret", None, Some(Visibility::Team))
+            .unwrap();
+        assert_eq!(keys(&bob.actor()), ["secret"]);
     }
 
     #[test]

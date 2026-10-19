@@ -1,4 +1,4 @@
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Lock } from "lucide-react";
 import { Link } from "react-router";
 import { AppHeader } from "@/components/AppHeader";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,17 @@ export function Projects() {
             >
               <Card interactive>
                 <CardHeader>
-                  <CardTitle>{project.title}</CardTitle>
+                  <CardTitle>
+                    <span className="flex items-center gap-2">
+                      {project.title}
+                      {project.visibility === "private" && (
+                        <Lock
+                          className="size-3.5 text-muted-foreground"
+                          aria-label={t("web.access.private")}
+                        />
+                      )}
+                    </span>
+                  </CardTitle>
                   <CardDescription>{project.key}</CardDescription>
                 </CardHeader>
               </Card>

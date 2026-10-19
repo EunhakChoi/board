@@ -39,6 +39,18 @@ pub trait Records: Send + Sync {
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError>;
     /// Removes a project with its versions, captures and comments. False when there was none.
     fn delete_project(&self, key: &str) -> Result<bool, StoreError>;
+    /// Renames a project and sets who can see it.
+    fn update_project(
+        &self,
+        key: &str,
+        title: &str,
+        visibility: board_model::Visibility,
+    ) -> Result<(), StoreError>;
+    /// Members (user ids) of a private project.
+    fn members(&self, project: &str) -> Result<Vec<String>, StoreError>;
+    fn is_member(&self, project: &str, user: &str) -> Result<bool, StoreError>;
+    /// Adds (`true`) or removes a member.
+    fn set_member(&self, project: &str, user: &str, member: bool) -> Result<(), StoreError>;
 }
 
 /// Who a commit is attributed to.
