@@ -191,6 +191,10 @@ export function RealtimeProvider({ project, children }: { project: string; child
         case "hello": {
           if (message.reload) {
             void client.invalidateQueries();
+          } else if (seq === undefined) {
+            // First connection of this page: what loaded before the socket opened may already
+            // be behind (a comment made in between). Comments and captures are cheap to refetch.
+            refresh("capture.updated");
           }
           for (const missed of message.missed) handle(missed);
           seq = message.seq;
