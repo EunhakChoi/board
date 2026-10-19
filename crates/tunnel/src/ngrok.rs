@@ -103,6 +103,12 @@ fn refused(error: &str) -> String {
              runs: https://dashboard.ngrok.com/endpoints ({error})"
         );
     }
+    if error.contains("ERR_NGROK_319") || error.contains("reserve a custom hostname") {
+        return format!(
+            "this domain is not reserved on the ngrok account yet. Reserve it first at \
+             https://dashboard.ngrok.com/domains/new, then try again ({error})"
+        );
+    }
     format!("ngrok refused the tunnel: {error}")
 }
 
@@ -124,5 +130,6 @@ mod tests {
         ngrok.close().unwrap();
         assert!(Ngrok::new(runtime.handle().clone(), "not a url").is_err());
         assert!(refused("rpc error: ERR_NGROK_334 already online").contains("Stop that one first"));
+        assert!(refused("ERR_NGROK_319 reserve a custom hostname").contains("domains/new"));
     }
 }

@@ -212,12 +212,10 @@ impl Engine {
             )?),
         };
         let current = self.read_live().sharing.clone();
-        let domain = request
-            .domain
-            .as_deref()
-            .map(str::trim)
-            .filter(|d| !d.is_empty())
-            .map(str::to_owned);
+        let domain = match request.domain.as_deref().map(str::trim) {
+            Some(d) if !d.is_empty() && request.mode == ShareMode::Ngrok => Some(full_domain(d)?),
+            _ => None,
+        };
         let new_token = request
             .authtoken
             .as_deref()
@@ -347,6 +345,33 @@ impl Engine {
                 email: u.email,
                 role: Role::Admin,
             }))
+    }
+}
+
+/// A domain as ngrok wants it: the full name (`team.ngrok.app`), also when pasted as a URL.
+fn full_domain(text: &str) -> Result<String, EngineError> {
+    let name = text
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_lowercase();
+    let valid = name.contains('.')
+        && !name.starts_with('.')
+        && !name.ends_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+    if valid {
+        Ok(name)
+    } else {
+        Err(EngineError::Invalid(format!(
+            "the domain is a full name, e.g. {}.ngrok.app (reserve it on the ngrok dashboard first)",
+            if name.is_empty() || name.contains('.') {
+                "my-team"
+            } else {
+                &name
+            }
+        )))
     }
 }
 
@@ -495,6 +520,19 @@ mod tests {
         let status = engine.sharing(&engine.local_actor()).unwrap();
         assert_eq!(status.sharing.unwrap().url, "https://kim.ngrok.app");
         assert_eq!(status.warning, None);
+    }
+
+    #[test]
+    fn an_ngrok_domain_is_a_full_name() {
+        assert_eq!(
+            full_domain("https://Kim.ngrok.app/").unwrap(),
+            "kim.ngrok.app"
+        );
+        let Err(EngineError::Invalid(message)) = full_domain("aigen-test") else {
+            panic!("a bare name");
+        };
+        assert!(message.contains("aigen-test.ngrok.app"), "{message}");
+        assert!(full_domain("a b.ngrok.app").is_err());
     }
 
     #[test]
