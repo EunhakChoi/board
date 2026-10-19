@@ -31,6 +31,7 @@ board ls                # screens, stories, flows and whether their captures are
 - Commands run inside a checkout use its project and server. Elsewhere add `-p <project>`
   (and `--server <url>` when the server is not the default `http://127.0.0.1:5280`).
 - No checkout yet: `board projects`, then `board checkout <project> <dir>`.
+- If `board status` says main moved, `board pull` before editing — it saves a refused push later.
 - "Cannot reach the board server" → `board doctor` says which part is down.
 - Every command takes `--json` when you need to parse the output.
 
@@ -84,6 +85,9 @@ board ls --stale                   # screens whose capture is older than the cod
   still be wrong (empty table, clipped dialog, wrong state).
 - A shared component change makes many screens stale: `board capture $(board ls --stale)`.
 - Add `--theme both` when the change can look different in dark mode.
+- Push refused because someone pushed first: a checkout is a git work tree, so
+  `git stash && board pull && git stash pop`, then push again. Their version stays; yours lands on
+  top.
 
 ## Workflow 4 · Put an existing app on board
 
@@ -104,7 +108,10 @@ board url <id>                   # link to give the team
 ```
 
 Connections and flows are written by hand and can lag behind the UI. When one looks wrong, check
-the app code (router, buttons, links), answer from the code, and fix `.board/project.tsx`.
+the app code (router, buttons, links) and answer from the code. If you are already changing the
+project, fix `.board/project.tsx` too. If you were only asked a question, say what is wrong and
+offer the fix (or leave a board comment) instead of pushing a change nobody asked for — a push
+creates a version the whole team sees.
 
 ## Ground rules
 
@@ -113,6 +120,10 @@ the app code (router, buttons, links), answer from the code, and fix `.board/pro
 - Leave your own questions or notes on the screen (`board comments add <id> --at x,y|selector -m
   "…"`), not only in chat, so the team finds them where they look.
 - Deleting a project (`board delete`) cannot be undone; do it only when the user asks.
+- Vague requests ("clean this up", "make it nicer"): tidying board itself is fine — missing or
+  stale captures, connections that disagree with the code. Changes to how the app looks or behaves
+  are design decisions: list them, or leave them as comments on the screens, and let the user
+  choose before you change the app.
 - Report back with what changed, the version, and `board url <id>` links for the screens.
 
 ## References
