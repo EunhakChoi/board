@@ -129,13 +129,22 @@ test("doctor reports failing services and newer releases", async () => {
   const shared = await board(["doctor", "--json"], {
     sh,
     info: system({
-      previewUrl: "http://localhost:5281",
+      previewUrl: "http://localhost:5280",
       services: { workspace: { ok: true }, render: { ok: true } },
     }),
   });
   const report = JSON.parse(shared.out);
   assert.equal(report.ok, false);
-  assert.ok(report.checks.some((c: { text: string }) => /share a host/.test(c.text)));
+  assert.ok(report.checks.some((c: { text: string }) => /share one origin/.test(c.text)));
+  // Another port on the same host is its own origin.
+  const ports = await board(["doctor"], {
+    sh,
+    info: system({
+      previewUrl: "http://localhost:5281",
+      services: { workspace: { ok: true }, render: { ok: true } },
+    }),
+  });
+  assert.equal(ports.code, 0, ports.out);
 
   const open = await board(["doctor"], {
     sh,
