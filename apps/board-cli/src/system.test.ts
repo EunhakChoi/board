@@ -112,6 +112,13 @@ test("skill install picks agents", async () => {
   assert.equal((await board(["skill", "nope"])).code, 1);
 });
 
+test("doctor checks that a shared local board's address answers", async () => {
+  const result = await board(["doctor"], {
+    info: system({ toolUrl: "https://kim.tail1.ts.net" }),
+  });
+  assert.match(result.out, /✓ shared at https:\/\/kim\.tail1\.ts\.net/);
+});
+
 test("doctor reports failing services and newer releases", async () => {
   const sh = (command: string) => (command === "git" ? "git version 2.43.0" : undefined);
   const result = await board(["doctor"], { sh, info: system({ latest: "0.2.0" }) });

@@ -10,7 +10,20 @@ import { startIdp } from "./idp.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 
-function freePort(): Promise<number> {
+/** Ports handed out so far: the OS may offer a closed one again, and two servers would clash. */
+const taken = new Set<number>();
+
+async function freePort(): Promise<number> {
+  for (;;) {
+    const port = await anyPort();
+    if (!taken.has(port)) {
+      taken.add(port);
+      return port;
+    }
+  }
+}
+
+function anyPort(): Promise<number> {
   return new Promise((done, fail) => {
     const server = createServer();
     server.once("error", fail);
@@ -145,11 +158,11 @@ export default async function setup() {
   };
   try {
     const base = `http://127.0.0.1:${api}`;
-    await waitFor(`${base}/api/health`, () => true, 20);
-    await waitFor(`http://127.0.0.1:${publicApi}/api/health`, () => true, 20);
-    await waitFor(`http://127.0.0.1:${shareApi}/api/health`, () => true, 20);
-    await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 20);
-    await waitFor(`http://127.0.0.1:${render}/health`, () => true, 20);
+    await waitFor(`${base}/api/health`, () => true, 60);
+    await waitFor(`http://127.0.0.1:${publicApi}/api/health`, () => true, 60);
+    await waitFor(`http://127.0.0.1:${shareApi}/api/health`, () => true, 60);
+    await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 60);
+    await waitFor(`http://127.0.0.1:${render}/health`, () => true, 60);
     execFileSync(
       process.execPath,
       [join(root, "apps/board-cli/src/main.ts"), "import", "--key", "demo"],

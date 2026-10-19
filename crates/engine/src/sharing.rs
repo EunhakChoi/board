@@ -26,6 +26,9 @@ pub enum ShareMode {
     Funnel,
     /// An ngrok tunnel run inside the server, with the person's authtoken.
     Ngrok,
+    /// The remote door also listens on this machine's LAN address (for trying things out: the
+    /// address is an IP, over plain HTTP).
+    Lan,
 }
 
 impl ShareMode {

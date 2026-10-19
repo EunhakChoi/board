@@ -127,7 +127,9 @@ impl Tailscale {
             ShareMode::Funnel => Err(
                 "Funnel needs HTTPS certificates on the tailnet (Tailscale, not Headscale)".into(),
             ),
-            ShareMode::Address | ShareMode::Ngrok => Err("not a Tailscale mode".into()),
+            ShareMode::Address | ShareMode::Ngrok | ShareMode::Lan => {
+                Err("not a Tailscale mode".into())
+            }
         }
     }
 

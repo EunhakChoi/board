@@ -1393,10 +1393,10 @@ export interface components {
             createdAt: string;
         };
         /**
-         * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server
+         * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server; `lan`: this machine's LAN address, for trying out
          * @enum {string}
          */
-        ShareMode: "address" | "tailscale" | "funnel" | "ngrok";
+        ShareMode: "address" | "tailscale" | "funnel" | "ngrok" | "lan";
         Sharing: {
             /** @description The ways this machine can share */
             modes: {

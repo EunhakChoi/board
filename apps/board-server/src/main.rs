@@ -1,6 +1,7 @@
 //! board-server: the board server binary.
 
 mod config;
+mod lan;
 mod secret;
 mod update;
 mod webhook;
@@ -98,7 +99,7 @@ async fn run(config: Config) -> Result<(), String> {
                 .map(|token| format!("{}/setup?token={token}", config.tool_url()));
         }
     }
-    let engine = with_sharing(engine, config.remote_bind).await?;
+    let engine = with_sharing(engine, &config).await?;
     if config.update_check {
         update::spawn(engine.clone());
     }
@@ -130,16 +131,23 @@ async fn run(config: Config) -> Result<(), String> {
 }
 
 /// Lets a local board run tunnels to its remote door, and reopens sharing that was on.
-async fn with_sharing(
-    mut engine: Engine,
-    remote: Option<std::net::SocketAddr>,
-) -> Result<Engine, String> {
+async fn with_sharing(mut engine: Engine, config: &Config) -> Result<Engine, String> {
+    let remote = config.remote_bind;
     if let Some(addr) = remote {
         let target = format!("http://127.0.0.1:{}", addr.port());
-        engine = engine.with_tunnels(Arc::new(board_tunnel::Machine {
+        let runtime = tokio::runtime::Handle::current();
+        let machine = board_tunnel::Machine {
             tailscale: tailscale(&target),
-            ngrok: board_tunnel::Ngrok::new(tokio::runtime::Handle::current(), &target)?,
-        }));
+            ngrok: board_tunnel::Ngrok::new(runtime.clone(), &target)?,
+        };
+        let lan = lan::Lan {
+            runtime,
+            port: addr.port(),
+            app: board_api::remote_app(engine.clone(), config.web_dir.clone()),
+            container: config.container,
+            running: std::sync::Mutex::default(),
+        };
+        engine = engine.with_tunnels(Arc::new(lan::ServerTunnels { machine, lan }));
     }
     // Tunnels block on the runtime, so they reopen from a blocking thread.
     let restored = engine.clone();

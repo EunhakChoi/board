@@ -74,10 +74,12 @@ docker compose up -d
      `BOARD_NGROK_AUTHTOKEN` 도 가능.
    - **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
      `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
+   - **같은 네트워크** — 원격 문을 이 기기의 LAN 주소에도 열기 (HTTP). 시험용: link 에 IP 노출.
+     (Docker 는 대신 5284 port 를 LAN 에 publish.)
 2. 내 이름 (처음 한 번) 입력 후 공유 켜기.
 3. 같은 화면에서 사람 초대.
 
-Tailscale 방식은 board-server 가 도는 곳에 `tailscale` CLI 필요 (`BOARD_TAILSCALE`,
+`board doctor` 로 공유 주소 응답 여부 확인. Tailscale 방식은 board-server 가 도는 곳에 `tailscale` CLI 필요 (`BOARD_TAILSCALE`,
 `BOARD_TAILSCALE_SOCKET`). Docker 에서는 **내 주소** 선택 후 host 에서
 `tailscale serve --bg http://127.0.0.1:5284` (또는 `tailscale funnel …`) 실행.
 
