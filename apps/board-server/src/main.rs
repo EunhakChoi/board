@@ -8,7 +8,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use board_db::{CaptureStore, CommentStore, Db};
-use board_engine::{Engine, Ports, PreviewSettings};
+use board_engine::{Engine, Ports, PreviewSettings, SignInSettings};
+use board_oidc::Oidc;
 use board_render_client::RenderClient;
 use board_store::GitStore;
 use board_workspace_client::WorkspaceClient;
@@ -45,7 +46,11 @@ async fn run(config: Config) -> Result<(), String> {
             db.clone(),
             config.data_dir().join("captures"),
         )),
-        comments: Arc::new(CommentStore::new(db, config.data_dir().join("comments"))),
+        comments: Arc::new(CommentStore::new(
+            db.clone(),
+            config.data_dir().join("comments"),
+        )),
+        accounts: db,
         renderer: Arc::new(RenderClient::new(
             &config.render_url,
             config.render_token.clone(),
@@ -56,7 +61,7 @@ async fn run(config: Config) -> Result<(), String> {
             config.workspace_token.clone(),
         )),
     };
-    let engine = Engine::new(ports, config.local_mode())
+    let mut engine = Engine::new(ports, config.local_mode())
         .with_preview(PreviewSettings {
             origin: config.preview_url.clone(),
             render_origin: config.render_preview_url.clone(),
@@ -64,6 +69,24 @@ async fn run(config: Config) -> Result<(), String> {
             ttl_secs: PREVIEW_TOKEN_SECS,
         })
         .with_tool_url(&config.tool_url());
+    let mut setup_link = None;
+    if let Some(oidc) = &config.oidc {
+        engine = engine.with_sign_in(SignInSettings {
+            identity: Arc::new(Oidc::new(
+                &oidc.issuer,
+                &oidc.client_id,
+                &oidc.client_secret,
+                &config.oidc_redirect(),
+            )),
+            admin_emails: config.admin_emails.clone(),
+        });
+        if !config.local_mode() {
+            setup_link = engine
+                .issue_setup_token()
+                .map_err(|e| e.to_string())?
+                .map(|token| format!("{}/setup?token={token}", config.tool_url()));
+        }
+    }
     if config.update_check {
         update::spawn(engine.clone());
     }
@@ -84,6 +107,10 @@ async fn run(config: Config) -> Result<(), String> {
         },
         config.preview_url,
     );
+    if let Some(link) = setup_link {
+        // Printed only here: whoever opens it first becomes the admin.
+        println!("No admin yet. Open this one-time setup link to become the admin:\n  {link}");
+    }
     let origin = board_api::PreviewOrigin {
         frame_ancestors: config.tool_origins(),
     };

@@ -72,6 +72,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/oidc/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sends the browser to the identity provider to sign in */
+        get: operations["startSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The provider sends the browser back here
+         * @description Sets the session cookie and redirects to `returnTo`, or redirects to `/signin?error=<code>` (`setup_required`, `email_unverified`, `rejected`, `removed`, `cancelled`, `expired`, `unavailable`, `failed`).
+         */
+        get: operations["finishSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ends the session */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -704,13 +758,14 @@ export interface components {
         Role: "admin" | "editor" | "commenter" | "viewer";
         Me: {
             /**
-             * @description `local` is the built-in admin of local mode (no sign-in)
+             * @description `local` is the built-in admin of local mode (no sign-in); `pending` signed in and waits for an admin to approve the access request
              * @enum {string}
              */
-            kind: "user" | "guest" | "local";
+            kind: "user" | "guest" | "local" | "pending";
             id?: string;
             name: string;
             email?: string;
+            avatarUrl?: string;
             role: components["schemas"]["Role"];
             /** @description True while the server only listens on localhost and needs no sign-in */
             localMode: boolean;
@@ -925,6 +980,78 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    startSignIn: {
+        parameters: {
+            query?: {
+                /** @description Token from the one-time setup link; its first user becomes the admin */
+                setup?: string;
+                /** @description Path on the tool to come back to */
+                returnTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the provider */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign-in is not configured or the provider does not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    finishSignIn: {
+        parameters: {
+            query?: {
+                state?: string;
+                code?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the tool */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listProjects: {

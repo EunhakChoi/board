@@ -13,11 +13,18 @@ export interface ClientOptions {
   fetch?: typeof globalThis.fetch;
 }
 
+/** Header the server requires on changing requests that rely on the session cookie. */
+export const CLIENT_HEADER = "x-board-client";
+
 /** Typed client for the board API (`contracts/openapi.yaml`). */
 export function createClient({ baseUrl = "", token, fetch }: ClientOptions = {}) {
   return createFetchClient<paths>({
     baseUrl,
-    ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
+    headers: {
+      // Changing requests must carry it: cross-site pages cannot send custom headers (CSRF).
+      [CLIENT_HEADER]: "board",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     ...(fetch ? { fetch } : {}),
   });
 }

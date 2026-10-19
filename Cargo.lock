@@ -170,6 +170,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "board-model",
+ "getrandom 0.4.3",
  "hmac",
  "image",
  "serde",
@@ -182,6 +183,17 @@ name = "board-model"
 version = "0.0.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "board-oidc"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "board-engine",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]
@@ -220,6 +232,7 @@ dependencies = [
  "board-db",
  "board-engine",
  "board-model",
+ "board-oidc",
  "board-render-client",
  "board-store",
  "board-workspace-client",

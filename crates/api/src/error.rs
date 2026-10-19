@@ -41,6 +41,10 @@ impl ApiError {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", "Sign in first")
     }
 
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }

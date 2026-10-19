@@ -17,6 +17,7 @@ board-engine = { path = "../../crates/engine" }
 board-store = { path = "../../crates/store" }
 board-db = { path = "../../crates/db" }
 board-collab = { path = "../../crates/collab" }
+board-oidc = { path = "../../crates/oidc" }
 board-api = { path = "../../crates/api" }
 board-workspace-client = { path = "../../crates/workspace-client" }
 board-render-client = { path = "../../crates/render-client" }

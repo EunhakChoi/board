@@ -35,7 +35,8 @@ fn engine(local_mode: bool) -> Engine {
             workspace: Arc::new(ReadyWorkspace),
             renderer: Arc::new(FakeRenderer),
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
-            comments: Arc::new(CommentStore::new(db, root.join("comments"))),
+            comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
+            accounts: db,
         },
         local_mode,
     )
@@ -591,4 +592,206 @@ async fn manifest_files_and_web() {
     let api = app("/api/nope").await.unwrap();
     assert_eq!(api.status(), StatusCode::NOT_FOUND);
     std::fs::remove_dir_all(&web).unwrap();
+}
+
+/// An identity provider that signs in whoever the test names next.
+#[derive(Default)]
+struct ScriptedIdentity {
+    state: std::sync::Mutex<String>,
+    next: std::sync::Mutex<Option<String>>,
+}
+
+impl board_engine::Identity for ScriptedIdentity {
+    fn provider(&self) -> &'static str {
+        "scripted"
+    }
+    fn authorize_url(&self, request: &board_engine::AuthRequest) -> Result<String, WorkspaceError> {
+        self.state.lock().unwrap().clone_from(&request.state);
+        Ok(format!("https://idp.test/auth?state={}", request.state))
+    }
+    fn exchange(&self, _: &str, _: &str, _: &str) -> Result<board_engine::Claims, WorkspaceError> {
+        let who = self.next.lock().unwrap().take().unwrap();
+        Ok(board_engine::Claims {
+            subject: who.clone(),
+            email: format!("{who}@example.com"),
+            email_verified: true,
+            name: Some(who),
+            picture: None,
+        })
+    }
+}
+
+fn signed_in_engine() -> (Engine, Arc<ScriptedIdentity>) {
+    let idp = Arc::new(ScriptedIdentity::default());
+    let engine = engine(false)
+        .with_tool_url("https://board.test")
+        .with_sign_in(board_engine::SignInSettings {
+            identity: idp.clone(),
+            admin_emails: vec!["boss@example.com".into()],
+        });
+    (engine, idp)
+}
+
+/// Runs the browser side of a sign-in as `who`; returns the session cookie value (if any) and
+/// where the callback redirected.
+async fn browser_sign_in(
+    engine: &Engine,
+    idp: &ScriptedIdentity,
+    who: &str,
+    query: &str,
+) -> (Option<String>, String) {
+    let (status, location) = redirect_of(
+        engine.clone(),
+        Request::get(format!("/api/auth/oidc/start{query}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(location.unwrap().starts_with("https://idp.test/auth"));
+    *idp.next.lock().unwrap() = Some(who.into());
+    let state = idp.state.lock().unwrap().clone();
+    let response = board_api::router(engine.clone())
+        .oneshot(
+            Request::get(format!("/api/auth/oidc/callback?state={state}&code=c"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let location = response.headers()["location"].to_str().unwrap().to_owned();
+    let cookie = response.headers().get("set-cookie").map(|c| {
+        let text = c.to_str().unwrap();
+        assert!(text.contains("HttpOnly") && text.contains("Secure"));
+        text.split(';').next().unwrap().to_owned()
+    });
+    (cookie, location)
+}
+
+#[tokio::test]
+async fn sign_in_session_csrf_and_logout() {
+    let (engine, idp) = signed_in_engine();
+    let (cookie, location) = browser_sign_in(&engine, &idp, "boss", "?returnTo=%2Fp%2Fweb").await;
+    let cookie = cookie.unwrap();
+    assert_eq!(location, "/p/web");
+    let me = board_api::router(engine.clone())
+        .oneshot(
+            Request::get("/api/auth/me")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me.status(), StatusCode::OK);
+    let body = http_body_util::BodyExt::collect(me.into_body())
+        .await
+        .unwrap()
+        .to_bytes();
+    let me: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        (me["kind"].as_str(), me["role"].as_str()),
+        (Some("user"), Some("admin"))
+    );
+
+    // Changing requests need the client header.
+    let create = |with_header: bool| {
+        let mut request = Request::post("/api/projects")
+            .header("cookie", &cookie)
+            .header("content-type", "application/json");
+        if with_header {
+            request = request.header("x-board-client", "web");
+        }
+        request
+            .body(Body::from(r#"{"key":"web","title":"Web"}"#))
+            .unwrap()
+    };
+    let (status, body, _) = send(engine.clone(), create(false)).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let (status, _, _) = send(engine.clone(), create(true)).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, _, _) = send(
+        engine.clone(),
+        Request::post("/api/auth/logout")
+            .header("cookie", &cookie)
+            .header("x-board-client", "web")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _, _) = send(
+        engine,
+        Request::get("/api/projects")
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn strangers_wait_and_nobody_gets_in_before_setup() {
+    let (engine, idp) = signed_in_engine();
+    let (cookie, location) = browser_sign_in(&engine, &idp, "eve", "").await;
+    assert_eq!(
+        (cookie, location.as_str()),
+        (None, "/signin?error=setup_required")
+    );
+
+    let token = engine.issue_setup_token().unwrap().unwrap();
+    let (cookie, _) = browser_sign_in(&engine, &idp, "ann", &format!("?setup={token}")).await;
+    assert!(cookie.is_some(), "the setup link lets the first admin in");
+
+    let (cookie, _) = browser_sign_in(&engine, &idp, "eve", "").await;
+    let cookie = cookie.unwrap();
+    let call = |path: &str| {
+        Request::get(path.to_owned())
+            .header("cookie", &cookie)
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (status, body, _) = send(engine.clone(), call("/api/auth/me")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["kind"],
+        "pending"
+    );
+    let (status, body, _) = send(engine, call("/api/projects")).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["code"],
+        "pending"
+    );
+}
+
+#[tokio::test]
+async fn callback_without_a_code_goes_back_to_sign_in() {
+    let (engine, _) = signed_in_engine();
+    let (status, location) = redirect_of(
+        engine,
+        Request::get("/api/auth/oidc/callback?error=access_denied")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(location.as_deref(), Some("/signin?error=cancelled"));
+}
+
+async fn redirect_of(engine: Engine, request: Request<Body>) -> (StatusCode, Option<String>) {
+    let response = board_api::router(engine).oneshot(request).await.unwrap();
+    let location = response
+        .headers()
+        .get("location")
+        .map(|v| v.to_str().unwrap().to_owned());
+    (response.status(), location)
 }
