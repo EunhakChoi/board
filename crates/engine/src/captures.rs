@@ -13,7 +13,7 @@ use board_model::Actor;
 use serde::{Deserialize, Serialize};
 
 use crate::policy::Command;
-use crate::preview::{base_path, token};
+use crate::preview::{preview_path, token};
 use crate::{BuildState, Capture, EngineError, ImageKind, RenderJob, Shot};
 use crate::{Engine, PreviewSettings};
 
@@ -358,9 +358,9 @@ impl Engine {
     ) -> Result<Shot, EngineError> {
         let token = token(settings, key, commit);
         let url = format!(
-            "{}{}.board/frame.html?{}={}&theme={theme}&t={token}",
+            "{}{}.board/frame.html?{}={}&theme={theme}",
             settings.render_origin,
-            base_path(key, commit),
+            preview_path(&token, key, commit),
             target.kind,
             encode(&target.id),
         );
@@ -553,8 +553,11 @@ mod tests {
             .find(|j| j.url.contains("story=button") && j.url.contains("theme=light"))
             .unwrap();
         assert_eq!((story.width, story.height), (200, 100));
-        assert!(story.url.starts_with("http://render.internal/shop/"));
-        assert!(story.url.contains("&theme=light&t="));
+        assert!(
+            story.url.starts_with("http://render.internal/_preview/")
+                && story.url.contains("/shop/")
+        );
+        assert!(story.url.ends_with("&theme=light"), "{}", story.url);
         assert_eq!(engine.captures(&Actor::Local, "shop").unwrap(), []);
     }
 

@@ -453,18 +453,24 @@ function Live({
     return () => observer.disconnect();
   }, []);
   const base = preview.data?.baseUrl;
-  const token = preview.data?.token;
   const scale = Math.min(1, width / size.w);
   return (
     <div ref={holder} className="mx-auto w-full" style={{ maxWidth: size.w }}>
-      {base && token ? (
+      {base ? (
         <div
           className="overflow-hidden rounded-lg border bg-background shadow-sm"
           style={{ height: size.h * scale }}
         >
           <iframe
             title={id}
-            src={`${base}.board/frame.html?${kind}=${encodeURIComponent(id)}&theme=${theme}&t=${encodeURIComponent(token)}`}
+            // Previews on the tool's own address run in an opaque origin (the server says so
+            // too): project code must not reach the tool or its session.
+            sandbox={
+              new URL(base, window.location.href).origin === window.location.origin
+                ? "allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-pointer-lock"
+                : undefined
+            }
+            src={`${base}.board/frame.html?${kind}=${encodeURIComponent(id)}&theme=${theme}`}
             className="origin-top-left border-0"
             style={{ width: size.w, height: size.h, transform: `scale(${scale})` }}
           />

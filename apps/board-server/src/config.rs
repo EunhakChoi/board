@@ -108,40 +108,40 @@ impl Config {
         if preview_bind == bind {
             return Err("BOARD_PREVIEW_BIND must differ from BOARD_BIND".to_owned());
         }
-        let preview_url = env("BOARD_PREVIEW_URL")
-            .unwrap_or_else(|| format!("http://{preview_bind}"))
-            .trim_end_matches('/')
-            .to_owned();
-        if !(preview_url.starts_with("http://") || preview_url.starts_with("https://")) {
-            return Err(format!(
-                "BOARD_PREVIEW_URL {preview_url:?} must be an http(s) URL"
-            ));
-        }
-        let workspace_url =
-            env("BOARD_WORKSPACE_URL").unwrap_or_else(|| DEFAULT_WORKSPACE_URL.to_owned());
-        let workspace_token = secret(&env, "BOARD_WORKSPACE_TOKEN")?;
-        let render_url = env("BOARD_RENDER_URL").unwrap_or_else(|| DEFAULT_RENDER_URL.to_owned());
-        let render_token = secret(&env, "BOARD_RENDER_TOKEN")?;
-        let render_preview_url = env("BOARD_RENDER_PREVIEW_URL").map_or_else(
-            || preview_url.clone(),
-            |u| u.trim_end_matches('/').to_owned(),
-        );
-        let web_dir = env("BOARD_WEB_DIR")
-            .map(PathBuf::from)
-            .or_else(find_web_dir);
         let public_url = env("BOARD_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned());
         if let Some(url) = &public_url
             && !(url.starts_with("http://") || url.starts_with("https://"))
         {
             return Err(format!("BOARD_PUBLIC_URL {url:?} must be an http(s) URL"));
         }
+        let preview_url = preview_url(&env, public, public_url.as_deref(), preview_bind)?;
+        let workspace_url =
+            env("BOARD_WORKSPACE_URL").unwrap_or_else(|| DEFAULT_WORKSPACE_URL.to_owned());
+        let workspace_token = secret(&env, "BOARD_WORKSPACE_TOKEN")?;
+        let render_url = env("BOARD_RENDER_URL").unwrap_or_else(|| DEFAULT_RENDER_URL.to_owned());
+        let render_token = secret(&env, "BOARD_RENDER_TOKEN")?;
+        // board-render reaches the preview listener directly, also when people use the tool's
+        // address for previews.
+        let render_preview_url = env("BOARD_RENDER_PREVIEW_URL").map_or_else(
+            || {
+                if public_url.as_deref() == Some(preview_url.as_str()) {
+                    format!("http://127.0.0.1:{}", preview_bind.port())
+                } else {
+                    preview_url.clone()
+                }
+            },
+            |u| u.trim_end_matches('/').to_owned(),
+        );
+        let web_dir = env("BOARD_WEB_DIR")
+            .map(PathBuf::from)
+            .or_else(find_web_dir);
         let update_check = !matches!(
             env("BOARD_UPDATE_CHECK").as_deref().map(str::trim),
             Some("false" | "0" | "off" | "no")
         );
         let oidc = oidc(&env)?;
         if public {
-            check_public(public_url.as_deref(), &preview_url)?;
+            check_public(public_url.as_deref())?;
         }
         let admin_emails = env("BOARD_ADMIN_EMAILS")
             .unwrap_or_default()
@@ -207,15 +207,30 @@ impl Config {
     }
 }
 
+/// Where browsers reach previews: `BOARD_PREVIEW_URL`; on a public server without one, the tool's
+/// own address (it serves previews itself, sandboxed); else the preview listener.
+fn preview_url(
+    env: &impl Fn(&str) -> Option<String>,
+    public: bool,
+    public_url: Option<&str>,
+    preview_bind: SocketAddr,
+) -> Result<String, String> {
+    let url = env("BOARD_PREVIEW_URL")
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| public.then(|| public_url.map(str::to_owned)).flatten())
+        .unwrap_or_else(|| format!("http://{preview_bind}"))
+        .trim_end_matches('/')
+        .to_owned();
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Ok(url)
+    } else {
+        Err(format!("BOARD_PREVIEW_URL {url:?} must be an http(s) URL"))
+    }
+}
+
 /// A public server needs the address people open: invite links and the provider point there.
 /// Sign-in is always on (invite links, plus a provider when one is set up).
-fn check_public(public_url: Option<&str>, preview_url: &str) -> Result<(), String> {
-    // Previews run project code: another host or port, never the tool's own origin.
-    if public_url.map(|u| u.trim_end_matches('/')) == Some(preview_url) {
-        return Err(
-            "BOARD_PREVIEW_URL must differ from BOARD_PUBLIC_URL (another host or port)".to_owned(),
-        );
-    }
+fn check_public(public_url: Option<&str>) -> Result<(), String> {
     if public_url.is_none() {
         return Err("--public needs BOARD_PUBLIC_URL, the fixed address people open".to_owned());
     }
@@ -380,15 +395,6 @@ mod tests {
     fn public_needs_a_fixed_address_and_takes_an_optional_provider() {
         let error = config(&["--public"], &[("HOME", "/h")]).unwrap_err();
         assert!(error.contains("BOARD_PUBLIC_URL"));
-        let same = config(
-            &["--public"],
-            &[
-                ("HOME", "/h"),
-                ("BOARD_PUBLIC_URL", "https://board.example.com"),
-                ("BOARD_PREVIEW_URL", "https://board.example.com/"),
-            ],
-        );
-        assert!(same.unwrap_err().contains("BOARD_PREVIEW_URL"));
         let invites_only = config(
             &["--public"],
             &[
@@ -399,6 +405,9 @@ mod tests {
         .unwrap();
         assert!(!invites_only.local_mode());
         assert!(invites_only.oidc.is_none());
+        // One address: previews come from the tool itself; board-render goes to the listener.
+        assert_eq!(invites_only.preview_url, "https://board.example.com");
+        assert_eq!(invites_only.render_preview_url, "http://127.0.0.1:5281");
         let client = [
             ("HOME", "/h"),
             ("BOARD_OIDC_CLIENT_ID", "id"),

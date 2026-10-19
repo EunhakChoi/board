@@ -139,6 +139,9 @@ pub struct BuildStep {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Build {
+    /// The base path it was built for; a build for another one is made again.
+    #[serde(skip)]
+    pub base: String,
     pub state: BuildState,
     pub steps: Vec<BuildStep>,
     pub error: String,

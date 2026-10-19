@@ -40,7 +40,8 @@
   },
   "dependencies": {
     "@babel/parser": "7.29.9",
-    "magic-string": "1.4.2"
+    "magic-string": "1.4.2",
+    "@mswjs/interceptors": "0.41.9"
   },
   "peerDependencies": {
     "msw": "^2.15.0",

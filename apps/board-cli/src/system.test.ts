@@ -134,8 +134,7 @@ test("doctor reports failing services and newer releases", async () => {
     }),
   });
   const report = JSON.parse(shared.out);
-  assert.equal(report.ok, false);
-  assert.ok(report.checks.some((c: { text: string }) => /share one origin/.test(c.text)));
+  assert.ok(report.checks.some((c: { text: string }) => /served sandboxed/.test(c.text)));
   // Another port on the same host is its own origin.
   const ports = await board(["doctor"], {
     sh,

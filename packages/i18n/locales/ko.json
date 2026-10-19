@@ -132,7 +132,6 @@
   "cli.doctor.node": "board 는 Node.js 24 이상 필요.",
   "cli.doctor.git": "git 설치 필요.",
   "cli.doctor.serve": "시작: `board serve` (또는 `docker compose up`).",
-  "cli.doctor.sameHost": "미리보기는 별도 origin 필요: 다른 host 또는 최소한 다른 port (예: https://board.example.ts.net:8443). BOARD_PUBLIC_URL / BOARD_PREVIEW_URL 설정.",
   "cli.doctor.noDocker": "docker: 없음 (docker compose 에만 필요)",
   "cli.serve.missing": "{name} 를 찾을 수 없음. build (`cargo build --release`) 하거나 경로 지정 (BOARD_SERVER_BIN, BOARD_RENDER_BIN, BOARD_WORKSPACE_MAIN).",
   "cli.status.behind": "이 checkout 보다 새 버전 있음: `board pull` 실행",
@@ -322,5 +321,6 @@
   "web.account.deviceLead": "휴대폰 · 다른 컴퓨터에서 1회용 link 를 열면 내 계정으로 로그인.",
   "web.account.deviceCreate": "로그인 link 만들기",
   "web.account.deviceOnce": "15분 안에 다른 기기에서 열기. 1회용.",
-  "cli.doctor.invitesOnly": "로그인: 초대 link (provider 미설정)"
+  "cli.doctor.invitesOnly": "로그인: 초대 link (provider 미설정)",
+  "cli.doctor.previewsShared": "도구 · 미리보기 모두 {url} (미리보기는 sandbox 로 제공)"
 }

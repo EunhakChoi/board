@@ -124,6 +124,7 @@ async fn run(config: Config) -> Result<(), String> {
     }
     let origin = board_api::PreviewOrigin {
         frame_ancestors: config.tool_origins(),
+        sandbox: false,
     };
     let previews = axum::serve(
         preview_listener,

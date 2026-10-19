@@ -275,6 +275,9 @@ importers:
       '@babel/parser':
         specifier: 7.29.9
         version: 7.29.9
+      '@mswjs/interceptors':
+        specifier: 0.41.9
+        version: 0.41.9
       magic-string:
         specifier: 1.4.2
         version: 1.4.2

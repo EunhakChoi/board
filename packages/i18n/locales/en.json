@@ -143,7 +143,6 @@
   "cli.doctor.node": "board needs Node.js 24 or newer.",
   "cli.doctor.git": "Install git.",
   "cli.doctor.serve": "Start it: `board serve` (or `docker compose up`).",
-  "cli.doctor.sameHost": "Previews need their own origin: another host or at least another port (e.g. https://board.example.ts.net:8443). Set BOARD_PUBLIC_URL / BOARD_PREVIEW_URL.",
   "cli.doctor.noDocker": "docker: not found (only needed for docker compose)",
   "cli.serve.missing": "Cannot find {name}. Build it (`cargo build --release`) or set its path (BOARD_SERVER_BIN, BOARD_RENDER_BIN, BOARD_WORKSPACE_MAIN).",
   "cli.status.behind": "newer than this checkout: run `board pull`",
@@ -333,5 +332,6 @@
   "web.account.deviceLead": "Open a one-time link on your phone or another computer to sign in there as you.",
   "web.account.deviceCreate": "Create sign-in link",
   "web.account.deviceOnce": "Open it on the other device within 15 minutes. It works once.",
-  "cli.doctor.invitesOnly": "sign-in: invite links (no provider set up)"
+  "cli.doctor.invitesOnly": "sign-in: invite links (no provider set up)",
+  "cli.doctor.previewsShared": "web tool and previews on {url} (previews served sandboxed)"
 }

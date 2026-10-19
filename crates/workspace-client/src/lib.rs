@@ -50,6 +50,8 @@ impl WorkspaceClient {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WireBuild {
+    #[serde(default)]
+    base: String,
     state: BuildState,
     steps: Vec<WireStep>,
     error: String,
@@ -67,6 +69,7 @@ struct WireStep {
 impl From<WireBuild> for Build {
     fn from(wire: WireBuild) -> Self {
         Self {
+            base: wire.base,
             state: wire.state,
             steps: wire
                 .steps

@@ -113,7 +113,7 @@ test("builds and verifies a commit, then serves it", { timeout: 300_000 }, async
   );
   const started = await put(COMMIT, tar, "?verify=1");
   assert.equal(started.status, 202);
-  assert.equal(started.body.base, `/demo/${COMMIT}/`);
+  assert.equal(started.body.base, "./");
 
   const build = await waitDone(COMMIT);
   assert.equal(build.state, "ready", `${build.error}\n${JSON.stringify(build.steps, null, 2)}`);
@@ -130,7 +130,9 @@ test("builds and verifies a commit, then serves it", { timeout: 300_000 }, async
   const frame = await (
     await fetch(`${base}/v1/files/demo/${COMMIT}/.board/frame.html`, { headers: auth })
   ).text();
-  assert.match(frame, new RegExp(`src="/demo/${COMMIT}/assets/frame-[\\w-]+\\.js"`));
+  // Relative: one build serves every viewer's preview path.
+  assert.match(frame, /src="\.\.\/assets\/frame-[\w-]+\.js"/);
+  assert.match(frame, /globalThis\.__BOARD_ROOT__ = new URL\("\.\.\/", location\.href\)/);
   const traversal = await fetch(`${base}/v1/files/demo/${COMMIT}/..%2F..%2Fbuild.json`, {
     headers: auth,
   });

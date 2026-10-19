@@ -64,7 +64,9 @@ export function addSourceLocations(
         parent?.type === "TSExternalModuleReference" ||
         (parent?.type === "ObjectProperty" && parent.key === node);
       if (!skip && isPublic(value)) {
-        const rebased = `import.meta.env.BASE_URL + ${JSON.stringify(value.slice(1))}`;
+        // Preview builds are relative (served under a per-viewer path); the frame records where
+        // the build's root is. Elsewhere the configured base applies.
+        const rebased = `(globalThis.__BOARD_ROOT__ ?? import.meta.env.BASE_URL) + ${JSON.stringify(value.slice(1))}`;
         out.overwrite(
           node.start,
           node.end,

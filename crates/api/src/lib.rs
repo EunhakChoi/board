@@ -121,10 +121,20 @@ pub fn router(engine: Engine) -> Router {
 }
 
 /// The API plus the built web tool from `web_dir` (`None` = a page saying it is not built).
+/// When previews share the tool's address, they are served here too, sandboxed.
 pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
-    routes()
+    let shared = engine.previews_on_tool();
+    let app = routes()
         .fallback(move |uri: axum::http::Uri| web::serve(web_dir.clone(), uri))
-        .with_state(engine)
+        .with_state(engine.clone());
+    if !shared {
+        return app;
+    }
+    let origin = PreviewOrigin {
+        frame_ancestors: vec!["'self'".to_owned()],
+        sandbox: true,
+    };
+    app.merge(preview::preview_routes(engine, &origin))
 }
 
 fn routes() -> Router<Engine> {

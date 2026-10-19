@@ -314,18 +314,15 @@ export async function doctor(ctx: Context): Promise<number> {
             },
       );
     }
-    // Previews run project code: they need their own origin (another host, or another port).
-    const origin = (url: string | null) => (url ? new URL(url).origin : "");
     if (info.toolUrl && info.previewUrl) {
-      checks.push(
-        origin(info.toolUrl) !== origin(info.previewUrl)
-          ? { state: "ok", text: `web tool ${info.toolUrl}, previews ${info.previewUrl}` }
-          : {
-              state: "fail",
-              text: `web tool and previews share one origin (${info.toolUrl})`,
-              hint: t("cli.doctor.sameHost", {}, ctx.locale),
-            },
-      );
+      // Previews run project code: on the tool's own address the server sandboxes them.
+      const shared = new URL(info.toolUrl).origin === new URL(info.previewUrl).origin;
+      checks.push({
+        state: "ok",
+        text: shared
+          ? t("cli.doctor.previewsShared", { url: info.toolUrl }, ctx.locale)
+          : `web tool ${info.toolUrl}, previews ${info.previewUrl}`,
+      });
     }
     if (!info.localMode) checks.push(...publicChecks(ctx, info));
     if (info.latest && newer(info.latest, info.version)) {
