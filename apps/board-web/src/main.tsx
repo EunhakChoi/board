@@ -9,6 +9,7 @@ import { Code } from "@/pages/Code";
 import { Components } from "@/pages/Components";
 import { Device } from "@/pages/Device";
 import { Flows } from "@/pages/Flows";
+import { JoinInvite } from "@/pages/JoinInvite";
 import { JoinLink } from "@/pages/JoinLink";
 import { ProjectLayout } from "@/pages/ProjectLayout";
 import { Projects } from "@/pages/Projects";
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
   { path: "/signin", element: <SignIn /> },
   { path: "/setup", element: <Setup /> },
   { path: "/l/:token", element: <JoinLink /> },
+  { path: "/i/:token", element: <JoinInvite /> },
   {
     path: "/",
     element: (

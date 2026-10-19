@@ -6,6 +6,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod invites;
 mod links;
 mod notices;
 pub mod policy;
@@ -23,14 +24,15 @@ pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
+pub use invites::{InviteInfo, InviteKind, NewInviteLink};
 pub use links::{NewLink, SharedLink};
 pub use notices::{Inbox, WEBHOOK_EVENTS, WebhookSecret};
 pub use ports::{
     Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
     Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
-    Joined, Kick, NewComment, NewNotification, NewReply, NewShareLink, NewUser, NewWebhook,
-    Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer, Settings, Shot,
-    StoreError, WebhookSender, Workspace, WorkspaceError,
+    Invites, Joined, Kick, NewComment, NewInvite, NewNotification, NewReply, NewShareLink, NewUser,
+    NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
+    Settings, Shot, StoreError, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
@@ -50,6 +52,7 @@ pub struct Ports {
     pub accounts: Arc<dyn Accounts>,
     pub realtime: Arc<dyn Realtime>,
     pub notices: Arc<dyn Notices>,
+    pub invites: Arc<dyn Invites>,
     pub webhooks: Arc<dyn WebhookSender>,
 }
 
@@ -137,9 +140,15 @@ impl Engine {
             render: state(self.ports.renderer.health()),
             sign_in: match &self.sign_in {
                 Some(settings) => Some(SignInStatus {
-                    provider: settings.identity.provider().to_owned(),
-                    callback_url: settings.identity.callback_url().to_owned(),
-                    state: state(settings.identity.health()),
+                    provider: settings.identity.as_ref().map(|i| i.provider().to_owned()),
+                    callback_url: settings
+                        .identity
+                        .as_ref()
+                        .map(|i| i.callback_url().to_owned()),
+                    state: settings
+                        .identity
+                        .as_ref()
+                        .map_or(ServiceState::Ok, |i| state(i.health())),
                     has_admin: self.ports.accounts.has_admin()?,
                 }),
                 None => None,
@@ -185,8 +194,9 @@ pub struct System {
 /// The identity provider as `board doctor` sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignInStatus {
-    pub provider: String,
-    pub callback_url: String,
+    /// `None`: no provider; people come in through invite links.
+    pub provider: Option<String>,
+    pub callback_url: Option<String>,
     pub state: ServiceState,
     /// False until someone used the setup link (or an admin address signed in).
     pub has_admin: bool,

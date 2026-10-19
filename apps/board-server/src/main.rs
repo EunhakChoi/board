@@ -53,7 +53,8 @@ async fn run(config: Config) -> Result<(), String> {
             config.data_dir().join("comments"),
         )),
         accounts: db.clone(),
-        notices: db,
+        notices: db.clone(),
+        invites: db,
         webhooks: Arc::new(webhook::Sender::new()),
         realtime: Arc::new(Hub::new()),
         renderer: Arc::new(RenderClient::new(
@@ -76,14 +77,18 @@ async fn run(config: Config) -> Result<(), String> {
         .with_tool_url(&config.tool_url())
         .with_secret(secret);
     let mut setup_link = None;
-    if let Some(oidc) = &config.oidc {
-        engine = engine.with_sign_in(SignInSettings {
-            identity: Arc::new(Oidc::new(
+    // A public server always signs people in: invite links, plus the provider when set up.
+    if config.oidc.is_some() || !config.local_mode() {
+        let identity = config.oidc.as_ref().map(|oidc| {
+            Arc::new(Oidc::new(
                 &oidc.issuer,
                 &oidc.client_id,
                 &oidc.client_secret,
                 &config.oidc_redirect(),
-            )),
+            )) as Arc<dyn board_engine::Identity>
+        });
+        engine = engine.with_sign_in(SignInSettings {
+            identity,
             admin_emails: config.admin_emails.clone(),
         });
         if !config.local_mode() {

@@ -403,3 +403,23 @@ pub struct Webhook {
     pub last_error: Option<String>,
     pub last_delivery_at: Option<String>,
 }
+
+/// A one-time link into the server without an identity provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Invite {
+    pub id: String,
+    /// The role a new member gets (for a sign-in link, the member's role when it was made).
+    pub role: Role,
+    /// Set for a sign-in link: the member it signs in.
+    pub user: Option<String>,
+    /// What the admin called it ("Dana, design"), may be empty.
+    pub label: String,
+    pub created_by: String,
+    pub created_at: String,
+    /// Unix seconds.
+    pub expires_at: u64,
+    pub used_at: Option<String>,
+    /// The member who came in through it.
+    pub used_by: Option<String>,
+}

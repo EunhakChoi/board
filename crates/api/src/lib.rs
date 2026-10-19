@@ -8,6 +8,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod invites;
 mod links;
 mod notices;
 mod preview;
@@ -46,6 +47,14 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("patch", "/api/admin/users/{id}"),
     ("post", "/api/admin/users/{id}/approve"),
     ("post", "/api/admin/users/{id}/reject"),
+    ("post", "/api/auth/setup"),
+    ("get", "/api/invites/{token}"),
+    ("post", "/api/invites/{token}/accept"),
+    ("get", "/api/admin/invites"),
+    ("post", "/api/admin/invites"),
+    ("delete", "/api/admin/invites/{id}"),
+    ("post", "/api/admin/users/{id}/sign-in-link"),
+    ("post", "/api/me/sign-in-link"),
     ("get", "/api/me/notifications"),
     ("post", "/api/me/notifications/read"),
     ("get", "/api/admin/webhooks"),
@@ -213,6 +222,7 @@ fn routes() -> Router<Engine> {
             get(comments::snapshot),
         )
         .merge(notices::routes())
+        .merge(invites::routes())
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -253,9 +263,10 @@ struct SystemInfo {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SignInInfo {
-    provider: String,
+    /// `None`: no provider; people come in through invite links.
+    provider: Option<String>,
     /// Register this at the provider as the redirect URI.
-    callback_url: String,
+    callback_url: Option<String>,
     /// Whether the provider's discovery document loads.
     #[serde(flatten)]
     state: Service,
@@ -377,7 +388,13 @@ async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>
     let name = actor.name().to_owned();
     let (kind, id, email, project) = match actor {
         Actor::Local => ("local", None, None, None),
-        Actor::User { id, email, .. } => ("user", Some(id), Some(email), None),
+        // Members who came in through an invite have no address.
+        Actor::User { id, email, .. } => (
+            "user",
+            Some(id),
+            Some(email).filter(|e| !e.is_empty()),
+            None,
+        ),
         Actor::Guest { id, project, .. } => ("guest", Some(id), None, Some(project)),
     };
     Ok(Json(Me {

@@ -1,6 +1,7 @@
-import { Check, Copy, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Check, KeyRound, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { CopyOnce } from "@/components/CopyOnce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,8 @@ import { useT } from "@/lib/i18n";
 import {
   useAdminActions,
   useAllowRules,
+  useInviteActions,
+  useInvites,
   useMe,
   useProjects,
   useUsers,
@@ -67,6 +70,7 @@ function Members() {
             <MemberRow key={user.id} user={user} />
           ))}
         </Section>
+        <Invites />
         <Allowlist />
         <Webhooks />
         {out.length > 0 && (
@@ -141,6 +145,7 @@ function MemberRow({ user }: { user: User }) {
   const t = useT();
   const me = useMe();
   const { change } = useAdminActions();
+  const { memberLink } = useInviteActions();
   const self = me.data?.id === user.id;
   return (
     <div className="flex flex-wrap items-center gap-3 p-3">
@@ -161,7 +166,25 @@ function MemberRow({ user }: { user: User }) {
       >
         <Trash2 />
       </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => memberLink.mutate(user.id)}
+        aria-label={t("web.invites.memberLink", { name: user.name })}
+        title={t("web.invites.memberLink", { name: user.name })}
+      >
+        <KeyRound />
+      </Button>
       {change.error && <p className="w-full text-sm text-destructive">{change.error.message}</p>}
+      {memberLink.data && (
+        <div className="w-full">
+          <CopyOnce
+            value={memberLink.data.url}
+            label={t("web.invites.address")}
+            note={t("web.invites.memberLinkOnce", { name: user.name })}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -376,31 +399,84 @@ function WebhookRow({
         {hook.secretLast4}
       </div>
       {hook.lastError && <p className="text-xs text-destructive">{hook.lastError}</p>}
-      {secret && <SecretOnce value={secret} />}
+      {secret && (
+        <CopyOnce
+          value={secret}
+          label={t("web.webhooks.secret")}
+          note={t("web.webhooks.secretOnce")}
+        />
+      )}
     </div>
   );
 }
 
-/** The signing secret right after it was made; it is not shown again. */
-function SecretOnce({ value }: { value: string }) {
+/** One-time links for new members: they open it, pick a name and are in with the role. */
+function Invites() {
   const t = useT();
-  const [copied, setCopied] = useState(false);
+  const invites = useInvites();
+  const { create, revoke } = useInviteActions();
+  const [role, setRole] = useState<Role>("editor");
+  const [label, setLabel] = useState("");
+  const now = Date.now() / 1000;
+  const open = (invites.data?.invites ?? []).filter((i) => !i.usedAt && i.expiresAt > now);
   return (
-    <div className="flex flex-col gap-1 rounded-md bg-muted p-2">
-      <p className="text-xs">{t("web.webhooks.secretOnce")}</p>
-      <div className="flex gap-2">
-        <Input readOnly value={value} aria-label={t("web.webhooks.secret")} />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void navigator.clipboard?.writeText(value);
-            setCopied(true);
-          }}
-        >
-          {copied ? <Check /> : <Copy />}
+    <Section title={t("web.invites.section")} count={open.length}>
+      <form
+        className="flex flex-wrap items-center gap-2 p-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          create.mutate({ role, label }, { onSuccess: () => setLabel("") });
+        }}
+      >
+        <Segmented
+          label={t("web.team.role")}
+          value={role}
+          onChange={setRole}
+          options={ROLES.map((r) => ({ value: r, label: t(`web.team.role.${r}`) }))}
+        />
+        <Input
+          className="w-48 flex-1"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder={t("web.links.labelPlaceholder")}
+          aria-label={t("web.links.label")}
+        />
+        <Button type="submit" disabled={create.isPending}>
+          {t("web.invites.create")}
         </Button>
-      </div>
-    </div>
+      </form>
+      {create.error && <p className="px-3 pb-3 text-sm text-destructive">{create.error.message}</p>}
+      {create.data && (
+        <div className="p-3">
+          <CopyOnce
+            value={create.data.url}
+            label={t("web.invites.address")}
+            note={t("web.invites.once")}
+          />
+        </div>
+      )}
+      {open.map((invite) => (
+        <div key={invite.id} className="flex items-center gap-3 p-3">
+          <Badge variant="secondary">{t(`web.team.role.${invite.role}`)}</Badge>
+          <span className="flex-1 truncate text-sm">
+            {invite.label || t("web.invites.unnamed")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("web.invites.until", {
+              date: new Date(invite.expiresAt * 1000).toLocaleDateString(),
+            })}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => revoke.mutate(invite.id)}
+            aria-label={t("web.invites.revoke", { label: invite.label || invite.id })}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      {open.length === 0 && !create.data && <Empty text={t("web.invites.none")} />}
+    </Section>
   );
 }

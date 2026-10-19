@@ -78,6 +78,7 @@ fn engine_with(fakes: &Fakes) -> Engine {
             accounts: Arc::new(MemoryAccounts::default()),
             realtime: fakes.realtime.clone(),
             notices: fakes.notices.clone(),
+            invites: Arc::new(MemoryInvites::default()),
             webhooks: fakes.sender.clone(),
         },
         true,
@@ -617,11 +618,21 @@ pub fn signed_in_with_fakes(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>
     let idp = Arc::new(FakeIdentity::default());
     let fakes = fakes();
     let mut engine = engine_with(&fakes).with_sign_in(SignInSettings {
-        identity: idp.clone(),
+        identity: Some(idp.clone()),
         admin_emails: admin_emails.iter().map(|e| (*e).to_owned()).collect(),
     });
     engine.local_mode = false;
     (engine, idp, fakes)
+}
+
+/// A public engine with no identity provider: people come in through invite links.
+pub fn engine_without_provider() -> Engine {
+    let mut engine = engine_with(&fakes()).with_sign_in(SignInSettings {
+        identity: None,
+        admin_emails: Vec::new(),
+    });
+    engine.local_mode = false;
+    engine
 }
 
 /// Adds an allowlist rule straight to the accounts.
@@ -1288,5 +1299,68 @@ impl crate::WebhookSender for MemorySender {
             String::from_utf8_lossy(body).into_owned(),
         ));
         Ok(200)
+    }
+}
+
+/// Invites in memory.
+#[derive(Default)]
+pub struct MemoryInvites(Mutex<Vec<(String, board_model::Invite)>>);
+
+impl crate::Invites for MemoryInvites {
+    fn insert_invite(&self, invite: &crate::NewInvite) -> Result<board_model::Invite, StoreError> {
+        let stored = board_model::Invite {
+            id: invite.id.clone(),
+            role: invite.role,
+            user: invite.user.clone(),
+            label: invite.label.clone(),
+            created_by: invite.created_by.clone(),
+            created_at: String::new(),
+            expires_at: invite.expires_at,
+            used_at: None,
+            used_by: None,
+        };
+        self.0
+            .lock()
+            .unwrap()
+            .push((invite.token_hash.clone(), stored.clone()));
+        Ok(stored)
+    }
+    fn invite_by_token(&self, token_hash: &str) -> Result<Option<board_model::Invite>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(h, _)| h == token_hash)
+            .map(|(_, i)| i.clone()))
+    }
+    fn use_invite(&self, id: &str, user: &str) -> Result<bool, StoreError> {
+        let mut all = self.0.lock().unwrap();
+        let Some((_, invite)) = all
+            .iter_mut()
+            .find(|(_, i)| i.id == id && i.used_at.is_none())
+        else {
+            return Ok(false);
+        };
+        invite.used_at = Some("now".into());
+        invite.used_by = Some(user.to_owned());
+        Ok(true)
+    }
+    fn invites(&self) -> Result<Vec<board_model::Invite>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .filter(|(_, i)| i.user.is_none())
+            .map(|(_, i)| i.clone())
+            .collect())
+    }
+    fn delete_invite(&self, id: &str) -> Result<bool, StoreError> {
+        let mut all = self.0.lock().unwrap();
+        let before = all.len();
+        all.retain(|(_, i)| i.id != id);
+        Ok(all.len() != before)
     }
 }

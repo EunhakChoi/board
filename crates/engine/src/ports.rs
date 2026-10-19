@@ -642,3 +642,26 @@ pub trait Notices: Send + Sync {
 pub trait WebhookSender: Send + Sync {
     fn post(&self, url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String>;
 }
+
+/// An invite to store; only the token's hash is kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewInvite {
+    pub id: String,
+    pub token_hash: String,
+    pub role: board_model::Role,
+    pub user: Option<String>,
+    pub label: String,
+    pub created_by: String,
+    pub expires_at: u64,
+}
+
+/// One-time invite and sign-in links kept by the database.
+pub trait Invites: Send + Sync {
+    fn insert_invite(&self, invite: &NewInvite) -> Result<board_model::Invite, StoreError>;
+    fn invite_by_token(&self, token_hash: &str) -> Result<Option<board_model::Invite>, StoreError>;
+    /// Marks it used by `user`; false when someone used it first.
+    fn use_invite(&self, id: &str, user: &str) -> Result<bool, StoreError>;
+    /// Invites for new members (not sign-in links), newest first.
+    fn invites(&self) -> Result<Vec<board_model::Invite>, StoreError>;
+    fn delete_invite(&self, id: &str) -> Result<bool, StoreError>;
+}

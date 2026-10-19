@@ -232,6 +232,12 @@ function publicChecks(ctx: Context, info: Awaited<ReturnType<typeof system>>): C
   }
   const signIn = info.signIn;
   if (!signIn) return checks;
+  if (!signIn.provider) {
+    checks.push({ state: "ok", text: t("cli.doctor.invitesOnly", {}, ctx.locale) });
+    if (!signIn.hasAdmin)
+      checks.push({ state: "warn", text: t("cli.doctor.noAdmin", {}, ctx.locale) });
+    return checks;
+  }
   const callbackHost = signIn.callbackUrl ? new URL(signIn.callbackUrl).host : "";
   const toolHost = info.toolUrl ? new URL(info.toolUrl).host : "";
   checks.push(

@@ -1,11 +1,12 @@
 import { Check, Copy, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { CopyOnce } from "@/components/CopyOnce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocale, useT } from "@/lib/i18n";
-import { useCliTokenActions, useCliTokens, useMe } from "@/lib/queries";
+import { useCliTokenActions, useCliTokens, useMe, useOwnSignInLink } from "@/lib/queries";
 
 /** `/account`: who you are and the CLI tokens your coding agents use. */
 export function Account() {
@@ -29,9 +30,12 @@ export function Account() {
         <div>
           <h1 className="text-2xl font-semibold">{me.data?.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {me.data?.email} · {me.data && t(`web.team.role.${me.data.role}`)}
+            {[me.data?.email, me.data && t(`web.team.role.${me.data.role}`)]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
+        <OtherDevice />
         <section aria-label={t("web.account.tokens")} className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-muted-foreground">{t("web.account.tokens")}</h2>
           <p className="text-sm text-muted-foreground">
@@ -102,5 +106,30 @@ export function Account() {
         </section>
       </main>
     </div>
+  );
+}
+
+/** A 15-minute link that signs this account in on a phone or another computer. */
+function OtherDevice() {
+  const t = useT();
+  const link = useOwnSignInLink();
+  return (
+    <section aria-label={t("web.account.device")} className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium text-muted-foreground">{t("web.account.device")}</h2>
+      <p className="text-sm text-muted-foreground">{t("web.account.deviceLead")}</p>
+      <div>
+        <Button variant="outline" onClick={() => link.mutate()} disabled={link.isPending}>
+          {t("web.account.deviceCreate")}
+        </Button>
+      </div>
+      {link.error && <p className="text-sm text-destructive">{link.error.message}</p>}
+      {link.data && (
+        <CopyOnce
+          value={link.data.url}
+          label={t("web.invites.address")}
+          note={t("web.account.deviceOnce")}
+        />
+      )}
+    </section>
   );
 }
