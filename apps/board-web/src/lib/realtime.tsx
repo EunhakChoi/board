@@ -151,7 +151,10 @@ export function RealtimeProvider({ project, children }: { project: string; child
       if (kind === "capture.updated")
         keys.push(["captures", project], ["elements", project], ["comments", project]);
       if (kind === "project.updated") keys.push(["project", project], ["projects"], ["me"]);
-      for (const queryKey of keys) void client.invalidateQueries({ queryKey });
+      // A first load still in flight would answer the refetch too (no data yet means no restart),
+      // possibly without what this event announced: cancel it, then fetch again.
+      for (const queryKey of keys)
+        void client.cancelQueries({ queryKey }).then(() => client.invalidateQueries({ queryKey }));
       if (kind === "project.deleted") navigate("/");
     },
     [client, navigate, project],
