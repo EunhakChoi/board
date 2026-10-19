@@ -2,7 +2,7 @@
 // imports templates/recommended as project `demo` and waits for its preview.
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, openSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -75,6 +75,13 @@ export default async function setup() {
     await freePort(),
   ];
   const stopIdp = startIdp(idp);
+  // A stand-in tailscale CLI for the shared server: connected, with HTTPS names.
+  const tailscale = join(home, "tailscale");
+  writeFileSync(
+    tailscale,
+    `#!/bin/sh\ncase "$1 $2" in "status --json") echo '{"BackendState":"Running","Self":{"DNSName":"e2e.tail1.ts.net."},"CertDomains":["e2e.tail1.ts.net"]}';; esac\n`,
+  );
+  chmodSync(tailscale, 0o755);
   const log = openSync(join(home, "stack.log"), "a");
   const start = (command: string, args: string[], env: Record<string, string>): ChildProcess =>
     spawn(command, args, { env: { ...process.env, ...env }, stdio: ["ignore", log, log] });
@@ -106,6 +113,7 @@ export default async function setup() {
       BOARD_BIND: `127.0.0.1:${shareApi}`,
       BOARD_PREVIEW_BIND: `127.0.0.1:${sharePreview}`,
       BOARD_REMOTE_BIND: `127.0.0.1:${shareRemote}`,
+      BOARD_TAILSCALE: tailscale,
       BOARD_PUBLIC_URL: `http://localhost:${shareApi}`,
       BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
       BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,

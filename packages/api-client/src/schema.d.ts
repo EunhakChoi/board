@@ -1393,11 +1393,20 @@ export interface components {
             createdAt: string;
         };
         /**
-         * @description `address`: an address set up by hand (reverse proxy or tunnel to the remote door)
+         * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel
          * @enum {string}
          */
-        ShareMode: "address";
+        ShareMode: "address" | "tailscale" | "funnel";
         Sharing: {
+            /** @description The ways this machine can share */
+            modes: {
+                mode: components["schemas"]["ShareMode"];
+                available: boolean;
+                /** @description The address it would give, or why it cannot be used */
+                detail: string;
+            }[];
+            /** @description A tunnel problem (at start, or while turning sharing off) */
+            warning: string | null;
             /** @description Set by the server's environment (--public); the page only shows it */
             fixed: boolean;
             mode: components["schemas"]["ShareMode"] | null;
@@ -2114,8 +2123,8 @@ export interface operations {
             content: {
                 "application/json": {
                     mode: components["schemas"]["ShareMode"];
-                    /** @description The address other machines open (it must reach the remote door) */
-                    url: string;
+                    /** @description For `address`: the address other machines open (it must reach the remote door) */
+                    url?: string;
                     /** @description Needed the first time */
                     ownerName?: string;
                 };
@@ -2133,6 +2142,7 @@ export interface operations {
             };
             400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
+            503: components["responses"]["Unavailable"];
         };
     };
     stopSharing: {

@@ -66,9 +66,19 @@ A local board can be opened to others without restarting it. It has a second por
 door** (`127.0.0.1:5284`, `BOARD_REMOTE_BIND`): closed until sharing is on, then everyone who
 comes through it signs in with an invite link.
 
-1. Point a tunnel or reverse proxy at `127.0.0.1:5284` — never at 5280, which trusts everyone.
-2. In **Team › Sharing**, enter your name and the address people open, then turn sharing on.
+1. In **Team › Sharing**, pick how others reach it:
+   - **Tailscale network** — people on your tailnet (Tailscale, or Headscale over plain HTTP
+     inside the tailnet). board runs `tailscale serve` and shows the machine's name.
+   - **Tailscale Funnel** — anyone with a link reaches the sign-in page at the machine's `ts.net`
+     name. If Funnel is not enabled for the machine, the page shows the admin-console link.
+   - **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing
+     at `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
+2. Enter your name (the first time) and turn sharing on.
 3. Invite people from the same page.
+
+The Tailscale choices need the `tailscale` CLI where board-server runs (`BOARD_TAILSCALE`,
+`BOARD_TAILSCALE_SOCKET`). In Docker use **My address** and run
+`tailscale serve --bg http://127.0.0.1:5284` (or `tailscale funnel …`) on the host.
 
 This machine keeps working without sign-in, as you (the owner account made in step 2). Turning
 sharing off closes the remote door; accounts stay for next time. Previews come through the same

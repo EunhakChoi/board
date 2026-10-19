@@ -245,6 +245,7 @@ dependencies = [
  "board-oidc",
  "board-render-client",
  "board-store",
+ "board-tunnel",
  "board-workspace-client",
  "getrandom 0.4.3",
  "serde_json",
@@ -258,6 +259,15 @@ version = "0.0.0"
 dependencies = [
  "board-engine",
  "board-model",
+]
+
+[[package]]
+name = "board-tunnel"
+version = "0.0.0"
+dependencies = [
+ "board-engine",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

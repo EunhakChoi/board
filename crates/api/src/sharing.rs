@@ -20,6 +20,15 @@ pub struct SharingView {
     mode: Option<ShareMode>,
     url: Option<String>,
     owner: Option<OwnerView>,
+    modes: Vec<ModeView>,
+    warning: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ModeView {
+    mode: ShareMode,
+    available: bool,
+    detail: String,
 }
 
 #[derive(Serialize)]
@@ -38,6 +47,16 @@ impl From<SharingStatus> for SharingView {
                 id: o.id,
                 name: o.name,
             }),
+            modes: status
+                .modes
+                .into_iter()
+                .map(|m| ModeView {
+                    mode: m.mode,
+                    available: m.available,
+                    detail: m.detail,
+                })
+                .collect(),
+            warning: status.warning,
         }
     }
 }
@@ -54,6 +73,7 @@ async fn status(
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StartInput {
     mode: ShareMode,
+    #[serde(default)]
     url: String,
     owner_name: Option<String>,
 }

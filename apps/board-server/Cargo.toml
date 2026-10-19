@@ -15,6 +15,7 @@ tokio.workspace = true
 board-model = { path = "../../crates/model" }
 board-engine = { path = "../../crates/engine" }
 board-store = { path = "../../crates/store" }
+board-tunnel = { path = "../../crates/tunnel" }
 board-db = { path = "../../crates/db" }
 board-collab = { path = "../../crates/collab" }
 board-oidc = { path = "../../crates/oidc" }

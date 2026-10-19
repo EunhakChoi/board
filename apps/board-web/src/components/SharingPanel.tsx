@@ -3,6 +3,8 @@ import { type FormEvent, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
+import type { ShareMode } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useSharing, useSharingActions } from "@/lib/queries";
 
@@ -18,18 +20,20 @@ export function SharingPanel() {
   const sharing = useSharing(true);
   const { start, stop } = useSharingActions();
   const [url, setUrl] = useState("");
+  const [mode, setMode] = useState<ShareMode>("address");
   const [name, setName] = useState("");
   const nameId = useId();
   const urlId = useId();
   const data = sharing.data;
   if (!data) return null;
   const on = data.url !== null;
+  const chosen = data.modes.find((m) => m.mode === mode);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    start.mutate(
-      data.owner ? { mode: "address", url } : { mode: "address", url, ownerName: name },
-      { onSuccess: () => setUrl("") },
-    );
+    const body = mode === "address" ? { mode, url } : { mode };
+    start.mutate(data.owner ? body : { ...body, ownerName: name }, {
+      onSuccess: () => setUrl(""),
+    });
   };
   const error = start.error ?? stop.error;
   return (
@@ -61,9 +65,29 @@ export function SharingPanel() {
           </>
         ) : (
           <form className="flex flex-col gap-3" onSubmit={submit}>
+            {data.modes.length > 1 && (
+              <Segmented
+                label={t("web.sharing.mode")}
+                value={mode}
+                onChange={setMode}
+                options={data.modes.map((m) => ({
+                  value: m.mode,
+                  label: t(`web.sharing.mode.${m.mode}`),
+                }))}
+              />
+            )}
             <p className="text-sm text-muted-foreground">
-              {t("web.sharing.lead", { target: `127.0.0.1:${REMOTE_PORT}` })}
+              {mode === "address"
+                ? t("web.sharing.lead", { target: `127.0.0.1:${REMOTE_PORT}` })
+                : t(`web.sharing.lead.${mode}`)}
             </p>
+            {chosen && mode !== "address" && (
+              <p className={chosen.available ? "text-sm" : "text-sm text-destructive"}>
+                {chosen.available
+                  ? t("web.sharing.willOpen", { url: chosen.detail })
+                  : chosen.detail}
+              </p>
+            )}
             {!data.owner && (
               <div className="flex flex-col gap-1 text-sm">
                 <label htmlFor={nameId}>{t("web.sharing.ownerName")}</label>
@@ -76,23 +100,26 @@ export function SharingPanel() {
                 />
               </div>
             )}
-            <div className="flex flex-col gap-1 text-sm">
-              <label htmlFor={urlId}>{t("web.sharing.address")}</label>
-              <Input
-                id={urlId}
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="https://board.example.com"
-                required
-              />
-            </div>
+            {mode === "address" && (
+              <div className="flex flex-col gap-1 text-sm">
+                <label htmlFor={urlId}>{t("web.sharing.address")}</label>
+                <Input
+                  id={urlId}
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="https://board.example.com"
+                  required
+                />
+              </div>
+            )}
             <div>
-              <Button type="submit" disabled={start.isPending}>
+              <Button type="submit" disabled={start.isPending || chosen?.available === false}>
                 {t("web.sharing.start")}
               </Button>
             </div>
           </form>
         )}
+        {data.warning && <p className="text-sm text-destructive">{data.warning}</p>}
         {error && (
           <p className="text-sm text-destructive">
             {t("web.common.error", { message: error.message })}

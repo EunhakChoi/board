@@ -668,3 +668,22 @@ pub trait Invites: Send + Sync {
     fn invites(&self) -> Result<Vec<board_model::Invite>, StoreError>;
     fn delete_invite(&self, id: &str) -> Result<bool, StoreError>;
 }
+
+/// Runs the tunnels that bring people to the remote door (`board-tunnel`): Tailscale serve and
+/// Funnel. Calls may take a few seconds.
+pub trait Tunnels: Send + Sync {
+    /// The ways this machine can share right now, for the sharing page.
+    fn modes(&self) -> Vec<TunnelMode>;
+    /// Opens `mode` to the remote door; returns the address people open.
+    fn open(&self, mode: crate::ShareMode) -> Result<String, String>;
+    fn close(&self, mode: crate::ShareMode) -> Result<(), String>;
+}
+
+/// One way to share, as this machine sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TunnelMode {
+    pub mode: crate::ShareMode,
+    pub available: bool,
+    /// The address it would give, or why it cannot be used.
+    pub detail: String,
+}

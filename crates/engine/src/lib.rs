@@ -35,7 +35,7 @@ pub use ports::{
     Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
     Invites, Joined, Kick, NewComment, NewInvite, NewNotification, NewReply, NewShareLink, NewUser,
     NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
-    Settings, Shot, StoreError, WebhookSender, Workspace, WorkspaceError,
+    Settings, Shot, StoreError, TunnelMode, Tunnels, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};
@@ -74,6 +74,7 @@ pub struct Engine {
     preview: Option<Arc<PreviewSettings>>,
     /// What can change while running: the address and sign-in, when sharing turns on or off.
     live: Arc<RwLock<Live>>,
+    tunnels: Option<Arc<dyn Tunnels>>,
     pending: Arc<auth::PendingSignIns>,
     secret: Option<Arc<[u8; 32]>>,
 }
@@ -93,6 +94,7 @@ impl Engine {
             local_mode,
             preview: None,
             live: Arc::default(),
+            tunnels: None,
             pending: Arc::default(),
             secret: None,
         }
@@ -116,6 +118,13 @@ impl Engine {
     #[must_use]
     pub fn with_preview(mut self, settings: PreviewSettings) -> Self {
         self.preview = Some(Arc::new(settings));
+        self
+    }
+
+    /// Lets sharing run tunnels (Tailscale) instead of only taking an address set up by hand.
+    #[must_use]
+    pub fn with_tunnels(mut self, tunnels: Arc<dyn Tunnels>) -> Self {
+        self.tunnels = Some(tunnels);
         self
     }
 

@@ -64,9 +64,19 @@ docker compose up -d
 (`127.0.0.1:5284`, `BOARD_REMOTE_BIND`) 사용: 공유를 켜기 전엔 닫혀 있고, 켜면 이 문으로 오는
 사람은 모두 초대 link 로 로그인.
 
-1. tunnel 또는 reverse proxy 를 `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
-2. **팀 › 공유** 에서 내 이름과 사람들이 열 주소 입력 후 공유 켜기.
+1. **팀 › 공유** 에서 접속 방식 선택:
+   - **Tailscale 사설망** — 같은 tailnet 사람만 (Tailscale, 또는 Headscale 은 tailnet 안 HTTP).
+     board 가 `tailscale serve` 실행 후 기기 이름 표시.
+   - **Tailscale Funnel** — link 가진 누구나 기기의 `ts.net` 이름으로 로그인 화면까지 접근. 기기에
+     Funnel 이 꺼져 있으면 관리 화면 link 표시.
+   - **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
+     `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
+2. 내 이름 (처음 한 번) 입력 후 공유 켜기.
 3. 같은 화면에서 사람 초대.
+
+Tailscale 방식은 board-server 가 도는 곳에 `tailscale` CLI 필요 (`BOARD_TAILSCALE`,
+`BOARD_TAILSCALE_SOCKET`). Docker 에서는 **내 주소** 선택 후 host 에서
+`tailscale serve --bg http://127.0.0.1:5284` (또는 `tailscale funnel …`) 실행.
 
 이 기기는 로그인 없이 계속 사용 (2 에서 만든 owner 계정으로). 공유를 끄면 원격 문이 닫힘, 계정은
 유지. 미리보기도 같은 주소로 sandbox 상태로 제공. 팀 전용 server 는 [외부 공개 모드](public.ko.md) 참고.
