@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { useT } from "@/lib/i18n";
-import { useMe, useShareLinkActions, useShareLinks } from "@/lib/queries";
+import {
+  useMe,
+  useProject,
+  useProjectAccess,
+  useProjectAccessActions,
+  useShareLinkActions,
+  useShareLinks,
+  useUsers,
+} from "@/lib/queries";
 
 type LinkRole = "editor" | "commenter" | "viewer";
 
@@ -38,8 +46,69 @@ export function SharePanel({ projectKey }: { projectKey: string }) {
         <Link2 />
         {t("web.links.share")}
       </Button>
-      {open && <Links projectKey={projectKey} />}
+      {open && (
+        <section
+          aria-label={t("web.links.panel")}
+          className="absolute right-0 top-10 z-50 flex max-h-svh w-96 flex-col gap-5 overflow-auto rounded-xl border bg-card p-4 text-card-foreground shadow-lg"
+        >
+          <Access projectKey={projectKey} />
+          <Links projectKey={projectKey} />
+        </section>
+      )}
     </div>
+  );
+}
+
+/** Who sees the project: the whole team, or only the members picked here (and admins). */
+function Access({ projectKey }: { projectKey: string }) {
+  const t = useT();
+  const project = useProject(projectKey);
+  const isPrivate = project.data?.visibility === "private";
+  const users = useUsers();
+  const members = useProjectAccess(projectKey, isPrivate);
+  const { visibility, member } = useProjectAccessActions(projectKey);
+  const chosen = new Set(members.data?.members ?? []);
+  const people = (users.data?.users ?? []).filter(
+    (u) => u.status === "active" && u.role !== "admin",
+  );
+  return (
+    <section aria-label={t("web.access.title")} className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold">{t("web.access.title")}</h2>
+      <Segmented
+        label={t("web.access.title")}
+        value={isPrivate ? "private" : "team"}
+        onChange={(value) => visibility.mutate(value)}
+        options={[
+          { value: "team", label: t("web.access.team") },
+          { value: "private", label: t("web.access.private") },
+        ]}
+      />
+      <p className="text-xs text-muted-foreground">
+        {t(isPrivate ? "web.access.privateLead" : "web.access.teamLead")}
+      </p>
+      {isPrivate && (
+        <ul className="flex max-h-48 flex-col divide-y overflow-auto rounded-lg border">
+          {people.map((user) => (
+            <li key={user.id}>
+              <label className="flex cursor-pointer items-center gap-2 p-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={chosen.has(user.id)}
+                  onChange={(event) =>
+                    member.mutate({ user: user.id, member: event.target.checked })
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+              </label>
+            </li>
+          ))}
+          {people.length === 0 && (
+            <li className="p-2 text-xs text-muted-foreground">{t("web.access.nobody")}</li>
+          )}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -57,10 +126,7 @@ function Links({ projectKey }: { projectKey: string }) {
     setCopied(true);
   };
   return (
-    <section
-      aria-label={t("web.links.title")}
-      className="absolute right-0 top-10 z-50 flex w-96 flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-lg"
-    >
+    <section aria-label={t("web.links.title")} className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold">{t("web.links.title")}</h2>
       <p className="text-xs text-muted-foreground">{t("web.links.lead")}</p>
       <Segmented

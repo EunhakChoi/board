@@ -368,3 +368,43 @@ export function useCliTokenActions() {
     }),
   };
 }
+
+export function useProjectAccess(key: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["members", key],
+    enabled,
+    queryFn: () => unwrap(api.GET("/api/projects/{key}/members", path(key))),
+  });
+}
+
+export function useProjectAccessActions(key: string) {
+  const client = useQueryClient();
+  return {
+    visibility: useMutation({
+      mutationFn: (visibility: "team" | "private") =>
+        unwrap(api.PATCH("/api/projects/{key}", { ...path(key), body: { visibility } })),
+      onSettled: () => {
+        client.invalidateQueries({ queryKey: ["project", key] });
+        client.invalidateQueries({ queryKey: ["projects"] });
+      },
+    }),
+    member: useMutation({
+      mutationFn: ({ user, member }: { user: string; member: boolean }) => {
+        const params = { params: { path: { key, user } } };
+        return unwrapEmpty(
+          member
+            ? api.PUT("/api/projects/{key}/members/{user}", params)
+            : api.DELETE("/api/projects/{key}/members/{user}", params),
+        );
+      },
+      // The checkbox follows the click at once; the refetch confirms it.
+      onMutate: ({ user, member }) => {
+        client.setQueryData<{ members: string[] }>(["members", key], (old) => {
+          const rest = (old?.members ?? []).filter((id) => id !== user);
+          return { members: member ? [...rest, user] : rest };
+        });
+      },
+      onSettled: () => client.invalidateQueries({ queryKey: ["members", key] }),
+    }),
+  };
+}

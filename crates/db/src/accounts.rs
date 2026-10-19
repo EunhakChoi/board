@@ -690,6 +690,35 @@ mod tests {
     }
 
     #[test]
+    fn project_members_and_visibility() {
+        use board_engine::Records;
+        let db = Db::memory().unwrap();
+        db.insert_project(&board_model::Project {
+            key: "web".into(),
+            title: "Web".into(),
+            visibility: board_model::Visibility::Team,
+            origin: board_model::Origin::Empty,
+            created_at: String::new(),
+        })
+        .unwrap();
+        db.insert_user(&new_user("u1", "ann", Role::Editor, UserStatus::Active))
+            .unwrap();
+        db.update_project("web", "Web app", board_model::Visibility::Private)
+            .unwrap();
+        let project = db.project("web").unwrap().unwrap();
+        assert_eq!(
+            (project.title.as_str(), project.visibility),
+            ("Web app", board_model::Visibility::Private)
+        );
+        db.set_member("web", "u1", true).unwrap();
+        db.set_member("web", "u1", true).unwrap();
+        assert_eq!(db.members("web").unwrap(), ["u1"]);
+        assert!(db.is_member("web", "u1").unwrap());
+        db.set_member("web", "u1", false).unwrap();
+        assert!(!db.is_member("web", "u1").unwrap());
+    }
+
+    #[test]
     fn setup_token_works_once() {
         let db = Db::memory().unwrap();
         db.set_setup_token("old").unwrap();

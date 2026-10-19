@@ -91,7 +91,10 @@ impl Engine {
             .records
             .projects()?
             .into_iter()
-            .filter(|project| can(actor, Command::ProjectView, Some(target(project))))
+            .filter(|project| {
+                self.target(actor, project)
+                    .is_ok_and(|target| can(actor, Command::ProjectView, Some(target)))
+            })
             .collect())
     }
 
@@ -205,14 +208,73 @@ impl Engine {
             .records
             .project(key)?
             .ok_or(EngineError::NotFound("project"))?;
-        if !can(actor, Command::ProjectView, Some(target(&project))) {
+        let target = self.target(actor, &project)?;
+        if !can(actor, Command::ProjectView, Some(target)) {
             // Hidden projects look missing rather than forbidden.
             return Err(EngineError::NotFound("project"));
         }
-        if !can(actor, command, Some(target(&project))) {
+        if !can(actor, command, Some(target)) {
             return Err(EngineError::Forbidden);
         }
         Ok(project)
+    }
+
+    /// The project as permissions see it for `actor`: membership only matters when it is private.
+    fn target<'a>(&self, actor: &Actor, project: &'a Project) -> Result<Target<'a>, EngineError> {
+        let member = match actor {
+            Actor::User { id, .. } if project.visibility == Visibility::Private => {
+                self.ports.records.is_member(&project.key, id)?
+            }
+            _ => false,
+        };
+        Ok(Target {
+            project: &project.key,
+            visibility: project.visibility,
+            member,
+        })
+    }
+
+    /// Renames a project or changes who can see it. Admins only.
+    pub fn update_project(
+        &self,
+        actor: &Actor,
+        key: &str,
+        title: Option<&str>,
+        visibility: Option<Visibility>,
+    ) -> Result<Project, EngineError> {
+        let project = self.visible(actor, key, Command::Admin)?;
+        let title = title.map_or(project.title.as_str(), str::trim);
+        if title.is_empty() {
+            return Err(EngineError::Invalid("a project needs a title".into()));
+        }
+        self.ports
+            .records
+            .update_project(key, title, visibility.unwrap_or(project.visibility))?;
+        self.ports
+            .records
+            .project(key)?
+            .ok_or(EngineError::NotFound("project"))
+    }
+
+    /// Who may see a private project besides admins (user ids).
+    pub fn members(&self, actor: &Actor, key: &str) -> Result<Vec<String>, EngineError> {
+        self.visible(actor, key, Command::Admin)?;
+        Ok(self.ports.records.members(key)?)
+    }
+
+    /// Adds or removes a member of a project (it only matters while the project is private).
+    pub fn set_member(
+        &self,
+        actor: &Actor,
+        key: &str,
+        user: &str,
+        member: bool,
+    ) -> Result<(), EngineError> {
+        self.visible(actor, key, Command::Admin)?;
+        if member && self.ports.accounts.user(user)?.is_none() {
+            return Err(EngineError::NotFound("user"));
+        }
+        Ok(self.ports.records.set_member(key, user, member)?)
     }
 
     pub(crate) fn resolve(&self, key: &str, rev: &str) -> Result<String, EngineError> {
@@ -236,15 +298,6 @@ impl Engine {
             .add_version(key, commit, kind, actor.name(), note)?;
         self.ports.store.tag_version(key, version.number, commit)?;
         Ok(version)
-    }
-}
-
-fn target(project: &Project) -> Target<'_> {
-    // Membership of private projects arrives with sign-in (P1).
-    Target {
-        project: &project.key,
-        visibility: project.visibility,
-        member: false,
     }
 }
 

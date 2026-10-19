@@ -615,6 +615,92 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [projects]
+      operationId: updateProject
+      summary: Renames a project or sets who can see it (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [team, private]
+                  description: "`private`: only members and admins see it"
+      responses:
+        "200":
+          description: The project now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/members:
+    get:
+      tags: [projects]
+      operationId: listProjectMembers
+      summary: Who may see the project while it is private, besides admins (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      responses:
+        "200":
+          description: User ids
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items:
+                      type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/members/{user}:
+    put:
+      tags: [projects]
+      operationId: addProjectMember
+      summary: Adds a member (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "204":
+          description: Added
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [projects]
+      operationId: removeProjectMember
+      summary: Removes a member (admins)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "204":
+          description: Removed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{key}/share-links:
     get:
       tags: [links]
@@ -1298,6 +1384,13 @@ paths:
           $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    MemberId:
+      name: user
+      in: path
+      required: true
+      description: A user id
+      schema:
+        type: string
     UserCode:
       name: code
       in: path

@@ -254,3 +254,57 @@ pub async fn diff(
         .collect();
     Ok(Json(ChangeList { changes }))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectChange {
+    title: Option<String>,
+    visibility: Option<board_model::Visibility>,
+}
+
+/// `PATCH /api/projects/{key}`: rename, or set who can see it (admins).
+pub async fn update(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path(key): Path<String>,
+    Json(change): Json<ProjectChange>,
+) -> Result<Json<Project>, ApiError> {
+    let project = blocking(move || {
+        engine.update_project(&actor, &key, change.title.as_deref(), change.visibility)
+    })
+    .await?;
+    Ok(Json(project))
+}
+
+#[derive(Serialize)]
+pub struct Members {
+    /// User ids.
+    members: Vec<String>,
+}
+
+pub async fn members(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path(key): Path<String>,
+) -> Result<Json<Members>, ApiError> {
+    let members = blocking(move || engine.members(&actor, &key)).await?;
+    Ok(Json(Members { members }))
+}
+
+pub async fn add_member(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path((key, user)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    blocking(move || engine.set_member(&actor, &key, &user, true)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_member(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path((key, user)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    blocking(move || engine.set_member(&actor, &key, &user, false)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

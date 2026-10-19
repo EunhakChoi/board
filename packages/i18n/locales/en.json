@@ -206,7 +206,7 @@
   "web.links.role.editor": "Edit",
   "web.links.role.admin": "Admin",
   "web.links.label": "Label",
-  "web.links.labelPlaceholder": "Label, e.g. design review (optional)",
+  "web.links.labelPlaceholder": "Label (optional)",
   "web.links.create": "Create link",
   "web.links.address": "Link address",
   "web.links.copy": "Copy link",
@@ -258,5 +258,12 @@
   "web.account.unused": "never used",
   "web.account.revoke": "Revoke {name}",
   "web.account.none": "No tokens yet.",
-  "web.account.nav": "Account"
+  "web.account.nav": "Account",
+  "web.links.panel": "Share",
+  "web.access.title": "Who can see it",
+  "web.access.team": "Everyone on the team",
+  "web.access.private": "Private",
+  "web.access.teamLead": "Everyone admitted to this board sees the project.",
+  "web.access.privateLead": "Only the people picked below and admins see it. Share links still work.",
+  "web.access.nobody": "No other members yet."
 }

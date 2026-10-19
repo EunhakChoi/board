@@ -17,7 +17,7 @@ mod web;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use board_engine::{Engine, ServiceState, SessionState};
 use board_model::{Actor, Role, VERSION};
@@ -60,6 +60,10 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("post", "/api/projects"),
     ("get", "/api/projects/{key}"),
     ("delete", "/api/projects/{key}"),
+    ("patch", "/api/projects/{key}"),
+    ("get", "/api/projects/{key}/members"),
+    ("put", "/api/projects/{key}/members/{user}"),
+    ("delete", "/api/projects/{key}/members/{user}"),
     ("get", "/api/projects/{key}/checkout"),
     ("post", "/api/projects/{key}/push"),
     ("get", "/api/projects/{key}/versions"),
@@ -145,7 +149,14 @@ fn routes() -> Router<Engine> {
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/{key}",
-            get(projects::get).delete(projects::delete),
+            get(projects::get)
+                .delete(projects::delete)
+                .patch(projects::update),
+        )
+        .route("/api/projects/{key}/members", get(projects::members))
+        .route(
+            "/api/projects/{key}/members/{user}",
+            put(projects::add_member).delete(projects::remove_member),
         )
         .route("/api/projects/{key}/checkout", get(projects::checkout))
         .route("/api/projects/{key}/push", post(projects::push))

@@ -131,3 +131,22 @@ test("board login is approved in the browser and the CLI acts as that member", a
   await expect(boss.getByText("e2e-laptop")).toBeVisible();
   rmSync(config, { recursive: true, force: true });
 });
+
+test("a private project shows only to the members the admin picks", async ({ browser }) => {
+  const boss = await (await browser.newContext()).newPage();
+  await signIn(boss, "boss");
+  await boss.goto(`${base()}/p/shared/screens`);
+  await boss.getByRole("button", { name: "Share" }).click();
+  const access = boss.getByRole("region", { name: "Who can see it" });
+  await access.getByRole("radio", { name: "Private" }).click();
+  await expect(access.getByText(/Only the people picked below/)).toBeVisible();
+
+  const eve = await (await browser.newContext()).newPage();
+  await signIn(eve, "eve");
+  await expect(eve.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(eve.getByRole("link", { name: /Shared/ })).toHaveCount(0);
+
+  await access.getByRole("checkbox").first().check();
+  await eve.reload();
+  await expect(eve.getByRole("link", { name: /Shared/ })).toBeVisible();
+});
