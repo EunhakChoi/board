@@ -319,6 +319,203 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/auth/setup:
+    post:
+      tags: [auth]
+      operationId: finishSetup
+      summary: The setup link without a provider; the first to use it becomes the admin as `name`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, name]
+              properties:
+                token:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "204":
+          description: Signed in as the admin (session cookie set)
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/invites/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [auth]
+      operationId: getInvite
+      summary: What an invite or sign-in link does (no sign-in needed)
+      responses:
+        "200":
+          description: The link
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind, role]
+                properties:
+                  kind:
+                    type: string
+                    enum: [join, sign-in]
+                  role:
+                    $ref: "#/components/schemas/Role"
+                  name:
+                    type: string
+                    description: For a sign-in link, whose account it opens
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/invites/{token}/accept:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [auth]
+      operationId: acceptInvite
+      summary: Uses the link (a new member joins as `name`) and sets the session cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+      responses:
+        "204":
+          description: Signed in
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/invites:
+    get:
+      tags: [admin]
+      operationId: listInvites
+      summary: Invites for new members, newest first (admin)
+      responses:
+        "200":
+          description: Invites (without tokens)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invites]
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invite"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [admin]
+      operationId: createInvite
+      summary: A one-time invite for a new member with this role, open 7 days (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/Role"
+                label:
+                  type: string
+      responses:
+        "201":
+          description: The invite and the address to hand out (shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invite, url]
+                properties:
+                  invite:
+                    $ref: "#/components/schemas/Invite"
+                  url:
+                    type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/invites/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [admin]
+      operationId: revokeInvite
+      summary: Withdraws an invite (admin)
+      responses:
+        "204":
+          description: Withdrawn
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/users/{id}/sign-in-link:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [admin]
+      operationId: createMemberSignInLink
+      summary: A one-time link that signs this member in, open 7 days (admin)
+      responses:
+        "201":
+          description: The invite and the address to hand out (shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invite, url]
+                properties:
+                  invite:
+                    $ref: "#/components/schemas/Invite"
+                  url:
+                    type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/me/sign-in-link:
+    post:
+      tags: [auth]
+      operationId: createOwnSignInLink
+      summary: A one-time link to sign in on another device, open 15 minutes
+      responses:
+        "201":
+          description: The invite and the address to hand out (shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invite, url]
+                properties:
+                  invite:
+                    $ref: "#/components/schemas/Invite"
+                  url:
+                    type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/me/notifications:
     get:
       tags: [inbox]
@@ -2123,9 +2320,10 @@ components:
               required: [provider, callbackUrl, ok, hasAdmin]
               properties:
                 provider:
-                  type: string
+                  type: [string, "null"]
+                  description: null when people come in through invite links only
                 callbackUrl:
-                  type: string
+                  type: [string, "null"]
                   description: Register this at the provider as the redirect URI
                 ok:
                   type: boolean
@@ -2168,6 +2366,30 @@ components:
           description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+    Invite:
+      type: object
+      required: [id, role, user, label, createdBy, createdAt, expiresAt, usedAt, usedBy]
+      properties:
+        id:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        user:
+          type: [string, "null"]
+          description: Set for a sign-in link
+        label:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        expiresAt:
+          type: integer
+          description: Unix seconds
+        usedAt:
+          type: [string, "null"]
+        usedBy:
+          type: [string, "null"]
     Notification:
       type: object
       required: [id, kind, project, actor, text, link, data, createdAt, readAt]

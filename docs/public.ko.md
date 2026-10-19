@@ -3,7 +3,8 @@
 [English](public.md) | **한국어**
 
 [로컬 모드](local.ko.md) 는 port 에 닿는 모든 사람을 관리자로 취급함. 외부 공개 모드는 팀용:
-모두 로그인하고, 누가 들어올지는 관리자가 정함.
+모두 로그인하고, 누가 들어올지는 관리자가 정함. 외부 계정 불필요: 팀원은 **초대 link** 로 입장.
+Google (또는 다른 OpenID Connect provider) 로그인은 추가 선택.
 
 ## 준비물
 
@@ -11,7 +12,7 @@
   `https://preview.board.example.com`. port 5280 · 5281 앞에 reverse proxy (Caddy, nginx) 또는
   고정 domain tunnel (Cloudflare Tunnel, ngrok 예약 domain). 미리보기는 프로젝트 코드를
   실행하므로 도구와 다른 host 여야 함 (도구 cookie 접근 차단).
-- **OpenID Connect client.** 기본은 Google:
+- **선택: OpenID Connect client** (초대 link 대신 Google 로그인을 쓸 때):
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
      *OAuth client ID* → *Web application*.
   2. Authorized redirect URI: `https://board.example.com/api/auth/oidc/callback`.
@@ -26,9 +27,10 @@
 ```bash
 BOARD_PUBLIC_URL=https://board.example.com
 BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
+# 선택: Google 로그인 (다른 provider 는 BOARD_OIDC_ISSUER)
 BOARD_OIDC_CLIENT_ID=…
 BOARD_OIDC_CLIENT_SECRET=…
-# 선택: 첫 로그인 때 관리자가 되는 주소
+# 선택 (provider 사용 시): 첫 로그인 때 관리자가 되는 주소
 BOARD_ADMIN_EMAILS=you@example.com
 ```
 
@@ -38,7 +40,7 @@ docker compose logs server | grep -A1 "setup link"
 ```
 
 Docker 없이: 같은 변수로 `board-server --public` (`BOARD_PUBLIC_PREVIEW_URL` 대신
-`BOARD_PREVIEW_URL`). 로그인 설정이나 고정 주소가 없으면 외부 공개 모드로 시작하지 않음.
+`BOARD_PREVIEW_URL`). 고정 주소가 없으면 외부 공개 모드로 시작하지 않음.
 
 점검: 아무 PC 에서 `board doctor --server https://board.example.com`. service 외에 HTTPS 주소 여부,
 server → 로그인 provider 접속, 등록할 callback URL (OAuth client 와 정확히 일치해야 함), 관리자
@@ -47,12 +49,15 @@ server → 로그인 provider 접속, 등록할 callback URL (OAuth client 와 �
 ## 첫 관리자
 
 관리자가 생기기 전에는 아무도 못 들어옴. server 가 시작할 때 log 에 **1회용 설정 link** 를
-출력함. 이 link 로 처음 로그인한 계정이 관리자. `BOARD_ADMIN_EMAILS` 의 주소는 바로 관리자가 됨.
+출력함. 이 link 를 처음 연 사람이 이름 입력 (또는 provider 로그인) 후 관리자가 됨. `BOARD_ADMIN_EMAILS` 의 주소는 바로 관리자가 됨.
 link 는 한 번 쓰면 끝. 관리자가 없는 동안은 시작할 때마다 새 link 출력.
 
 ## 입장
 
-- **허용 목록** 의 주소 · domain: 첫 로그인 때 바로 입장 (editor).
+- **초대 link** (Team → 초대): 권한 선택 후 link 전달. 1회용 · 7일. 새 팀원은 이름만 입력하고 입장.
+  session 을 잃은 팀원 → 관리자가 이름 옆 열쇠 버튼으로 로그인 link 발급. 휴대폰 · 다른
+  컴퓨터 → 본인 계정 화면에서 직접 발급 (15분).
+- provider 사용 시 **허용 목록** 의 주소 · domain: 첫 로그인 때 바로 입장 (editor).
 - 그 밖의 사람: 관리자가 **접속 승인 요청** 을 승인 · 거절할 때까지 "승인 대기 중" 화면.
 
 ## 알림 · webhook

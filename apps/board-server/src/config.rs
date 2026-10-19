@@ -141,7 +141,7 @@ impl Config {
         );
         let oidc = oidc(&env)?;
         if public {
-            check_public(oidc.as_ref(), public_url.as_deref())?;
+            check_public(public_url.as_deref())?;
         }
         let admin_emails = env("BOARD_ADMIN_EMAILS")
             .unwrap_or_default()
@@ -207,15 +207,9 @@ impl Config {
     }
 }
 
-/// A public server needs sign-in and the fixed address the provider sends people back to.
-fn check_public(oidc: Option<&OidcConfig>, public_url: Option<&str>) -> Result<(), String> {
-    // A public server without sign-in would be open to anyone.
-    if oidc.is_none() {
-        return Err("--public needs sign-in: set BOARD_OIDC_CLIENT_ID and \
-                 BOARD_OIDC_CLIENT_SECRET (see docs/public.md)"
-            .to_owned());
-    }
-    // The provider sends people back to one fixed address.
+/// A public server needs the address people open: invite links and the provider point there.
+/// Sign-in is always on (invite links, plus a provider when one is set up).
+fn check_public(public_url: Option<&str>) -> Result<(), String> {
     if public_url.is_none() {
         return Err("--public needs BOARD_PUBLIC_URL, the fixed address people open".to_owned());
     }
@@ -377,9 +371,19 @@ mod tests {
     }
 
     #[test]
-    fn public_needs_sign_in_and_a_fixed_address() {
+    fn public_needs_a_fixed_address_and_takes_an_optional_provider() {
         let error = config(&["--public"], &[("HOME", "/h")]).unwrap_err();
-        assert!(error.contains("sign-in"));
+        assert!(error.contains("BOARD_PUBLIC_URL"));
+        let invites_only = config(
+            &["--public"],
+            &[
+                ("HOME", "/h"),
+                ("BOARD_PUBLIC_URL", "https://board.example.com"),
+            ],
+        )
+        .unwrap();
+        assert!(!invites_only.local_mode());
+        assert!(invites_only.oidc.is_none());
         let client = [
             ("HOME", "/h"),
             ("BOARD_OIDC_CLIENT_ID", "id"),

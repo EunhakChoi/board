@@ -17,10 +17,11 @@ pub const SESSION_SECS: u64 = 30 * 24 * 3600;
 /// How long the browser may take at the provider before the round trip is forgotten.
 const PENDING_SECS: u64 = 600;
 
-/// Sign-in settings: the provider and who becomes admin on sight.
+/// Sign-in settings: the provider (optional: without one, people come in through invite links)
+/// and who becomes admin on sight.
 #[derive(Clone)]
 pub struct SignInSettings {
-    pub identity: Arc<dyn Identity>,
+    pub identity: Option<Arc<dyn Identity>>,
     /// Addresses that become admins on their first sign-in (`BOARD_ADMIN_EMAILS`).
     pub admin_emails: Vec<String>,
 }
@@ -28,7 +29,7 @@ pub struct SignInSettings {
 impl std::fmt::Debug for SignInSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SignInSettings")
-            .field("provider", &self.identity.provider())
+            .field("provider", &self.identity.as_ref().map(|i| i.provider()))
             .field("admin_emails", &self.admin_emails)
             .finish()
     }
@@ -107,12 +108,11 @@ impl Engine {
         setup: Option<&str>,
         return_to: Option<&str>,
     ) -> Result<String, EngineError> {
-        let settings = self.sign_in_settings()?;
+        let identity = self.identity()?;
         let state = random_token();
         let nonce = random_token();
         let verifier = random_token();
-        let url = settings
-            .identity
+        let url = identity
             .authorize_url(&AuthRequest {
                 state: state.clone(),
                 nonce: nonce.clone(),
@@ -138,6 +138,7 @@ impl Engine {
     /// Finishes the round trip the provider sent back (`state`, `code`) and decides admission.
     pub fn finish_sign_in(&self, state: &str, code: &str) -> Result<SignIn, EngineError> {
         let settings = self.sign_in_settings()?;
+        let identity = self.identity()?;
         let pending = self
             .pending
             .0
@@ -146,8 +147,7 @@ impl Engine {
             .remove(state)
             .filter(|p| now().saturating_sub(p.started) < PENDING_SECS)
             .ok_or_else(|| EngineError::Invalid("sign-in expired; start again".into()))?;
-        let claims = settings
-            .identity
+        let claims = identity
             .exchange(code, &pending.verifier, &pending.nonce)
             .map_err(unavailable)?;
         if !claims.email_verified {
@@ -160,7 +160,7 @@ impl Engine {
             .filter(|n| !n.trim().is_empty())
             .unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_owned());
         let accounts = &self.ports.accounts;
-        let provider = settings.identity.provider();
+        let provider = identity.provider();
         // The setup link makes its first user the admin, whoever they are.
         let setup = match &pending.setup {
             Some(token) => accounts.take_setup_token(&hash(token))?,
@@ -247,13 +247,22 @@ impl Engine {
         Ok(Some(token))
     }
 
-    fn sign_in_settings(&self) -> Result<&SignInSettings, EngineError> {
+    pub(crate) fn sign_in_settings(&self) -> Result<&SignInSettings, EngineError> {
         self.sign_in
             .as_deref()
             .ok_or_else(|| EngineError::Unavailable("sign-in is not configured".into()))
     }
 
-    fn allowed(&self, email: &str) -> Result<bool, EngineError> {
+    /// The identity provider, when one is set up.
+    fn identity(&self) -> Result<&dyn Identity, EngineError> {
+        self.sign_in_settings()?.identity.as_deref().ok_or_else(|| {
+            EngineError::Unavailable(
+                "no sign-in provider is set up; ask an admin for an invite link".into(),
+            )
+        })
+    }
+
+    pub(crate) fn allowed(&self, email: &str) -> Result<bool, EngineError> {
         let domain = email.rsplit_once('@').map_or("", |(_, d)| d);
         Ok(self
             .ports

@@ -461,3 +461,68 @@ export function useWebhookActions() {
     }),
   };
 }
+
+/** Versions, links and how people sign in (no sign-in needed). */
+export function useSystem() {
+  return useQuery({
+    queryKey: ["system"],
+    queryFn: () => unwrap(api.GET("/api/system")),
+    staleTime: 60_000,
+  });
+}
+
+export function useFinishSetup() {
+  return useMutation({
+    mutationFn: (body: { token: string; name: string }) =>
+      unwrapEmpty(api.POST("/api/auth/setup", { body })),
+  });
+}
+
+export function useInvite(token: string) {
+  return useQuery({
+    queryKey: ["invite", token],
+    retry: false,
+    queryFn: () => unwrap(api.GET("/api/invites/{token}", { params: { path: { token } } })),
+  });
+}
+
+export function useAcceptInvite(token: string) {
+  return useMutation({
+    mutationFn: (name: string) =>
+      unwrapEmpty(
+        api.POST("/api/invites/{token}/accept", { params: { path: { token } }, body: { name } }),
+      ),
+  });
+}
+
+export function useInvites() {
+  return useQuery({
+    queryKey: ["admin", "invites"],
+    queryFn: () => unwrap(api.GET("/api/admin/invites")),
+  });
+}
+
+export function useInviteActions() {
+  const client = useQueryClient();
+  const settled = () => client.invalidateQueries({ queryKey: ["admin", "invites"] });
+  return {
+    create: useMutation({
+      mutationFn: (body: { role: Role; label: string }) =>
+        unwrap(api.POST("/api/admin/invites", { body })),
+      onSettled: settled,
+    }),
+    revoke: useMutation({
+      mutationFn: (id: string) =>
+        unwrapEmpty(api.DELETE("/api/admin/invites/{id}", { params: { path: { id } } })),
+      onSettled: settled,
+    }),
+    memberLink: useMutation({
+      mutationFn: (id: string) =>
+        unwrap(api.POST("/api/admin/users/{id}/sign-in-link", { params: { path: { id } } })),
+    }),
+  };
+}
+
+export function useOwnSignInLink() {
+  return useMutation({ mutationFn: () => unwrap(api.POST("/api/me/sign-in-link")) });
+}

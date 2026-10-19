@@ -37,7 +37,8 @@ fn engine(local_mode: bool) -> Engine {
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
             comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
             accounts: db.clone(),
-            notices: db,
+            notices: db.clone(),
+            invites: db,
             webhooks: Arc::new(TeapotSender),
             realtime: Arc::new(board_collab::Hub::new()),
         },
@@ -639,7 +640,7 @@ fn signed_in_engine() -> (Engine, Arc<ScriptedIdentity>) {
     let engine = engine(false)
         .with_tool_url("https://board.test")
         .with_sign_in(board_engine::SignInSettings {
-            identity: idp.clone(),
+            identity: Some(idp.clone()),
             admin_emails: vec!["boss@example.com".into()],
         });
     (engine, idp)
@@ -1395,4 +1396,116 @@ async fn webhooks_are_admin_settings_with_a_secret_shown_once() {
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// The cookie a response set, as `name=value`.
+fn set_cookie(headers: &axum::http::HeaderMap) -> String {
+    headers["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+async fn post_raw(engine: &Engine, path: &str, body: Value) -> axum::response::Response {
+    board_api::router(engine.clone())
+        .oneshot(
+            Request::post(path)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn invite_links_without_a_provider() {
+    let engine = engine(false)
+        .with_tool_url("https://board.test")
+        .with_sign_in(board_engine::SignInSettings {
+            identity: None,
+            admin_emails: Vec::new(),
+        });
+    let (_, system) = call(engine.clone(), "/api/system").await;
+    assert_eq!(system["signIn"]["provider"], Value::Null);
+    let setup = engine.issue_setup_token().unwrap().unwrap();
+    let response = post_raw(
+        &engine,
+        "/api/auth/setup",
+        json!({"token": setup, "name": "Boss"}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let boss = set_cookie(response.headers());
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &boss, None)).await;
+    assert_eq!(
+        (me["name"].as_str(), me["role"].as_str()),
+        (Some("Boss"), Some("admin"))
+    );
+    assert!(me.get("email").is_none());
+
+    let (status, made) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/admin/invites",
+            &boss,
+            Some(json!({"role": "viewer", "label": "Dana"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let url = made["url"].as_str().unwrap();
+    let token = url.strip_prefix("https://board.test/i/").unwrap();
+    let (status, view) = call(engine.clone(), &format!("/api/invites/{token}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view, json!({"kind": "join", "role": "viewer"}));
+    let response = post_raw(
+        &engine,
+        &format!("/api/invites/{token}/accept"),
+        json!({"name": "Dana"}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let dana = set_cookie(response.headers());
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &dana, None)).await;
+    assert_eq!(me["role"], "viewer");
+    let again = post_raw(
+        &engine,
+        &format!("/api/invites/{token}/accept"),
+        json!({"name": "Eve"}),
+    )
+    .await;
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+
+    // Dana's link for her phone opens her account.
+    let (status, own) = json_of(
+        &engine,
+        as_member("POST", "/api/me/sign-in-link", &dana, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let token = own["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let (_, view) = call(engine.clone(), &format!("/api/invites/{token}")).await;
+    assert_eq!(view["kind"], "sign-in");
+    assert_eq!(view["name"], "Dana");
+    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/invites", &dana, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = redirect_of(
+        engine.clone(),
+        Request::get("/api/auth/oidc/start")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }

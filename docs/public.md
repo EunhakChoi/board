@@ -3,7 +3,9 @@
 **English** | [한국어](public.ko.md)
 
 In [local mode](local.md) board trusts everyone who reaches its ports. Public mode is for a team:
-everyone signs in, and an admin decides who gets in.
+everyone signs in, and an admin decides who gets in. No outside account is needed: members come
+in through **invite links**. Signing in with Google (or another OpenID Connect provider) is an
+option on top.
 
 ## What you need
 
@@ -12,7 +14,7 @@ everyone signs in, and an admin decides who gets in.
   nginx) or a tunnel with fixed domains (Cloudflare Tunnel, ngrok reserved domains) in front of
   ports 5280 and 5281. Previews must be a different host from the tool: they run project code and
   must never see the tool's cookies.
-- **An OpenID Connect client.** Google is the default:
+- **Optional: an OpenID Connect client**, for signing in with Google instead of invite links:
   1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
      *OAuth client ID* → *Web application*.
   2. Authorized redirect URI: `https://board.example.com/api/auth/oidc/callback`.
@@ -27,9 +29,10 @@ Add to `.env` next to `compose.yaml`:
 ```bash
 BOARD_PUBLIC_URL=https://board.example.com
 BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
+# optional: sign in with Google (or BOARD_OIDC_ISSUER for another provider)
 BOARD_OIDC_CLIENT_ID=…
 BOARD_OIDC_CLIENT_SECRET=…
-# optional: addresses that become admins on their first sign-in
+# optional, with a provider: addresses that become admins on their first sign-in
 BOARD_ADMIN_EMAILS=you@example.com
 ```
 
@@ -39,8 +42,7 @@ docker compose logs server | grep -A1 "setup link"
 ```
 
 Without Docker: `board-server --public` with the same variables (`BOARD_PREVIEW_URL` instead of
-`BOARD_PUBLIC_PREVIEW_URL`). The server refuses to start in public mode without sign-in or a
-fixed address.
+`BOARD_PUBLIC_PREVIEW_URL`). The server refuses to start in public mode without a fixed address.
 
 Then check it from any machine: `board doctor --server https://board.example.com`. Besides the
 services it checks that the address is HTTPS, that the server reaches the sign-in provider, the
@@ -49,13 +51,18 @@ callback URL to register (it must match the OAuth client exactly) and whether an
 ## The first admin
 
 Until an admin exists, nobody gets in. On start the server prints a **one-time setup link** to
-its log; the first account that signs in through it becomes the admin. An address in
+its log; whoever opens it first enters a name (or signs in with the provider) and becomes the
+admin. An address in
 `BOARD_ADMIN_EMAILS` becomes an admin on its own. The link stops working once used, and a new one
 is printed on each start while there is still no admin.
 
 ## Who gets in
 
-- Addresses or domains on the **allowlist** get in on their first sign-in, as editors.
+- **Invite links** (Team → Invites): pick the role, send the link. It works once, for 7 days; the
+  new member enters a name and is in. A member who lost their session gets a sign-in link from an
+  admin (the key button next to their name); for a phone or second computer they make one
+  themselves on their account page (15 minutes).
+- With a provider: addresses or domains on the **allowlist** get in on their first sign-in, as editors.
 - Anyone else sees "Waiting for approval" while an admin approves or declines the **access
   request**.
 
