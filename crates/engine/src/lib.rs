@@ -1,5 +1,6 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod auth;
 mod browse;
 mod captures;
 mod comments;
@@ -12,13 +13,15 @@ mod sheet;
 
 use std::sync::Arc;
 
+pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
 pub use ports::{
-    Author, Build, BuildState, BuildStep, BuiltFile, Capture, Captures, Change, ChangeKind,
-    Comments, FileChange, ImageKind, NewComment, NewReply, ProjectStore, Records, RenderJob,
-    Renderer, Settings, Shot, StoreError, Workspace, WorkspaceError,
+    Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
+    Captures, Change, ChangeKind, Claims, Comments, FileChange, Identity, ImageKind, NewComment,
+    NewReply, NewUser, ProjectStore, Records, RenderJob, Renderer, Settings, Shot, StoreError,
+    Workspace, WorkspaceError,
 };
 pub use preview::{Preview, PreviewSettings};
 pub use projects::{Checkout, Import};
@@ -34,6 +37,7 @@ pub struct Ports {
     pub renderer: Arc<dyn Renderer>,
     pub captures: Arc<dyn Captures>,
     pub comments: Arc<dyn Comments>,
+    pub accounts: Arc<dyn Accounts>,
 }
 
 impl std::fmt::Debug for Ports {
@@ -49,6 +53,8 @@ pub struct Engine {
     local_mode: bool,
     preview: Option<Arc<PreviewSettings>>,
     tool_url: Option<Arc<str>>,
+    sign_in: Option<Arc<SignInSettings>>,
+    pending: Arc<auth::PendingSignIns>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -66,7 +72,16 @@ impl Engine {
             local_mode,
             preview: None,
             tool_url: None,
+            sign_in: None,
+            pending: Arc::default(),
         }
+    }
+
+    /// Turns sign-in on (a public server): accounts come from the identity provider.
+    #[must_use]
+    pub fn with_sign_in(mut self, settings: SignInSettings) -> Self {
+        self.sign_in = Some(Arc::new(settings));
+        self
     }
 
     /// Enables previews: built commits are served from `settings.origin` with signed tokens.
@@ -99,6 +114,11 @@ impl Engine {
             workspace: state(self.ports.workspace.health()),
             render: state(self.ports.renderer.health()),
         })
+    }
+
+    /// Where people open the web tool, when known.
+    pub fn tool_url(&self) -> Option<&str> {
+        self.tool_url.as_deref()
     }
 
     /// True while the server only listens on localhost: every request acts as the built-in admin.

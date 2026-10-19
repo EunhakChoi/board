@@ -6,6 +6,7 @@ import { mkdtempSync, openSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { startIdp } from "./idp.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 
@@ -42,12 +43,16 @@ async function waitFor(
 
 export default async function setup() {
   const home = mkdtempSync(join(tmpdir(), "board-e2e-"));
-  const [api, preview, workspace, render] = [
+  const [api, preview, workspace, render, publicApi, publicPreview, idp] = [
+    await freePort(),
+    await freePort(),
+    await freePort(),
     await freePort(),
     await freePort(),
     await freePort(),
     await freePort(),
   ];
+  const stopIdp = startIdp(idp);
   const log = openSync(join(home, "stack.log"), "a");
   const start = (command: string, args: string[], env: Record<string, string>): ChildProcess =>
     spawn(command, args, { env: { ...process.env, ...env }, stdio: ["ignore", log, log] });
@@ -72,14 +77,32 @@ export default async function setup() {
       BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
       BOARD_UPDATE_CHECK: "false",
     }),
+    // A second server in public mode: sign-in through the stand-in provider.
+    start(join(root, "target/debug/board-server"), ["--public"], {
+      BOARD_HOME: join(home, "public"),
+      BOARD_BIND: `127.0.0.1:${publicApi}`,
+      BOARD_PREVIEW_BIND: `127.0.0.1:${publicPreview}`,
+      BOARD_PUBLIC_URL: `http://localhost:${publicApi}`,
+      BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
+      BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
+      BOARD_WORKSPACE_TOKEN: token,
+      BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
+      BOARD_UPDATE_CHECK: "false",
+      BOARD_OIDC_ISSUER: `http://127.0.0.1:${idp}`,
+      BOARD_OIDC_CLIENT_ID: "e2e-client",
+      BOARD_OIDC_CLIENT_SECRET: "e2e-secret",
+      BOARD_ADMIN_EMAILS: "boss@example.com",
+    }),
   ];
   const teardown = async () => {
     for (const child of children) child.kill();
+    stopIdp();
     if (!process.env.BOARD_E2E_KEEP) rmSync(home, { recursive: true, force: true });
   };
   try {
     const base = `http://127.0.0.1:${api}`;
     await waitFor(`${base}/api/health`, () => true, 20);
+    await waitFor(`http://127.0.0.1:${publicApi}/api/health`, () => true, 20);
     await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 20);
     await waitFor(`http://127.0.0.1:${render}/health`, () => true, 20);
     execFileSync(
@@ -102,8 +125,10 @@ export default async function setup() {
     );
   } catch (error) {
     for (const child of children) child.kill();
+    stopIdp();
     throw new Error(`stack did not start (logs: ${join(home, "stack.log")}): ${error}`);
   }
   process.env.BOARD_E2E_URL = `http://localhost:${api}`;
+  process.env.BOARD_E2E_PUBLIC_URL = `http://localhost:${publicApi}`;
   return teardown;
 }

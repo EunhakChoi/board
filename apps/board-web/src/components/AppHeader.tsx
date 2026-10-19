@@ -1,15 +1,19 @@
-import { Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useLocale, useT } from "@/lib/i18n";
+import { useMe, useSignOut } from "@/lib/queries";
 import { useUiTheme } from "@/lib/theme";
 
 export function AppHeader({ children, actions }: { children?: ReactNode; actions?: ReactNode }) {
   const t = useT();
   const { locale, setLocale } = useLocale();
   const { dark, toggle } = useUiTheme();
+  const me = useMe();
+  const signOut = useSignOut();
+  const signedIn = me.data && me.data.kind !== "local" ? me.data : undefined;
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-3">
       <Link
@@ -41,6 +45,27 @@ export function AppHeader({ children, actions }: { children?: ReactNode; actions
         >
           {dark ? <Sun /> : <Moon />}
         </Button>
+        {signedIn && (
+          <>
+            <span
+              className="max-w-40 truncate text-sm text-muted-foreground"
+              title={signedIn.email}
+            >
+              {signedIn.name}
+            </span>
+            {signedIn.kind === "user" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => signOut.mutate()}
+                aria-label={t("web.auth.signOut")}
+                title={t("web.auth.signOut")}
+              >
+                <LogOut />
+              </Button>
+            )}
+          </>
+        )}
       </div>
     </header>
   );

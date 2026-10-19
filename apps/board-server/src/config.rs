@@ -11,6 +11,24 @@ const DEFAULT_PREVIEW_BIND: &str = "127.0.0.1:5281";
 const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
 const DEFAULT_RENDER_URL: &str = "http://127.0.0.1:5283";
 
+/// The `OpenID` Connect client: `BOARD_OIDC_ISSUER` (default Google), `BOARD_OIDC_CLIENT_ID`,
+/// `BOARD_OIDC_CLIENT_SECRET` (or `_FILE`).
+#[derive(Clone, PartialEq, Eq)]
+pub struct OidcConfig {
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+impl std::fmt::Debug for OidcConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OidcConfig")
+            .field("issuer", &self.issuer)
+            .field("client_id", &self.client_id)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Where board keeps its data (`BOARD_HOME`, default `~/.board`).
@@ -39,6 +57,10 @@ pub struct Config {
     pub web_dir: Option<PathBuf>,
     /// The tool's address as browsers reach it (`BOARD_PUBLIC_URL`), e.g. behind a tunnel.
     pub public_url: Option<String>,
+    /// Sign-in for a public server; required with `--public`.
+    pub oidc: Option<OidcConfig>,
+    /// Addresses that become admins on their first sign-in (`BOARD_ADMIN_EMAILS`, comma-separated).
+    pub admin_emails: Vec<String>,
     /// Daily check for a new release (`BOARD_UPDATE_CHECK=false` turns it off).
     pub update_check: bool,
 }
@@ -117,10 +139,16 @@ impl Config {
             env("BOARD_UPDATE_CHECK").as_deref().map(str::trim),
             Some("false" | "0" | "off" | "no")
         );
+        let oidc = oidc(&env)?;
         if public {
-            // Sign-in (OIDC) lands in P1. Until then a public server would be open to anyone.
-            return Err("--public needs sign-in, which is not available yet".to_owned());
+            check_public(oidc.as_ref(), public_url.as_deref())?;
         }
+        let admin_emails = env("BOARD_ADMIN_EMAILS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
         Ok(Self {
             home,
             bind,
@@ -135,6 +163,8 @@ impl Config {
             render_preview_url,
             web_dir,
             public_url,
+            oidc,
+            admin_emails,
             update_check,
         })
     }
@@ -167,9 +197,49 @@ impl Config {
         !self.public && (self.container || self.bind.ip().is_loopback())
     }
 
+    /// Where the identity provider sends people back.
+    pub fn oidc_redirect(&self) -> String {
+        format!("{}/api/auth/oidc/callback", self.tool_url())
+    }
+
     pub fn data_dir(&self) -> PathBuf {
         self.home.join("data")
     }
+}
+
+/// A public server needs sign-in and the fixed address the provider sends people back to.
+fn check_public(oidc: Option<&OidcConfig>, public_url: Option<&str>) -> Result<(), String> {
+    // A public server without sign-in would be open to anyone.
+    if oidc.is_none() {
+        return Err("--public needs sign-in: set BOARD_OIDC_CLIENT_ID and \
+                 BOARD_OIDC_CLIENT_SECRET (see docs/public.md)"
+            .to_owned());
+    }
+    // The provider sends people back to one fixed address.
+    if public_url.is_none() {
+        return Err("--public needs BOARD_PUBLIC_URL, the fixed address people open".to_owned());
+    }
+    Ok(())
+}
+
+/// The sign-in client, when both halves are set.
+fn oidc(env: &impl Fn(&str) -> Option<String>) -> Result<Option<OidcConfig>, String> {
+    let client_id = env("BOARD_OIDC_CLIENT_ID").filter(|v| !v.trim().is_empty());
+    let client_secret = secret(env, "BOARD_OIDC_CLIENT_SECRET")?;
+    let oidc = match (client_id, client_secret) {
+        (Some(client_id), Some(client_secret)) => Some(OidcConfig {
+            issuer: env("BOARD_OIDC_ISSUER")
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "https://accounts.google.com".to_owned()),
+            client_id: client_id.trim().to_owned(),
+            client_secret,
+        }),
+        (None, None) => None,
+        _ => {
+            return Err("set both BOARD_OIDC_CLIENT_ID and BOARD_OIDC_CLIENT_SECRET".to_owned());
+        }
+    };
+    Ok(oidc)
 }
 
 fn flag(value: Option<&str>) -> bool {
@@ -307,9 +377,48 @@ mod tests {
     }
 
     #[test]
-    fn public_waits_for_sign_in() {
+    fn public_needs_sign_in_and_a_fixed_address() {
         let error = config(&["--public"], &[("HOME", "/h")]).unwrap_err();
         assert!(error.contains("sign-in"));
+        let client = [
+            ("HOME", "/h"),
+            ("BOARD_OIDC_CLIENT_ID", "id"),
+            ("BOARD_OIDC_CLIENT_SECRET", "secret"),
+            ("BOARD_ADMIN_EMAILS", " Boss@Example.com, ,ann@example.com"),
+        ];
+        assert!(
+            config(&["--public"], &client)
+                .unwrap_err()
+                .contains("BOARD_PUBLIC_URL")
+        );
+        let env = [
+            client.as_slice(),
+            &[
+                ("BOARD_PUBLIC_URL", "https://board.example.com"),
+                ("BOARD_BIND", "0.0.0.0:5280"),
+                ("BOARD_PREVIEW_BIND", "0.0.0.0:5281"),
+            ],
+        ]
+        .concat();
+        let config = config(&["--public"], &env).unwrap();
+        assert!(!config.local_mode());
+        let oidc = config.oidc.clone().unwrap();
+        assert_eq!(oidc.issuer, "https://accounts.google.com");
+        assert!(
+            !format!("{oidc:?}").contains("secret"),
+            "the secret stays out of logs"
+        );
+        assert_eq!(config.admin_emails, ["boss@example.com", "ann@example.com"]);
+        assert_eq!(
+            config.oidc_redirect(),
+            "https://board.example.com/api/auth/oidc/callback"
+        );
+    }
+
+    #[test]
+    fn oidc_needs_both_halves() {
+        let error = config(&[], &[("HOME", "/h"), ("BOARD_OIDC_CLIENT_ID", "id")]).unwrap_err();
+        assert!(error.contains("BOARD_OIDC_CLIENT_SECRET"));
     }
 
     #[test]

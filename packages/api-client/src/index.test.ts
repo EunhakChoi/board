@@ -16,6 +16,7 @@ test("calls the contract path with the bearer token", async () => {
   assert.deepEqual(data, { ok: true });
   assert.equal(seen?.url, "http://board.test/api/health");
   assert.equal(seen?.headers.get("authorization"), "Bearer t0k");
+  assert.equal(seen?.headers.get("x-board-client"), "board");
 });
 
 test("returns the shared error shape", async () => {

@@ -3,12 +3,15 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use board_model::{Comment, CommentStatus, Project, Reply, Version, VersionKind};
+use board_model::{
+    Comment, CommentStatus, Project, Reply, Role, User, UserStatus, Version, VersionKind,
+};
 
 use crate::{
-    Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind, Comments, Engine,
-    FileChange, NewComment, NewReply, Ports, PreviewSettings, ProjectStore, Records, RenderJob,
-    Renderer, Settings, Shot, StoreError, Workspace, WorkspaceError,
+    Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuiltFile, Capture, Captures,
+    Change, ChangeKind, Claims, Comments, Engine, FileChange, Identity, NewComment, NewReply,
+    NewUser, Ports, PreviewSettings, ProjectStore, Records, RenderJob, Renderer, Settings, Shot,
+    SignInSettings, StoreError, Workspace, WorkspaceError as IdpError, WorkspaceError,
 };
 
 /// The fakes behind an engine, for tests that steer or inspect them.
@@ -64,6 +67,7 @@ fn engine_with(fakes: &Fakes) -> Engine {
             renderer: fakes.renderer.clone(),
             captures: Arc::new(MemoryCaptures::default()),
             comments: Arc::new(MemoryComments::default()),
+            accounts: Arc::new(MemoryAccounts::default()),
         },
         true,
     )
@@ -542,5 +546,218 @@ impl ProjectStore for MemoryStore {
         }
         changes.sort_by(|x, y| x.path.cmp(&y.path));
         Ok(changes)
+    }
+}
+
+/// An engine with sign-in on (not local mode), behind a scripted identity provider.
+pub fn engine_with_sign_in(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>) {
+    let idp = Arc::new(FakeIdentity::default());
+    let mut engine = engine_with(&fakes()).with_sign_in(SignInSettings {
+        identity: idp.clone(),
+        admin_emails: admin_emails.iter().map(|e| (*e).to_owned()).collect(),
+    });
+    engine.local_mode = false;
+    (engine, idp)
+}
+
+/// Adds an allowlist rule straight to the accounts.
+pub fn allow(engine: &Engine, kind: &str, value: &str) {
+    engine.ports.accounts.add_allow_rule(kind, value).unwrap();
+}
+
+/// Accounts in memory.
+#[derive(Default)]
+pub struct MemoryAccounts {
+    users: Mutex<Vec<(String, String, User)>>,
+    sessions: Mutex<HashMap<String, (String, u64)>>,
+    setup: Mutex<Option<String>>,
+    rules: Mutex<Vec<AllowRule>>,
+}
+
+impl Accounts for MemoryAccounts {
+    fn user(&self, id: &str) -> Result<Option<User>, StoreError> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|u| u.2.id == id)
+            .map(|u| u.2.clone()))
+    }
+
+    fn user_by_subject(&self, provider: &str, subject: &str) -> Result<Option<User>, StoreError> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|u| u.0 == provider && u.1 == subject)
+            .map(|u| u.2.clone()))
+    }
+
+    fn insert_user(&self, new: &NewUser) -> Result<User, StoreError> {
+        let user = User {
+            id: new.id.clone(),
+            email: new.email.clone(),
+            name: new.name.clone(),
+            avatar_url: new.avatar_url.clone(),
+            role: new.role,
+            status: new.status,
+            created_at: "2026-10-19T00:00:00Z".into(),
+        };
+        self.users
+            .lock()
+            .unwrap()
+            .push((new.provider.clone(), new.subject.clone(), user.clone()));
+        Ok(user)
+    }
+
+    fn update_profile(
+        &self,
+        id: &str,
+        email: &str,
+        name: &str,
+        avatar_url: Option<&str>,
+    ) -> Result<(), StoreError> {
+        for u in self
+            .users
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|u| u.2.id == id)
+        {
+            u.2.email = email.into();
+            u.2.name = name.into();
+            u.2.avatar_url = avatar_url.map(Into::into);
+        }
+        Ok(())
+    }
+
+    fn set_access(&self, id: &str, role: Role, status: UserStatus) -> Result<(), StoreError> {
+        for u in self
+            .users
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|u| u.2.id == id)
+        {
+            u.2.role = role;
+            u.2.status = status;
+        }
+        Ok(())
+    }
+
+    fn has_admin(&self) -> Result<bool, StoreError> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|u| u.2.role == Role::Admin && u.2.status == UserStatus::Active))
+    }
+
+    fn insert_session(
+        &self,
+        token_hash: &str,
+        user: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .insert(token_hash.into(), (user.into(), expires_at));
+        Ok(())
+    }
+
+    fn session_user(&self, token_hash: &str, now: u64) -> Result<Option<User>, StoreError> {
+        let user = self
+            .sessions
+            .lock()
+            .unwrap()
+            .get(token_hash)
+            .filter(|(_, expires)| *expires > now)
+            .map(|(user, _)| user.clone());
+        match user {
+            Some(id) => self.user(&id),
+            None => Ok(None),
+        }
+    }
+
+    fn delete_session(&self, token_hash: &str) -> Result<(), StoreError> {
+        self.sessions.lock().unwrap().remove(token_hash);
+        Ok(())
+    }
+
+    fn set_setup_token(&self, token_hash: &str) -> Result<(), StoreError> {
+        *self.setup.lock().unwrap() = Some(token_hash.into());
+        Ok(())
+    }
+
+    fn take_setup_token(&self, token_hash: &str) -> Result<bool, StoreError> {
+        let mut setup = self.setup.lock().unwrap();
+        if setup.as_deref() == Some(token_hash) {
+            *setup = None;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn allow_rules(&self) -> Result<Vec<AllowRule>, StoreError> {
+        Ok(self.rules.lock().unwrap().clone())
+    }
+
+    fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError> {
+        let mut rules = self.rules.lock().unwrap();
+        let rule = AllowRule {
+            id: i64::try_from(rules.len()).unwrap() + 1,
+            kind: kind.into(),
+            value: value.into(),
+        };
+        rules.push(rule.clone());
+        Ok(rule)
+    }
+}
+
+/// An identity provider that answers what the test told it to.
+#[derive(Default)]
+pub struct FakeIdentity {
+    requests: Mutex<Vec<AuthRequest>>,
+    claims: Mutex<Option<Claims>>,
+}
+
+impl FakeIdentity {
+    /// The `state` of the last sign-in the engine started.
+    pub fn last_state(&self) -> String {
+        self.requests.lock().unwrap().last().unwrap().state.clone()
+    }
+
+    /// The claims the next exchange returns.
+    pub fn next(&self, subject: &str, email: &str, verified: bool) {
+        *self.claims.lock().unwrap() = Some(Claims {
+            subject: subject.into(),
+            email: email.into(),
+            email_verified: verified,
+            name: None,
+            picture: None,
+        });
+    }
+}
+
+impl Identity for FakeIdentity {
+    fn provider(&self) -> &'static str {
+        "fake"
+    }
+
+    fn authorize_url(&self, request: &AuthRequest) -> Result<String, IdpError> {
+        self.requests.lock().unwrap().push(request.clone());
+        Ok(format!("https://idp.test/auth?state={}", request.state))
+    }
+
+    fn exchange(&self, _code: &str, _verifier: &str, _nonce: &str) -> Result<Claims, IdpError> {
+        self.claims
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| IdpError::Failed("no claims scripted".into()))
     }
 }

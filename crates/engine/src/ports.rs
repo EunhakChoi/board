@@ -315,3 +315,107 @@ pub trait Comments: Send + Sync {
     /// Deletes every snapshot file of `project` (its rows go with the project).
     fn remove_project(&self, project: &str) -> Result<(), StoreError>;
 }
+
+/// A new account, as the first sign-in creates it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewUser {
+    pub id: String,
+    pub provider: String,
+    pub subject: String,
+    pub email: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub role: board_model::Role,
+    pub status: board_model::UserStatus,
+}
+
+/// Domains and addresses that are let in on their first sign-in.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllowRule {
+    pub id: i64,
+    /// `domain` (`example.com`) or `email` (`someone@example.com`).
+    pub kind: String,
+    pub value: String,
+}
+
+/// Accounts, sessions and admission rules kept by the database. Tokens arrive hashed.
+pub trait Accounts: Send + Sync {
+    fn user(&self, id: &str) -> Result<Option<board_model::User>, StoreError>;
+    /// The account the provider knows as `subject`.
+    fn user_by_subject(
+        &self,
+        provider: &str,
+        subject: &str,
+    ) -> Result<Option<board_model::User>, StoreError>;
+    fn insert_user(&self, user: &NewUser) -> Result<board_model::User, StoreError>;
+    /// Refreshes what the provider says about the person (name, picture, address).
+    fn update_profile(
+        &self,
+        id: &str,
+        email: &str,
+        name: &str,
+        avatar_url: Option<&str>,
+    ) -> Result<(), StoreError>;
+    fn set_access(
+        &self,
+        id: &str,
+        role: board_model::Role,
+        status: board_model::UserStatus,
+    ) -> Result<(), StoreError>;
+    /// Whether any active admin exists (until one does, the setup link is the way in).
+    fn has_admin(&self) -> Result<bool, StoreError>;
+    fn insert_session(
+        &self,
+        token_hash: &str,
+        user: &str,
+        expires_at: u64,
+    ) -> Result<(), StoreError>;
+    /// The account behind a session that has not expired at `now`.
+    fn session_user(
+        &self,
+        token_hash: &str,
+        now: u64,
+    ) -> Result<Option<board_model::User>, StoreError>;
+    fn delete_session(&self, token_hash: &str) -> Result<(), StoreError>;
+    /// Replaces any unused setup token with this one.
+    fn set_setup_token(&self, token_hash: &str) -> Result<(), StoreError>;
+    /// Uses up the setup token. False when it is not the current unused one.
+    fn take_setup_token(&self, token_hash: &str) -> Result<bool, StoreError>;
+    fn allow_rules(&self) -> Result<Vec<AllowRule>, StoreError>;
+    fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError>;
+}
+
+/// What the identity provider says about the person who signed in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claims {
+    pub subject: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub name: Option<String>,
+    pub picture: Option<String>,
+}
+
+/// One sign-in round trip the provider is asked to start.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthRequest {
+    pub state: String,
+    pub nonce: String,
+    /// PKCE `S256` challenge of the verifier the engine keeps.
+    pub code_challenge: String,
+}
+
+/// The sign-in provider (OIDC). Implemented by `board-oidc`.
+pub trait Identity: Send + Sync {
+    /// Short name stored with accounts (`google`, or the issuer's host).
+    fn provider(&self) -> &str;
+    /// Where to send the browser to sign in.
+    fn authorize_url(&self, request: &AuthRequest) -> Result<String, WorkspaceError>;
+    /// Trades the callback's `code` for the person's claims, checking `nonce`.
+    fn exchange(
+        &self,
+        code: &str,
+        code_verifier: &str,
+        nonce: &str,
+    ) -> Result<Claims, WorkspaceError>;
+}

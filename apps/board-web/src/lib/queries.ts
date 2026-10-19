@@ -198,3 +198,21 @@ export function useAnswer(key: string) {
     onSettled: () => client.invalidateQueries({ queryKey: ["comments", key] }),
   });
 }
+
+/** Who is looking: the local admin, a member, a guest, or someone waiting for approval. */
+export function useMe() {
+  return useQuery({
+    queryKey: ["me"],
+    retry: (count, error) => !(error instanceof HttpError && error.status < 500) && count < 3,
+    queryFn: () => unwrap(api.GET("/api/auth/me")),
+    // Someone waiting for approval is let in as soon as an admin approves.
+    refetchInterval: (query) => (query.state.data?.kind === "pending" ? 5_000 : false),
+  });
+}
+
+export function useSignOut() {
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/api/auth/logout")).catch(() => undefined),
+    onSettled: () => window.location.assign("/signin"),
+  });
+}

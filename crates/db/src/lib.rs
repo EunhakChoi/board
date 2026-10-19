@@ -1,5 +1,6 @@
 //! SQLite persistence for people, access, branches, comments and jobs.
 
+mod accounts;
 mod captures;
 mod comments;
 
@@ -20,6 +21,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0002_projects.sql"),
     include_str!("migrations/0003_captures.sql"),
     include_str!("migrations/0004_comments.sql"),
+    include_str!("migrations/0005_accounts.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.

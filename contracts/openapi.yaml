@@ -68,6 +68,64 @@ paths:
                 $ref: "#/components/schemas/Me"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/auth/oidc/start:
+    get:
+      tags: [auth]
+      operationId: startSignIn
+      summary: Sends the browser to the identity provider to sign in
+      parameters:
+        - name: setup
+          in: query
+          description: Token from the one-time setup link; its first user becomes the admin
+          schema:
+            type: string
+        - name: returnTo
+          in: query
+          description: Path on the tool to come back to
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the provider
+        "503":
+          description: Sign-in is not configured or the provider does not answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/auth/oidc/callback:
+    get:
+      tags: [auth]
+      operationId: finishSignIn
+      summary: The provider sends the browser back here
+      description: >-
+        Sets the session cookie and redirects to `returnTo`, or redirects to
+        `/signin?error=<code>` (`setup_required`, `email_unverified`, `rejected`, `removed`,
+        `cancelled`, `expired`, `unavailable`, `failed`).
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the tool
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Ends the session
+      responses:
+        "204":
+          description: Signed out
   /api/projects:
     get:
       tags: [projects]
@@ -1263,13 +1321,17 @@ components:
       properties:
         kind:
           type: string
-          enum: [user, guest, local]
-          description: "`local` is the built-in admin of local mode (no sign-in)"
+          enum: [user, guest, local, pending]
+          description: >-
+            `local` is the built-in admin of local mode (no sign-in); `pending` signed in and
+            waits for an admin to approve the access request
         id:
           type: string
         name:
           type: string
         email:
+          type: string
+        avatarUrl:
           type: string
         role:
           $ref: "#/components/schemas/Role"

@@ -91,8 +91,8 @@ Data goes to `~/.board` (`BOARD_HOME`).
 
 ## Security notes
 
-- Local mode trusts everyone who reaches the ports. Do not publish them beyond loopback; a public
-  mode with sign-in comes later.
+- Local mode trusts everyone who reaches the ports. Do not publish them beyond loopback; to share
+  board with a team use [public mode](public.md).
 - Project code (dependency installs, builds) runs only in board-workspace, with install scripts
   turned off and a minimal environment. Previews run in the browser on their own origin with a
   signed, short-lived token.

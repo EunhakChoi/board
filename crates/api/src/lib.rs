@@ -2,6 +2,7 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
+mod auth;
 mod browse;
 mod captures;
 mod comments;
@@ -11,14 +12,15 @@ mod projects;
 mod web;
 
 use axum::extract::DefaultBodyLimit;
-use axum::extract::{FromRequestParts, State};
-use axum::http::request::Parts;
+use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use board_engine::{Engine, ServiceState};
+use board_engine::{Engine, ServiceState, SessionState};
 use board_model::{Actor, Role, VERSION};
 use serde::Serialize;
 
+pub use auth::{CLIENT_HEADER, Caller, SESSION_COOKIE};
 pub use error::ApiError;
 pub use preview::{PreviewOrigin, preview_router};
 
@@ -28,6 +30,9 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/version"),
     ("get", "/api/system"),
     ("get", "/api/auth/me"),
+    ("get", "/api/auth/oidc/start"),
+    ("get", "/api/auth/oidc/callback"),
+    ("post", "/api/auth/logout"),
     ("get", "/api/projects"),
     ("post", "/api/projects"),
     ("get", "/api/projects/{key}"),
@@ -82,6 +87,9 @@ fn routes() -> Router<Engine> {
         .route("/api/version", get(version))
         .route("/api/system", get(system))
         .route("/api/auth/me", get(me))
+        .route("/api/auth/oidc/start", get(auth::start))
+        .route("/api/auth/oidc/callback", get(auth::callback))
+        .route("/api/auth/logout", post(auth::logout))
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/{key}",
@@ -212,17 +220,53 @@ async fn system(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Me {
+    /// `local`, `user`, `guest`, or `pending` (signed in, waiting for an admin).
     kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
     role: Role,
     local_mode: bool,
 }
 
-async fn me(State(engine): State<Engine>, Caller(actor): Caller) -> Json<Me> {
+/// Who is calling. Unlike other routes this answers for people still waiting for approval, so
+/// the tool can show them the waiting page.
+async fn me(State(engine): State<Engine>, headers: HeaderMap) -> Result<Json<Me>, ApiError> {
+    let local_mode = engine.local_mode();
+    let state = if local_mode {
+        SessionState::Active(Actor::Local)
+    } else {
+        let token = auth::cookie(&headers, SESSION_COOKIE).ok_or_else(ApiError::unauthorized)?;
+        let engine = engine.clone();
+        projects::blocking(move || engine.session(&token))
+            .await?
+            .ok_or_else(ApiError::unauthorized)?
+    };
+    let actor = match state {
+        SessionState::Active(actor) => actor,
+        SessionState::Waiting(user) => {
+            return Ok(Json(Me {
+                kind: "pending",
+                id: Some(user.id),
+                name: user.name,
+                email: Some(user.email),
+                avatar_url: user.avatar_url,
+                role: user.role,
+                local_mode,
+            }));
+        }
+        SessionState::Refused(refusal) => {
+            return Err(ApiError::new(
+                axum::http::StatusCode::FORBIDDEN,
+                refusal.code(),
+                "You do not have access to this board",
+            ));
+        }
+    };
     let role = actor.role();
     let name = actor.name().to_owned();
     let (kind, id, email) = match actor {
@@ -230,34 +274,17 @@ async fn me(State(engine): State<Engine>, Caller(actor): Caller) -> Json<Me> {
         Actor::User { id, email, .. } => ("user", Some(id), Some(email)),
         Actor::Guest { id, .. } => ("guest", Some(id), None),
     };
-    Json(Me {
+    Ok(Json(Me {
         kind,
         id,
         name,
         email,
+        avatar_url: None,
         role,
-        local_mode: engine.local_mode(),
-    })
+        local_mode,
+    }))
 }
 
 async fn not_found() -> ApiError {
     ApiError::not_found("no such route")
-}
-
-/// Who is calling. Only local mode exists so far; sign-in arrives in P1.
-struct Caller(Actor);
-
-impl FromRequestParts<Engine> for Caller {
-    type Rejection = ApiError;
-
-    fn from_request_parts(
-        _parts: &mut Parts,
-        engine: &Engine,
-    ) -> impl Future<Output = Result<Self, ApiError>> + Send {
-        std::future::ready(if engine.local_mode() {
-            Ok(Caller(Actor::Local))
-        } else {
-            Err(ApiError::unauthorized())
-        })
-    }
 }

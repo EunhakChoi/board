@@ -295,3 +295,41 @@ mod tests {
         assert_eq!(Actor::Local.role(), Role::Admin);
     }
 }
+
+/// Where a signed-in account stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserStatus {
+    /// Signed in from outside the allowlist; waiting for an admin (an access request).
+    Pending,
+    Active,
+    /// An admin turned the access request down.
+    Rejected,
+    /// An admin took access away.
+    Removed,
+}
+
+/// An account that signed in through the identity provider (OIDC).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct User {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+    pub role: Role,
+    pub status: UserStatus,
+    pub created_at: String,
+}
+
+impl User {
+    /// The actor for requests this user makes.
+    pub fn actor(&self) -> Actor {
+        Actor::User {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            email: self.email.clone(),
+            role: self.role,
+        }
+    }
+}

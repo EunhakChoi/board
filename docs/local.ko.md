@@ -89,8 +89,8 @@ node apps/board-cli/src/main.ts serve    # server + workspace + render, Ctrl-C �
 
 ## 보안 참고
 
-- 로컬 모드는 port 에 닿는 모든 사람을 신뢰함. loopback 밖으로 port 공개 금지 — 로그인이 있는 공개
-  모드는 이후 단계.
+- 로컬 모드는 port 에 닿는 모든 사람을 신뢰함. loopback 밖으로 port 공개 금지 — 팀과 함께 쓰려면
+  [외부 공개 모드](public.ko.md) 사용.
 - 프로젝트 코드 (의존성 install · build) 는 board-workspace 안에서만 실행, install script 끔 · 최소
   환경 변수. 미리보기는 별도 origin 의 browser 에서 실행, 서명된 짧은 수명 token 사용.
 - 외부 호출은 하루 1회 새 버전 확인뿐 (`BOARD_UPDATE_CHECK=false` 로 끔). 코드 · 화면 · 사용 정보
