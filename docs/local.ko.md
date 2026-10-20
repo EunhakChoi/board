@@ -127,6 +127,8 @@ node apps/charet-cli/src/main.ts serve    # server + workspace + render, Ctrl-C 
   [외부 공개 모드](public.ko.md) 사용.
 - 프로젝트 코드 (의존성 install · build) 는 charet-workspace 안에서만 실행, install script 끔 · 최소
   환경 변수. 미리보기는 별도 origin 의 browser 에서 실행, 서명된 짧은 수명 token 사용.
+- install · build 때 code 를 실행하는 파일 (package manifest · lockfile · build 설정) 변경은 관리자
+  승인 대기. 승인 전 미리보기는 `main` 의 파일 사용 ([변경 흐름](workflow.ko.md#채택)).
 - 외부 호출은 하루 1회 새 버전 확인뿐 (`CHARET_UPDATE_CHECK=false` 로 끔). 코드 · 화면 · 사용 정보
   전송 없음.
 
