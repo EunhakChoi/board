@@ -15,6 +15,8 @@ push ─▶ draft ─▶ in review ─▶ merge check ─▶ version vN on main
 
 - `charet push -m "…"` from a checkout of `main` starts a **draft** with the changes, and the
   checkout follows it. Later pushes add to it. The push prints the branch link.
+- In the web tool, the **Agent** panel starts a draft from a request in plain words and keeps
+  adding to it ([web agent](agent.md)).
 - A draft is its author's: only they (or an admin) push to it, ask for review, archive or reopen
   it. Others can **duplicate** it to carry on as their own.
 - `charet branch review` (or **Request review** on the branch page) opens it to the team: every

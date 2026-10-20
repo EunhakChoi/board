@@ -15,6 +15,8 @@ push ─▶ 임시 수정안 ─▶ 검토 중 ─▶ 채택 검사 ─▶ main 
 
 - `main` checkout 에서 `charet push -m "…"` → 변경을 담은 **임시 수정안** 생성, checkout 이 그
   수정안을 따라감. 이후 push 는 같은 수정안에 추가. push 출력에 수정안 link 표시.
+- Web tool 의 **Agent** 패널: 말로 한 요청으로 임시 수정안 생성, 이후 요청도 같은 수정안에 추가
+  ([web agent](agent.ko.md)).
 - 임시 수정안 = 작성자 소유. 작성자 (또는 관리자) 만 push · 검토 요청 · 보관 · 다시 열기. 다른
   사람은 **복제** 해서 자기 것으로 이어감.
 - `charet branch review` (또는 수정안 화면의 **검토 요청**) → 팀에 공개. 편집 권한 누구나 push ·
