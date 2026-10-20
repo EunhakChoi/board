@@ -383,6 +383,8 @@ pub struct NewComment {
     pub body: String,
     pub author: charet_model::Person,
     pub commit: String,
+    /// The branch whose screen it is on; `None` = main.
+    pub branch: Option<u32>,
 }
 
 /// A thread entry to store, with the status it sets (resolve, reopen).

@@ -1077,6 +1077,8 @@ export interface components {
             rev: number;
             createdAt: string;
             updatedAt: string;
+            /** @description Made on this branch's screen (absent = on main) */
+            branch?: number;
             replies: {
                 id: number;
                 author: components["schemas"]["Person"];
@@ -1247,7 +1249,7 @@ export interface components {
         Notification: {
             id: number;
             /** @enum {string} */
-            kind: "comment.added" | "comment.replied" | "comment.resolved" | "comment.reopened";
+            kind: "comment.added" | "comment.replied" | "comment.resolved" | "comment.reopened" | "branch.review" | "branch.merged" | "branch.clash";
             project: string | null;
             actor: string;
             /** @description One line for people */
@@ -2897,6 +2899,8 @@ export interface operations {
                 status?: "open" | "resolved" | "all";
                 kind?: "screen" | "story";
                 target?: string;
+                /** @description Comments on this branch's screens instead of main's */
+                branch?: number;
             };
             header?: never;
             path: {
@@ -2945,6 +2949,8 @@ export interface operations {
                         selector: string;
                     };
                     body: string;
+                    /** @description Comment on this branch's screen (a spot of its live preview) */
+                    branch?: number;
                 };
             };
         };

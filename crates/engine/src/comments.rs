@@ -25,6 +25,8 @@ pub enum At {
 /// Which comments to list.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommentFilter {
+    /// Comments on this branch's screens; `None` = on main.
+    pub branch: Option<u32>,
     pub status: Option<CommentStatus>,
     pub kind: Option<String>,
     pub target: Option<String>,
@@ -87,8 +89,50 @@ impl Engine {
         at: &At,
         body: &str,
     ) -> Result<Comment, EngineError> {
+        self.comment_on(actor, key, None, kind, target, theme, at, body)
+    }
+
+    /// Adds a comment on a branch's screen: it points at a spot of the live preview (branches
+    /// have no captures), and is listed with the branch, not on main.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_branch_comment(
+        &self,
+        actor: &Actor,
+        key: &str,
+        branch: u32,
+        kind: &str,
+        target: &str,
+        theme: &str,
+        at: &At,
+        body: &str,
+    ) -> Result<Comment, EngineError> {
+        self.comment_on(actor, key, Some(branch), kind, target, theme, at, body)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn comment_on(
+        &self,
+        actor: &Actor,
+        key: &str,
+        branch: Option<u32>,
+        kind: &str,
+        target: &str,
+        theme: &str,
+        at: &At,
+        body: &str,
+    ) -> Result<Comment, EngineError> {
         let project = self.visible(actor, key, Command::CommentAdd)?;
         let body = check_body(body)?;
+        let branch_head = match branch {
+            Some(number) => Some(
+                self.ports
+                    .records
+                    .branch(key, number)?
+                    .ok_or(EngineError::NotFound("branch"))?
+                    .head,
+            ),
+            None => None,
+        };
         if !matches!(kind, "screen" | "story") {
             return Err(EngineError::Invalid(format!(
                 "kind must be screen or story, not {kind:?}"
@@ -97,12 +141,15 @@ impl Engine {
         if !crate::THEMES.contains(&theme) {
             return Err(EngineError::Invalid(format!("unknown theme {theme:?}")));
         }
-        let capture = self
-            .ports
-            .captures
-            .list(key)?
-            .into_iter()
-            .find(|c| c.kind == kind && c.target == target && c.theme == theme);
+        let capture = if branch.is_some() {
+            None
+        } else {
+            self.ports
+                .captures
+                .list(key)?
+                .into_iter()
+                .find(|c| c.kind == kind && c.target == target && c.theme == theme)
+        };
         let map = match &capture {
             Some(_) => self.ports.captures.elements(key, kind, target, theme)?,
             None => None,
@@ -133,9 +180,10 @@ impl Engine {
                     })
                 })?,
         };
-        let commit = match &capture {
-            Some(capture) => capture.commit.clone(),
-            None => self.resolve(key, "main")?,
+        let commit = match (&capture, branch_head) {
+            (_, Some(head)) => head,
+            (Some(capture), None) => capture.commit.clone(),
+            (None, None) => self.resolve(key, "main")?,
         };
         let snapshot = match &capture {
             Some(_) => self.ports.captures.image(key, kind, target, theme)?,
@@ -149,6 +197,7 @@ impl Engine {
             body,
             author: actor.person(),
             commit,
+            branch,
         };
         let comment = self
             .ports
@@ -175,6 +224,7 @@ impl Engine {
             .comments
             .list(key)?
             .into_iter()
+            .filter(|c| c.branch == filter.branch)
             .filter(|c| filter.status.is_none_or(|s| c.status == s))
             .filter(|c| filter.kind.as_ref().is_none_or(|k| &c.kind == k))
             .filter(|c| filter.target.as_ref().is_none_or(|t| &c.target == t))
@@ -273,6 +323,7 @@ impl Engine {
         let map = elements(map);
         for comment in self.ports.comments.list(key)? {
             if comment.status != CommentStatus::Open
+                || comment.branch.is_some()
                 || comment.kind != kind
                 || comment.target != target
                 || comment.theme != theme

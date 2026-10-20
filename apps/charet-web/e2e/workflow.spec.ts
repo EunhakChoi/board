@@ -1,5 +1,5 @@
-// A change from branch to version: proposed (as an agent's push would), compared, merged in the
-// web tool, then restored. Last in the run, since it moves main.
+// A change from branch to version: proposed (as an agent's push would), compared, commented on,
+// merged in the web tool, then restored. Last in the run, since it moves main.
 
 import { expect, test } from "@playwright/test";
 
@@ -42,6 +42,34 @@ test("a branch is compared, merged and restored", async ({ page, request }) => {
   await expect(
     page.frameLocator("figure iframe").nth(0).getByText("Tasks", { exact: true }),
   ).toBeVisible();
+
+  // A comment on a spot of the new screen stays with the branch, not main.
+  await page.getByRole("button", { name: "Comment" }).click();
+  await page
+    .locator("figure")
+    .nth(1)
+    .locator("iframe")
+    .locator("..")
+    .locator("div.absolute")
+    .click({
+      position: { x: 40, y: 30 },
+    });
+  await page.getByPlaceholder(/Comment on this spot/).fill("Is today the right word?");
+  await page.getByRole("button", { name: "Comment", exact: true }).last().click();
+  await expect(page.getByText("Is today the right word?")).toBeVisible();
+  await expect(page.locator('[data-testid^="pin-"]')).toHaveCount(1);
+  const onBranch = await (
+    await request.get(`${base()}/api/projects/demo/comments?branch=${number}`)
+  ).json();
+  expect(onBranch.comments.map((c: { body: string }) => c.body)).toContain(
+    "Is today the right word?",
+  );
+  const onMain = await (
+    await request.get(`${base()}/api/projects/demo/comments?status=all`)
+  ).json();
+  expect(onMain.comments.map((c: { body: string }) => c.body)).not.toContain(
+    "Is today the right word?",
+  );
 
   await page.getByRole("radio", { name: "Code" }).click();
   await expect(page.getByText(FILE).last()).toBeVisible();

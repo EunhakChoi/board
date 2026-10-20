@@ -17,12 +17,17 @@ export function parseCommentId(ctx: Context, id: string | undefined): number {
 export interface ListOptions {
   status: "open" | "resolved" | "all";
   on?: string;
+  /** Comments on this branch's screens instead of main's. */
+  branch?: number;
 }
 
 /** Lists comments. Exit code 1 while some listed comment is open, so scripts can wait on it. */
 export async function list(ctx: Context, project: string, options: ListOptions): Promise<number> {
-  const query: { status: ListOptions["status"]; target?: string } = { status: options.status };
+  const query: { status: ListOptions["status"]; target?: string; branch?: number } = {
+    status: options.status,
+  };
   if (options.on) query.target = options.on;
+  if (options.branch) query.branch = options.branch;
   const { data, error } = await client(ctx).GET("/api/projects/{key}/comments", {
     params: { path: { key: project }, query },
   });

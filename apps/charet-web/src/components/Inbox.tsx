@@ -123,7 +123,25 @@ function describe(t: ReturnType<typeof useT>, n: Notification): string {
       return t("web.inbox.resolved", { actor: n.actor, target });
     case "comment.reopened":
       return t("web.inbox.reopened", { actor: n.actor, target });
+    case "branch.review":
+      return t("web.inbox.branchReview", { actor: n.actor, branch: branchName(n) });
+    case "branch.merged":
+      return t("web.inbox.branchMerged", {
+        actor: n.actor,
+        branch: branchName(n),
+        version: String(n.data.version ?? ""),
+      });
+    case "branch.clash":
+      return t("web.inbox.branchClash", {
+        branch: branchName(n),
+        files: Array.isArray(n.data.conflicts) ? n.data.conflicts.join(", ") : "",
+      });
     default:
       return n.text;
   }
+}
+
+function branchName(n: Notification): string {
+  const title = typeof n.data.title === "string" ? n.data.title : "";
+  return `#${String(n.data.branch ?? "")} ${title}`.trim();
 }

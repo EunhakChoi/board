@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { TargetKind } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -12,6 +12,7 @@ export function Live({
   theme,
   size,
   rev,
+  overlay,
 }: {
   projectKey: string;
   /** `main` when absent, else `v<n>`, `b<n>` or a commit. */
@@ -20,6 +21,8 @@ export function Live({
   id: string;
   theme: "light" | "dark";
   size: { w: number; h: number };
+  /** Drawn over the page (pins, a click layer), given the scale the page is shown at. */
+  overlay?: (scale: number) => ReactNode;
 }) {
   const t = useT();
   const preview = usePreview(projectKey, rev);
@@ -38,7 +41,7 @@ export function Live({
     <div ref={holder} className="mx-auto w-full" style={{ maxWidth: size.w }}>
       {base ? (
         <div
-          className="overflow-hidden rounded-lg border bg-background shadow-sm"
+          className="relative overflow-hidden rounded-lg border bg-background shadow-sm"
           style={{ height: size.h * scale }}
         >
           <iframe
@@ -54,6 +57,7 @@ export function Live({
             className="origin-top-left border-0"
             style={{ width: size.w, height: size.h, transform: `scale(${scale})` }}
           />
+          {overlay?.(scale)}
         </div>
       ) : (
         <Badge variant="secondary">{t("web.build.running")}</Badge>

@@ -31,6 +31,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0010_invites.sql"),
     include_str!("migrations/0011_member_tokens.sql"),
     include_str!("migrations/0012_branches.sql"),
+    include_str!("migrations/0013_branch_comments.sql"),
 ];
 
 /// The charet database: one SQLite file in WAL mode.

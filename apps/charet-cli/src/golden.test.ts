@@ -37,8 +37,14 @@ async function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     case "GET /comments": {
       const status = url.searchParams.get("status") ?? "open";
       const target = url.searchParams.get("target");
-      const comments = (DATA.comments as { status: string; target: string }[]).filter(
-        (c) => (status === "all" || c.status === status) && (!target || c.target === target),
+      const branch = Number(url.searchParams.get("branch")) || undefined;
+      const comments = (
+        DATA.comments as { status: string; target: string; branch?: number }[]
+      ).filter(
+        (c) =>
+          (status === "all" || c.status === status) &&
+          (!target || c.target === target) &&
+          c.branch === branch,
       );
       return json({ comments });
     }
@@ -103,6 +109,7 @@ const CASES: Record<string, string[]> = {
   capture: ["capture", "tasks-list", "--theme", "both", "--out", "shots"],
   comments: ["comments"],
   "comments-all": ["comments", "--all"],
+  "comments-branch": ["comments", "--branch", "2"],
   "comments-show": ["comments", "show", "c1", "--out", "notes"],
   "comments-show-detached": ["show", "c2", "--out", "notes"],
 };

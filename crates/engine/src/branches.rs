@@ -150,6 +150,7 @@ impl Engine {
         }
         branch.status = BranchStatus::InReview;
         self.save_branch(actor, key, &branch, "review", "")?;
+        self.tell(actor, key, &branch, "branch.review");
         Ok(branch)
     }
 
@@ -181,8 +182,11 @@ impl Engine {
                 }
                 Merged::Clean(commit) => commit,
                 Merged::Conflict(files) => {
-                    branch.conflicts.clone_from(&files);
-                    self.save_branch(actor, key, &branch, "conflict", &files.join(", "))?;
+                    if branch.conflicts != files {
+                        branch.conflicts.clone_from(&files);
+                        self.save_branch(actor, key, &branch, "conflict", &files.join(", "))?;
+                        self.tell(actor, key, &branch, "branch.clash");
+                    }
                     return Err(EngineError::Clash(files));
                 }
             };
@@ -217,6 +221,7 @@ impl Engine {
             "merge",
             &format!("v{}", version.number),
         )?;
+        self.tell(actor, key, &branch, "branch.merged");
         self.catch_up_all(actor, key)?;
         Ok(version)
     }
@@ -441,6 +446,7 @@ impl Engine {
                 if branch.conflicts != files {
                     branch.conflicts.clone_from(&files);
                     self.save_branch(actor, key, &branch, "conflict", &files.join(", "))?;
+                    self.tell(actor, key, &branch, "branch.clash");
                 }
             }
         }
@@ -483,6 +489,13 @@ impl Engine {
                 at: String::new(),
             },
         )?)
+    }
+
+    /// Notifications and webhooks for a branch event (best effort).
+    fn tell(&self, actor: &Actor, key: &str, branch: &Branch, kind: &'static str) {
+        if let Ok(Some(project)) = self.ports.records.project(key) {
+            self.branch_event(actor, &project, branch, kind);
+        }
     }
 
     fn find_branch(&self, key: &str, number: u32) -> Result<Branch, EngineError> {

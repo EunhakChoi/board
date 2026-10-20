@@ -1,14 +1,32 @@
-import { ArrowLeft, Columns2, GitMerge, Layers, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  Columns2,
+  GitMerge,
+  Layers,
+  MessageSquarePlus,
+  TriangleAlert,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
+import { CommentThread } from "@/components/CommentThread";
 import { Live } from "@/components/Live";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
+import { Textarea } from "@/components/ui/textarea";
 import type { BranchDetail, Manifest, TargetKind } from "@/lib/api";
 import { diffLines, fold } from "@/lib/diff";
 import { useLocale, useT } from "@/lib/i18n";
-import { useBranch, useBranchActions, useDiff, useFileAt, useManifest, useMe } from "@/lib/queries";
+import {
+  useAddComment,
+  useBranch,
+  useBranchActions,
+  useBranchComments,
+  useDiff,
+  useFileAt,
+  useManifest,
+  useMe,
+} from "@/lib/queries";
 import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -91,7 +109,9 @@ export function Branch() {
           {short(before)} → {short(after)}
         </span>
       </div>
-      {tab === "screens" && <Screens projectKey={key} before={before} after={after} />}
+      {tab === "screens" && (
+        <Screens projectKey={key} branch={data} before={before} after={after} />
+      )}
       {tab === "code" && <Code projectKey={key} before={before} after={after} />}
       {tab === "history" && (
         <ol className="flex-1 overflow-auto px-6 py-4 text-sm">
@@ -236,18 +256,31 @@ function targetsOf(manifest: Manifest | undefined): Target[] {
   ];
 }
 
-/** Each screen and story before and after, side by side or one over the other. */
+/** Each screen and story before and after, side by side or one over the other, with the comments
+ * made on the branch's screens. */
 function Screens({
   projectKey,
+  branch,
   before,
   after,
 }: {
   projectKey: string;
+  branch: BranchDetail;
   before: string;
   after: string;
 }) {
   const t = useT();
   const [theme] = useScreenTheme();
+  const [search, setSearch] = useSearchParams();
+  const canComment = useCan("commenter");
+  const comments = useBranchComments(projectKey, branch.number);
+  const add = useAddComment(projectKey);
+  const [commenting, setCommenting] = useState(false);
+  const [draft, setDraft] = useState<{ x: number; y: number }>();
+  const [body, setBody] = useState("");
+  const [focused, setFocused] = useState<number | undefined>(
+    Number(search.get("comment")) || undefined,
+  );
   const old = useManifest(projectKey, before);
   const now = useManifest(projectKey, after);
   const targets = useMemo(() => targetsOf(now.data?.manifest), [now.data]);
@@ -255,12 +288,71 @@ function Screens({
     () => new Set(targetsOf(old.data?.manifest).map((x) => `${x.kind}:${x.id}`)),
     [old.data],
   );
-  const [picked, setPicked] = useState<string>();
+  const picked = search.get("target") ?? undefined;
+  const setPicked = (id: string) => {
+    setDraft(undefined);
+    setSearch((now) => {
+      const next = new URLSearchParams(now);
+      next.set("target", id);
+      next.delete("comment");
+      return next;
+    });
+  };
   const [mode, setMode] = useState<"side" | "over">("side");
   const [mix, setMix] = useState(50);
   if (now.error) return <Empty text={t("web.common.error", { message: now.error.message })} />;
   if (!now.data) return <Empty text={t("web.build.running")} />;
   const current = targets.find((x) => `${x.kind}:${x.id}` === picked) ?? targets[0];
+  const open = branch.status === "open" || branch.status === "in_review";
+  const here = (comments.data?.comments ?? []).filter(
+    (c) => current && c.kind === current.kind && c.target === current.id,
+  );
+  const pins = (scale: number) => (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click picks the spot; the form below takes the text
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same
+    <div
+      className={cn("absolute inset-0", commenting ? "cursor-crosshair" : "pointer-events-none")}
+      onClick={(e) => {
+        if (!commenting) return;
+        const box = e.currentTarget.getBoundingClientRect();
+        setDraft({
+          x: Math.round((e.clientX - box.left) / scale),
+          y: Math.round((e.clientY - box.top) / scale),
+        });
+      }}
+    >
+      {here.map((c, index) => (
+        <button
+          type="button"
+          key={c.id}
+          data-testid={`pin-${c.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setFocused(c.id);
+          }}
+          className={cn(
+            "pointer-events-auto absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-background text-xs font-semibold shadow",
+            c.status === "open"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground",
+            focused === c.id && "ring-2 ring-ring",
+          )}
+          style={{
+            left: (c.anchor.x + c.anchor.w / 2) * scale,
+            top: (c.anchor.y + c.anchor.h / 2) * scale,
+          }}
+        >
+          {index + 1}
+        </button>
+      ))}
+      {draft && (
+        <span
+          className="absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-warning shadow"
+          style={{ left: draft.x * scale, top: draft.y * scale }}
+        />
+      )}
+    </div>
+  );
   return (
     <div className="flex min-h-0 flex-1">
       <ul className="w-64 shrink-0 overflow-y-auto border-r py-1 text-sm">
@@ -295,6 +387,19 @@ function Screens({
                 { value: "over", label: <Layers aria-label={t("web.branch.over")} /> },
               ]}
             />
+            {canComment && open && (
+              <Button
+                size="sm"
+                variant={commenting ? "default" : "outline"}
+                onClick={() => {
+                  setCommenting(!commenting);
+                  setDraft(undefined);
+                }}
+              >
+                <MessageSquarePlus />
+                {t("web.comments.add")}
+              </Button>
+            )}
             {mode === "over" && (
               <input
                 type="range"
@@ -339,6 +444,7 @@ function Screens({
                   id={current.id}
                   theme={theme}
                   size={current.size}
+                  overlay={pins}
                 />
               </figure>
             </div>
@@ -360,8 +466,72 @@ function Screens({
                   id={current.id}
                   theme={theme}
                   size={current.size}
+                  overlay={pins}
                 />
               </div>
+            </div>
+          )}
+          {commenting && !draft && (
+            <p className="mt-3 text-sm text-muted-foreground">{t("web.branch.pickSpot")}</p>
+          )}
+          {draft && (
+            <form
+              className="mt-3 flex max-w-xl flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!body.trim()) return;
+                add.mutate(
+                  {
+                    kind: current.kind,
+                    target: current.id,
+                    theme,
+                    at: draft,
+                    body,
+                    branch: branch.number,
+                  },
+                  {
+                    onSuccess: (comment) => {
+                      setDraft(undefined);
+                      setBody("");
+                      setCommenting(false);
+                      setFocused(comment.id);
+                    },
+                  },
+                );
+              }}
+            >
+              <Textarea
+                autoFocus
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder={t("web.branch.commentPlaceholder")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                    e.currentTarget.form?.requestSubmit();
+                }}
+              />
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm" disabled={add.isPending || !body.trim()}>
+                  {t("web.comments.add")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(undefined)}>
+                  {t("web.common.cancel")}
+                </Button>
+                {add.error && <span className="text-sm text-destructive">{add.error.message}</span>}
+              </div>
+            </form>
+          )}
+          {here.length > 0 && (
+            <div className="mt-4 flex max-w-xl flex-col gap-2">
+              {here.map((c) => (
+                <CommentThread
+                  key={c.id}
+                  projectKey={projectKey}
+                  comment={c}
+                  active={focused === c.id}
+                  onFocus={() => setFocused(c.id)}
+                />
+              ))}
             </div>
           )}
         </section>

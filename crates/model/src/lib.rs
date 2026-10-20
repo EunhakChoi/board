@@ -273,6 +273,9 @@ pub struct Comment {
     pub rev: u32,
     pub created_at: String,
     pub updated_at: String,
+    /// Made on this branch's screen (a live preview); absent = on main.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<u32>,
     pub replies: Vec<Reply>,
 }
 

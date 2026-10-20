@@ -1285,6 +1285,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: branch
+          in: query
+          description: Comments on this branch's screens instead of main's
+          schema:
+            type: integer
       responses:
         "200":
           description: Comments
@@ -1339,6 +1344,9 @@ paths:
                           type: string
                 body:
                   type: string
+                branch:
+                  type: integer
+                  description: Comment on this branch's screen (a spot of its live preview)
       responses:
         "201":
           description: The new comment
@@ -1869,6 +1877,9 @@ components:
           type: string
         updatedAt:
           type: string
+        branch:
+          type: integer
+          description: Made on this branch's screen (absent = on main)
         replies:
           type: array
           items:
@@ -2183,7 +2194,14 @@ components:
           type: integer
         kind:
           type: string
-          enum: [comment.added, comment.replied, comment.resolved, comment.reopened]
+          enum:
+            - comment.added
+            - comment.replied
+            - comment.resolved
+            - comment.reopened
+            - branch.review
+            - branch.merged
+            - branch.clash
         project:
           type: [string, "null"]
         actor:
