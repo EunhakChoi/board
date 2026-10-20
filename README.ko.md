@@ -12,7 +12,7 @@
 ## 실행
 
 ```bash
-docker compose up -d     # 이후 http://localhost:5280 접속
+docker compose up -d     # 이후 `docker compose logs server` 의 관리자 link 접속
 ```
 
 설정 · CLI · Docker 없이 실행 · 보안 참고: [docs/local.ko.md](docs/local.ko.md).

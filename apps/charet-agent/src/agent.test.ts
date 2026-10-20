@@ -2,7 +2,7 @@
 // agent works on a branch through the agent door with the charet CLI.
 
 import assert from "node:assert/strict";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -27,6 +27,8 @@ async function freePort(): Promise<number> {
 const children: ChildProcess[] = [];
 let url = "";
 let work = "";
+/** The owner's token (the admin link's). */
+let owner = "";
 
 async function waitFor(check: () => Promise<boolean>, what: string, ms = 20_000): Promise<void> {
   const until = Date.now() + ms;
@@ -46,6 +48,19 @@ before(async () => {
     [0, 1, 2, 3, 4].map(() => freePort()),
   );
   url = `http://127.0.0.1:${port}`;
+  const serverEnv = {
+    ...process.env,
+    CHARET_HOME: join(work, "home"),
+    CHARET_BIND: `127.0.0.1:${port}`,
+    CHARET_PREVIEW_BIND: `127.0.0.1:${preview}`,
+    CHARET_REMOTE_BIND: `127.0.0.1:${remote}`,
+    CHARET_UPDATE_CHECK: "false",
+    CHARET_MERGE_CHECK: "false",
+    CHARET_AGENT_URL: `http://127.0.0.1:${agent}`,
+    CHARET_AGENT_TOKEN: TOKEN,
+    CHARET_AGENT_BIND: `127.0.0.1:${door}`,
+    CHARET_AGENT_SCRIPT: "true",
+  };
   children.push(
     spawn(process.execPath, [resolve(import.meta.dirname, "main.ts")], {
       env: {
@@ -59,23 +74,10 @@ before(async () => {
       },
       stdio: "ignore",
     }),
-    spawn(SERVER_BIN, [], {
-      env: {
-        ...process.env,
-        CHARET_HOME: join(work, "home"),
-        CHARET_BIND: `127.0.0.1:${port}`,
-        CHARET_PREVIEW_BIND: `127.0.0.1:${preview}`,
-        CHARET_REMOTE_BIND: `127.0.0.1:${remote}`,
-        CHARET_UPDATE_CHECK: "false",
-        CHARET_MERGE_CHECK: "false",
-        CHARET_AGENT_URL: `http://127.0.0.1:${agent}`,
-        CHARET_AGENT_TOKEN: TOKEN,
-        CHARET_AGENT_BIND: `127.0.0.1:${door}`,
-        CHARET_AGENT_SCRIPT: "true",
-      },
-      stdio: "ignore",
-    }),
+    spawn(SERVER_BIN, [], { env: serverEnv, stdio: "ignore" }),
   );
+  await waitFor(async () => (await fetch(`${url}/api/health`)).ok, "the server");
+  owner = execFileSync(SERVER_BIN, ["admin-token"], { env: serverEnv }).toString().trim();
   await waitFor(
     async () => (await api("GET", "/api/agent")).enabled === true,
     "the agent to be on",
@@ -106,7 +108,7 @@ type Json = any;
 async function api<T = Json>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${url}${path}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${owner}` },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await res.text();

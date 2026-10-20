@@ -37,11 +37,13 @@ async function waitFor(
   url: string,
   ok: (body: unknown) => boolean,
   seconds: number,
+  token?: string,
 ): Promise<unknown> {
   const until = Date.now() + seconds * 1000;
   let last: unknown;
   while (Date.now() < until) {
-    const response = await fetch(url).catch(() => undefined);
+    const headers: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
+    const response = await fetch(url, { headers }).catch(() => undefined);
     if (response) {
       last = response.headers.get("content-type")?.includes("json")
         ? await response.json()
@@ -145,9 +147,20 @@ export default async function setup() {
   ];
   const teardown = async () => {
     for (const child of children) child.kill();
-    if (!process.env.CHARET_E2E_KEEP) rmSync(home, { recursive: true, force: true });
+    if (!process.env.CHARET_E2E_KEEP) {
+      rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
   };
   let adminToken = "";
+  let ownerToken = "";
+  let shareToken = "";
+  // Each server's owner token, as `charet-server admin-token` prints it on that machine.
+  const tokenOf = (home: string, args: string[] = []) =>
+    execFileSync(join(root, "target/debug/charet-server"), ["admin-token", ...args], {
+      env: { ...process.env, CHARET_HOME: home },
+    })
+      .toString()
+      .trim();
   try {
     const base = `http://127.0.0.1:${api}`;
     await waitFor(`${base}/api/health`, () => true, 60);
@@ -156,12 +169,19 @@ export default async function setup() {
     await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 60);
     await waitFor(`http://127.0.0.1:${render}/health`, () => true, 60);
     await waitFor(`http://127.0.0.1:${agent}/health`, () => true, 60);
+    ownerToken = tokenOf(join(home, "server"));
+    shareToken = tokenOf(join(home, "share"));
     execFileSync(
       process.execPath,
       [join(root, "apps/charet-cli/src/main.ts"), "import", "--key", "demo"],
       {
         cwd: join(root, "templates/recommended"),
-        env: { ...process.env, CHARET_URL: base },
+        env: {
+          ...process.env,
+          CHARET_URL: base,
+          CHARET_TOKEN: ownerToken,
+          CHARET_CONFIG_DIR: join(home, "cli"),
+        },
         stdio: ["ignore", log, log],
       },
     );
@@ -199,6 +219,7 @@ export default async function setup() {
         return state === "ready";
       },
       180,
+      ownerToken,
     );
   } catch (error) {
     for (const child of children) child.kill();
@@ -207,6 +228,8 @@ export default async function setup() {
   process.env.CHARET_E2E_URL = `http://localhost:${api}`;
   process.env.CHARET_E2E_PUBLIC_URL = `http://localhost:${publicApi}`;
   process.env.CHARET_E2E_ADMIN_TOKEN = adminToken;
+  process.env.CHARET_E2E_OWNER_TOKEN = ownerToken;
+  process.env.CHARET_E2E_SHARE_TOKEN = shareToken;
   process.env.CHARET_E2E_SHARE_URL = `http://localhost:${shareApi}`;
   process.env.CHARET_E2E_SHARE_REMOTE = `http://127.0.0.1:${shareRemote}`;
   return teardown;

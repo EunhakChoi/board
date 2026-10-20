@@ -1,18 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { addMember, enter } from "./people.ts";
 
-// A local charet shared from its Team page (`stack.ts`): this machine is the admin without a
-// token; through the shared address everyone goes by token (or looks as a visitor).
+// A local charet shared from its Team page (`stack.ts`): the owner comes in with their admin link;
+// on either address everyone else goes by token (or looks as a visitor).
 const local = () => process.env.CHARET_E2E_SHARE_URL ?? "";
 const remote = () => process.env.CHARET_E2E_SHARE_REMOTE ?? "";
+const shareToken = () => process.env.CHARET_E2E_SHARE_TOKEN ?? "";
 
 test("through the shared address, members bring their token and others are visitors", async ({
   browser,
 }) => {
   const owner = await (await browser.newContext()).newPage();
+  await enter(owner, shareToken(), local());
   await owner.goto(`${local()}/team`);
-  // This machine is the admin, no token asked.
-  await expect(owner.getByText("This machine's admin")).toBeVisible();
+  await expect(owner.getByText("Owner", { exact: true })).toBeVisible();
   const sharing = owner.getByRole("region", { name: "Sharing" });
   await sharing.getByRole("textbox", { name: "Address people open" }).fill(`${remote()}/`);
   await sharing.getByRole("button", { name: "Turn sharing on" }).click();
@@ -44,6 +45,7 @@ test("through the shared address, members bring their token and others are visit
 });
 
 test("sharing through Tailscale shows the machine's tailnet name", async ({ page }) => {
+  await enter(page, shareToken(), local());
   await page.goto(`${local()}/team`);
   const sharing = page.getByRole("region", { name: "Sharing" });
   await sharing.getByRole("radio", { name: "Tailscale network" }).click();
@@ -60,6 +62,7 @@ test("sharing through Tailscale shows the machine's tailnet name", async ({ page
 test("sharing on the local network opens the remote door on this machine's IP", async ({
   page,
 }) => {
+  await enter(page, shareToken(), local());
   await page.goto(`${local()}/team`);
   const sharing = page.getByRole("region", { name: "Sharing" });
   await sharing.getByRole("radio", { name: "Local network" }).click();

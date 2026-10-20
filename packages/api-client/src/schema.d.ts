@@ -84,7 +84,7 @@ export interface paths {
         };
         /**
          * Who is calling
-         * @description Through the local door of a local charet, the owner. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401 `token_required`. 401 `replaced`: the token signed in on another browser since.
+         * @description A member by token or session. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401 `token_required`. 401 `replaced`: the token signed in on another browser since.
          */
         get: operations["getMe"];
         put?: never;
@@ -1452,7 +1452,7 @@ export interface components {
         /** @description A member as admins see them, with the token to hand over */
         Member: components["schemas"]["User"] & {
             token: string;
-            /** @description This machine's admin (the local door acts as them); cannot be removed or demoted */
+            /** @description The first admin, made at first start; cannot be removed or demoted */
             owner: boolean;
         };
         Access: {
@@ -1517,7 +1517,7 @@ export interface components {
         };
         Me: {
             /**
-             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and does what the server or the project lets visitors do (look, or also comment); `local` is the built-in admin before the charet has an owner
+             * @description `user` is a member (by token or session); `visitor` has no token and does what the server or the project lets visitors do (look, or also comment); `local` is the built-in admin before the charet has an owner (not handed to callers)
              * @enum {string}
              */
             kind: "user" | "visitor" | "local";
@@ -1525,7 +1525,7 @@ export interface components {
             id?: string;
             name: string;
             role: components["schemas"]["Role"];
-            /** @description True through the local door (this machine's admin, no token needed) */
+            /** @description True on a local charet reached at its own address (not through sharing); grants nothing by itself */
             localMode: boolean;
         };
         Project: {

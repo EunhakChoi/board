@@ -2,8 +2,8 @@
 
 **English** | [한국어](public.ko.md)
 
-In [local mode](local.md) the person at the machine is the admin without a token. Public mode is
-for a server only a team uses: nobody is trusted by address. Members come in with the **token** an
+[Local mode](local.md) is a charet on one machine, shared when needed. Public mode is for a server
+only a team uses, at a fixed HTTPS address. In both, nobody is trusted by address. Members come in with the **token** an
 admin hands over; everyone else is a visitor, who may look, also comment, or not come in at all, as
 the admin sets it.
 

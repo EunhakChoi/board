@@ -2,11 +2,14 @@
 // merged in the web tool, then restored. Last in the run, since it moves main.
 
 import { expect, test } from "@playwright/test";
+import { asOwner } from "./people.ts";
 
 const base = () => process.env.CHARET_E2E_URL ?? "";
 const FILE = "templates/recommended/src/pages/tasks.tsx";
 
 test.describe.configure({ mode: "serial" });
+// The owner, as the admin link or the CLI would sign them in.
+test.use({ extraHTTPHeaders: asOwner() });
 
 test("a branch is compared, merged and restored", async ({ page, request }) => {
   test.setTimeout(240_000);

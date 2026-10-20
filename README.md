@@ -13,7 +13,7 @@ hand, and accept them as versions — so the design never drifts from the code.
 ## Run it
 
 ```bash
-docker compose up -d     # then open http://localhost:5280
+docker compose up -d     # then open the admin link from `docker compose logs server`
 ```
 
 Settings, the CLI, running without Docker and security notes: [docs/local.md](docs/local.md).

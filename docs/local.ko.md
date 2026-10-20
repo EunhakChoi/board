@@ -3,9 +3,9 @@
 [English](local.md) | **한국어**
 
 charet 는 service 3개로 동작함: **charet-server** (API · 웹 도구 · 미리보기), **charet-workspace**
-(프로젝트 코드 install · build), **charet-render** (Chromium: 캡처 · 검사). 로컬 모드에서 이 컴퓨터
-사람은 token 불필요 — 5280 port 에 닿는 사람은 모두 charet 관리자로 동작하므로 port 는 이 컴퓨터의
-loopback 에만 열림.
+(프로젝트 코드 install · build), **charet-render** (Chromium: 캡처 · 검사). 주소로 신뢰하는 사람 없음:
+소유자는 **관리자 link**, 팀원은 token 으로 입장, 나머지는 방문자. 로컬 모드에서 port 는 이 컴퓨터의
+loopback 에만 열리고, 다른 사람은 공유로 입장.
 
 ## Docker 로 실행 (권장)
 
@@ -17,8 +17,12 @@ cd charet
 docker compose up -d
 ```
 
-**http://localhost:5280** 접속 — `127.0.0.1` 아닌 `localhost`. 미리보기는 다른 site 인
-`127.0.0.1:5281` 에서 제공 → 프로젝트 코드가 도구의 cookie 를 읽을 수 없음.
+server 첫 시작 시 log 에 **관리자 link** (`http://localhost:5280/?t=<token>`) 1회 출력. 이 link 를
+열면 (`127.0.0.1` 아닌 `localhost`) 그 브라우저는 소유자 (첫 관리자) 로 계속 로그인. 잃어버리면
+`charet setup` (CLI 로그인 + link 재출력) 또는 `docker compose exec server charet-server admin-token`
+(token 만 출력). link 없이 **http://localhost:5280** 접속 시 방문자 (기본: 보기만).
+
+미리보기는 다른 site 인 `127.0.0.1:5281` 에서 제공 → 프로젝트 코드가 도구의 cookie 를 읽을 수 없음.
 
 첫 image build 는 시간이 걸림 (Rust · 웹 도구 compile).
 
@@ -69,8 +73,7 @@ token 은 팀 화면에서 언제든 보기 · 복사 가능, **token 재발급*
 임의 이름으로 팀 공개 프로젝트 사용. 팀 화면의 *방문자* 로 보기 · 댓글 가능 · token 필요 중 선택,
 프로젝트별로 **접근** 에서 따로 설정 가능.
 
-이 컴퓨터의 `localhost:5280` 을 제외한 모든 주소에서 같은 규칙. `localhost:5280` 은 관리자
-(*이 PC 관리자* 로 표시된 팀원. 이 팀원의 token 은 다른 컴퓨터에서도 사용 가능).
+`localhost:5280` 포함 모든 주소에서 같은 규칙. 소유자 (*소유자* 표시) 는 첫 관리자이며 삭제 · 강등 불가.
 
 다른 기기의 접속은 두 번째 port 인 **원격 문** (`127.0.0.1:5284`, `CHARET_REMOTE_BIND`) 으로 받음.
 **팀 › 공유** 에서 접속 방식 선택:
@@ -83,7 +86,7 @@ token 은 팀 화면에서 언제든 보기 · 복사 가능, **token 재발급*
   입력 (서버에 보관, 다시 표시 안 함) 및 있으면 ngrok 도메인 입력 → 주소 고정.
   `CHARET_NGROK_AUTHTOKEN` 도 가능.
 - **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
-  `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
+  `127.0.0.1:5284` 로 연결 (5280 아님: 원격 문을 거쳐야 미리보기가 같은 주소에서 sandbox 로 제공됨).
 - **같은 네트워크** — 원격 문을 이 기기의 LAN 주소에도 열기 (HTTP). 시험용: link 에 IP 노출, token
   암호화 없이 전송. (Docker 는 대신 5284 port 를 LAN 에 publish.)
 
@@ -101,7 +104,7 @@ CLI 는 아직 배포 전 — clone 에서 실행 (Node.js 24+, pnpm 12):
 pnpm install
 alias charet="node $PWD/apps/charet-cli/src/main.ts"
 charet doctor                          # node · git · server · 내부 service 점검
-charet setup                           # 첫 설치 안내, Claude Code / Codex 용 skill 설치 제안
+charet setup                           # 소유자로 로그인, 관리자 link 출력, skill 설치 제안
 charet init demo                       # 권장 template 으로 새 프로젝트
 charet import ../my-app                # 또는 기존 앱 (쓰는 workspace package 포함)
 ```
@@ -124,8 +127,8 @@ node apps/charet-cli/src/main.ts serve    # server + workspace + render, Ctrl-C 
 
 ## 보안 참고
 
-- 로컬 모드는 port 에 닿는 모든 사람을 신뢰함. loopback 밖으로 port 공개 금지 — 팀과 함께 쓰려면
-  [외부 공개 모드](public.ko.md) 사용.
+- 방문자 이상의 작업은 모든 요청에 팀원 token (또는 session) 필요. 그래도 port 는 loopback 에 두고
+  원격 문으로 공유 — 팀 전용 server 는 [외부 공개 모드](public.ko.md) 참고.
 - 프로젝트 코드 (의존성 install · build) 는 charet-workspace 안에서만 실행, install script 끔 · 최소
   환경 변수. 미리보기는 별도 origin 의 browser 에서 실행, 서명된 짧은 수명 token 사용.
 - install · build 때 code 를 실행하는 파일 (package manifest · lockfile · build 설정) 변경은 관리자

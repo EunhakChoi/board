@@ -3,9 +3,9 @@
 **English** | [한국어](local.ko.md)
 
 charet runs as three services: **charet-server** (API, web tool, previews), **charet-workspace**
-(installs and builds project code) and **charet-render** (Chromium: captures and checks). In local
-mode the person at this machine needs no token: everyone who reaches port 5280 acts as the charet's
-admin, so the ports stay on this machine's loopback.
+(installs and builds project code) and **charet-render** (Chromium: captures and checks). No address
+is trusted: the owner comes in with their **admin link**, members with their token, everyone else is a
+visitor. In local mode the ports stay on this machine's loopback; others come in through sharing.
 
 ## With Docker (recommended)
 
@@ -17,8 +17,14 @@ cd charet
 docker compose up -d
 ```
 
-Open **http://localhost:5280** — `localhost`, not `127.0.0.1`. Previews are served from
-`127.0.0.1:5281`, a different site, so a project's code can never read the tool's cookies.
+On its first start the server prints the **admin link** (`http://localhost:5280/?t=<token>`) to its
+log, once. Open it — `localhost`, not `127.0.0.1` — and the browser stays signed in as the owner, the
+first admin. Lost it? `charet setup` signs the CLI in and prints it again, as does
+`docker compose exec server charet-server admin-token` (the token alone). Opening
+**http://localhost:5280** without it makes you a visitor (by default: look only).
+
+Previews are served from `127.0.0.1:5281`, a different site, so a project's code can never read the
+tool's cookies.
 
 The first build of the images takes a while (Rust and the web tool are compiled).
 
@@ -72,8 +78,8 @@ second browser, the first one is signed out (the CLI is not). People without a t
 whether they may look, also comment, or need a token; a project can set its own level under
 **Access**.
 
-The same rules hold on every address except this machine's `localhost:5280`, which is the admin
-(the member marked *This machine's admin*; their token works from other machines too).
+The same rules hold on every address, `localhost:5280` included. The owner (marked *Owner*) is the
+first admin and cannot be removed or demoted.
 
 To let other machines in, charet has a second port, the **remote door** (`127.0.0.1:5284`,
 `CHARET_REMOTE_BIND`). In **Team › Sharing**, pick how others reach it:
@@ -86,7 +92,7 @@ To let other machines in, charet has a second port, the **remote door** (`127.0.
   from your ngrok dashboard (kept on the server, never shown again) and, if you have one, your
   ngrok domain so the address stays the same. `CHARET_NGROK_AUTHTOKEN` also works.
 - **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing at
-  `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
+  `127.0.0.1:5284`, not 5280: through the remote door previews come on the same address, sandboxed.
 - **Local network** — the remote door also listens on this machine's LAN address, over plain HTTP.
   For trying things out: links show the IP, and tokens travel unencrypted. (In Docker, publish
   port 5284 instead.)
@@ -106,7 +112,7 @@ The CLI is not published yet; run it from the clone (Node.js 24+, pnpm 12):
 pnpm install
 alias charet="node $PWD/apps/charet-cli/src/main.ts"
 charet doctor                          # checks node, git, the server and its services
-charet setup                           # first-run guide; offers the skill for Claude Code / Codex
+charet setup                           # signs in as the owner, prints the admin link; offers the skill
 charet init demo                       # a new project from the recommended template
 charet import ../my-app                # or an existing app (with the workspace packages it uses)
 ```
@@ -129,8 +135,9 @@ Data goes to `~/.charet` (`CHARET_HOME`).
 
 ## Security notes
 
-- Local mode trusts everyone who reaches the ports. Do not publish them beyond loopback; to share
-  charet with a team use [public mode](public.md).
+- Every request needs a member's token (or session) to do more than visitors may. Keep the ports on
+  loopback anyway and share through the remote door; for a server only a team uses see
+  [public mode](public.md).
 - Project code (dependency installs, builds) runs only in charet-workspace, with install scripts
   turned off and a minimal environment. Previews run in the browser on their own origin with a
   signed, short-lived token.

@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { t } from "@charet/i18n";
 import pkg from "../package.json" with { type: "json" };
+import { rememberToken, withToken } from "./auth.ts";
 import { findCheckout, localChanges } from "./checkout.ts";
 import { CliError, type Context, checkout, client, importProject } from "./commands.ts";
 import { fail, system } from "./data.ts";
@@ -102,6 +103,7 @@ export async function setup(ctx: Context, assumeYes: boolean): Promise<number> {
   );
   if (reachable) {
     ctx.out(t("cli.setup.server", { url: reachable.toolUrl ?? ctx.server }, ctx.locale));
+    await signInAsOwner(ctx, assumeYes);
   } else {
     ctx.out(t("cli.setup.noServer", { server: ctx.server }, ctx.locale));
   }
@@ -125,6 +127,72 @@ export async function setup(ctx: Context, assumeYes: boolean): Promise<number> {
   }
   ctx.out(t("cli.setup.next", {}, ctx.locale));
   return 0;
+}
+
+/**
+ * The CLI comes in as the owner of a charet on this machine: it reads the owner's token from the
+ * server (its container, or the `charet-server` next to this CLI), keeps it, and hands over the
+ * admin link for the browser. Nobody is the admin by address alone.
+ */
+async function signInAsOwner(ctx: Context, assumeYes: boolean): Promise<void> {
+  const me = await client(ctx).GET("/api/auth/me");
+  if (me.data?.kind === "user") {
+    ctx.out(t("cli.setup.signedIn", { name: me.data.name, role: me.data.role }, ctx.locale));
+    return;
+  }
+  const token = ownerToken(ctx);
+  const checked = token ? await withToken(ctx, token).GET("/api/auth/me") : undefined;
+  if (!token || checked?.data?.kind !== "user" || checked.data.role !== "admin") {
+    ctx.out(t("cli.setup.noOwnerToken", { server: ctx.server }, ctx.locale));
+    return;
+  }
+  rememberToken(ctx.env, ctx.server, token, checked.data.name);
+  const link = `${ctx.server.replace(/\/+$/, "")}/?t=${token}`;
+  ctx.out(t("cli.setup.adminLink", { link }, ctx.locale));
+  if (!assumeYes && ctx.ask && !ctx.env.CI) {
+    const opener =
+      process.platform === "darwin"
+        ? "open"
+        : process.platform === "win32"
+          ? "explorer"
+          : "xdg-open";
+    output(ctx, opener, [link]);
+  }
+}
+
+/** The owner's token from the charet serving `ctx.server` on this machine, if it can be read. */
+function ownerToken(ctx: Context): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(ctx.server);
+  } catch {
+    return undefined;
+  }
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return undefined;
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
+  // Docker: the compose service `server` publishing this port.
+  const listed = output(ctx, "docker", [
+    "ps",
+    "--filter",
+    "label=com.docker.compose.service=server",
+    "--format",
+    "{{.ID}} {{.Ports}}",
+  ]);
+  const container = listed
+    ?.split("\n")
+    .find((line) => line.includes(`:${port}->5280/`))
+    ?.split(" ")[0];
+  if (container) {
+    const token = output(ctx, "docker", ["exec", container, "charet-server", "admin-token"]);
+    if (token) return token.split("\n").at(-1)?.trim();
+  }
+  // `charet serve` or a server run by hand: the same binary with the same data reads it.
+  const server = findProgram(ctx, "CHARET_SERVER_BIN", "charet-server", [
+    "target/release/charet-server",
+    "target/debug/charet-server",
+  ]);
+  if (!server) return undefined;
+  return output(ctx, server, ["admin-token"])?.split("\n").at(-1)?.trim();
 }
 
 function starRepository(ctx: Context): void {

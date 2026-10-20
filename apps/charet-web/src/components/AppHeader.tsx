@@ -69,18 +69,15 @@ export function AppHeader({ children, actions }: { children?: ReactNode; actions
         {who?.kind === "user" && (
           <>
             <span className="max-w-40 truncate text-sm text-muted-foreground">{who.name}</span>
-            {/* This machine's admin is never signed out; members' browsers are. */}
-            {!who.localMode && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => signOut.mutate()}
-                aria-label={t("web.auth.signOut")}
-                title={t("web.auth.signOut")}
-              >
-                <LogOut />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => signOut.mutate()}
+              aria-label={t("web.auth.signOut")}
+              title={t("web.auth.signOut")}
+            >
+              <LogOut />
+            </Button>
           </>
         )}
       </div>

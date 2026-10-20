@@ -1,7 +1,8 @@
 //! Working out who is calling, and coming in with a token (`docs/design/security.md` §2).
 //!
-//! In order: the local door of a local charet (the owner), a token the CLI sends, a browser's
-//! session cookie, a visitor's cookie. Every address but the local door follows the same rules.
+//! In order: a token the CLI sends, a browser's session cookie, a visitor's cookie. Every address
+//! follows the same rules; nobody is trusted for where they connect from. The first admin comes in
+//! with the owner's token (`charet setup` hands over a link carrying it).
 
 use axum::Json;
 use axum::extract::{FromRequestParts, OptionalFromRequestParts, State};
@@ -30,7 +31,8 @@ pub const CLIENT_HEADER: &str = "x-charet-client";
 #[derive(Debug, Clone, Copy)]
 pub struct Remote;
 
-/// True for a request through the local door of a local charet: it acts as the owner.
+/// True for a request to a local charet's own address (not its remote door). It only decides where
+/// previews are served from; it grants nothing.
 #[derive(Debug, Clone, Copy)]
 pub struct LocalDoor(pub bool);
 
@@ -60,9 +62,6 @@ impl FromRequestParts<Engine> for Caller {
         // A run's container, let in by the agent door.
         if let Some(AgentCaller(access)) = parts.extensions.get::<AgentCaller>() {
             return Ok(Caller(access.actor.clone()));
-        }
-        if local_door(parts, engine) {
-            return Ok(Caller(engine.local_actor()));
         }
         // The CLI: no cookie, so no cross-site forgery to guard against.
         if let Some(token) = bearer(&parts.headers) {
@@ -184,7 +183,7 @@ pub struct Me {
     id: Option<String>,
     name: String,
     role: Role,
-    /// True through the local door: this machine's admin, no token needed.
+    /// A local charet reached at its own address (not through sharing).
     local_mode: bool,
 }
 

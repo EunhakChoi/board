@@ -225,7 +225,7 @@ impl Config {
             .unwrap_or_else(|| format!("http://localhost:{}", self.bind.port()))
     }
 
-    /// Local mode: loopback only and not public. The local door acts as the owner.
+    /// Local mode: loopback only and not public (a local install that can be shared).
     pub fn local_mode(&self) -> bool {
         !self.public && (self.container || self.bind.ip().is_loopback())
     }

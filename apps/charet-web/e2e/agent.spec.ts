@@ -2,10 +2,13 @@
 // made. The scripted agent stands in for a model (no key, same container-less path as `none`).
 
 import { expect, test } from "@playwright/test";
+import { asOwner } from "./people.ts";
 
 const base = () => process.env.CHARET_E2E_URL ?? "";
 
 test.describe.configure({ mode: "serial" });
+// The owner, as the admin link or the CLI would sign them in.
+test.use({ extraHTTPHeaders: asOwner() });
 
 test("asking the agent from a screen makes a draft the team can review", async ({
   page,

@@ -126,7 +126,26 @@ fn preview_settings() -> PreviewSettings {
     }
 }
 
-async fn send(engine: Engine, request: Request<Body>) -> (StatusCode, Vec<u8>, Option<String>) {
+/// The owner's token on a local engine: nobody is trusted for their address, so tests act as the
+/// owner by bringing it, as the admin link does.
+fn owner_token(engine: &Engine) -> Option<String> {
+    if !engine.local_mode() {
+        return None;
+    }
+    engine.ensure_owner().unwrap();
+    engine.owner_token().unwrap()
+}
+
+async fn send(engine: Engine, mut request: Request<Body>) -> (StatusCode, Vec<u8>, Option<String>) {
+    let headers = request.headers();
+    if !headers.contains_key("authorization")
+        && !headers.contains_key("cookie")
+        && let Some(token) = owner_token(&engine)
+    {
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+    }
     let response = charet_api::router(engine).oneshot(request).await.unwrap();
     let status = response.status();
     let commit = response
@@ -380,12 +399,34 @@ async fn version_reports_latest_when_known() {
 }
 
 #[tokio::test]
-async fn me_is_the_local_admin_in_local_mode() {
-    let (status, body) = call(engine(true), "/api/auth/me").await;
+async fn this_machine_s_address_grants_nothing_without_the_owner_s_token() {
+    let engine = engine(true);
+    engine.ensure_owner().unwrap();
+    let response = charet_api::router(engine.clone())
+        .oneshot(Request::get("/api/auth/me").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let body: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(
+        (&body["kind"], &body["role"]),
+        (&json!("visitor"), &json!("viewer"))
+    );
+    let response = charet_api::router(engine.clone())
+        .oneshot(
+            Request::get("/api/admin/users")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    // The admin link's token makes the browser or CLI the owner.
+    let (status, body) = call(engine, "/api/auth/me").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
-        json!({ "kind": "local", "name": "Local admin", "role": "admin", "localMode": true })
+        json!({ "kind": "user", "id": body["id"], "name": "Admin", "role": "admin", "localMode": true })
     );
 }
 
@@ -1170,8 +1211,16 @@ async fn realtime_room_relays_presence_and_events() {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(axum::serve(listener, charet_api::router(engine.clone())).into_future());
     let url = format!("ws://{addr}/api/ws?project=web");
-    let (mut ann, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    let (mut bob, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    let token = owner_token(&engine).unwrap();
+    let request = || {
+        let mut request = url.as_str().into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        request
+    };
+    let (mut ann, _) = tokio_tungstenite::connect_async(request()).await.unwrap();
+    let (mut bob, _) = tokio_tungstenite::connect_async(request()).await.unwrap();
     assert_eq!(read(&mut ann).await["type"], "hello");
     assert_eq!(read(&mut bob).await["peers"].as_array().unwrap().len(), 1);
     assert_eq!(read(&mut ann).await["type"], "join");
@@ -1383,7 +1432,7 @@ async fn remote_sign_in(engine: &Engine, token: &str) -> String {
 }
 
 #[tokio::test]
-async fn the_remote_door_goes_by_token_and_the_local_door_is_the_owner() {
+async fn the_remote_door_and_this_machine_s_address_follow_the_same_rules() {
     let engine = engine(true)
         .with_tool_url("http://localhost:5280")
         .with_preview(preview_settings());
