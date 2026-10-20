@@ -143,11 +143,11 @@ async function signInAsOwner(ctx: Context, assumeYes: boolean): Promise<void> {
   const token = ownerToken(ctx);
   const checked = token ? await withToken(ctx, token).GET("/api/auth/me") : undefined;
   if (!token || checked?.data?.kind !== "user" || checked.data.role !== "admin") {
-    ctx.out(t("cli.setup.noOwnerToken", { server: ctx.server }, ctx.locale));
+    ctx.out(t("cli.setup.noOwnerToken", { server: browserUrl(ctx.server) }, ctx.locale));
     return;
   }
   rememberToken(ctx.env, ctx.server, token, checked.data.name);
-  const link = `${ctx.server.replace(/\/+$/, "")}/?t=${token}`;
+  const link = `${browserUrl(ctx.server)}/?t=${token}`;
   ctx.out(t("cli.setup.adminLink", { link }, ctx.locale));
   if (!assumeYes && ctx.ask && !ctx.env.CI) {
     const opener =
@@ -180,7 +180,7 @@ function ownerToken(ctx: Context): string | undefined {
   ]);
   const container = listed
     ?.split("\n")
-    .find((line) => line.includes(`:${port}->5280/`))
+    .find((line) => publishes(line, Number(port), 5280))
     ?.split(" ")[0];
   if (container) {
     const token = output(ctx, "docker", ["exec", container, "charet-server", "admin-token"]);
@@ -193,6 +193,28 @@ function ownerToken(ctx: Context): string | undefined {
   ]);
   if (!server) return undefined;
   return output(ctx, server, ["admin-token"])?.split("\n").at(-1)?.trim();
+}
+
+/**
+ * The address a browser opens: `localhost` rather than a loopback IP, since previews are served
+ * from `127.0.0.1` and must not get the tool's cookies.
+ */
+export function browserUrl(server: string): string {
+  const url = new URL(server);
+  if (url.hostname === "127.0.0.1" || url.hostname === "[::1]") url.hostname = "localhost";
+  return url.origin + url.pathname.replace(/\/+$/, "");
+}
+
+/**
+ * Whether a `docker ps` ports column maps host `port` to the container's `target`. Docker joins
+ * neighbouring ports into ranges: `127.0.0.1:5280-5281->5280-5281/tcp`.
+ */
+export function publishes(ports: string, port: number, target: number): boolean {
+  for (const [, from, to, inner] of ports.matchAll(/:(\d+)(?:-(\d+))?->(\d+)(?:-\d+)?\//g)) {
+    const offset = target - Number(inner);
+    if (offset >= 0 && Number(from) + offset === port && port <= Number(to ?? from)) return true;
+  }
+  return false;
 }
 
 function starRepository(ctx: Context): void {

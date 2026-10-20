@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { run } from "./main.ts";
-import { newer } from "./system.ts";
+import { browserUrl, newer, publishes } from "./system.ts";
 
 const home = mkdtempSync(join(tmpdir(), "charet-system-"));
 after(() => rmSync(home, { recursive: true, force: true }));
@@ -199,4 +199,21 @@ test("doctor reports failing services and newer releases", async () => {
 
   const down = await charet(["doctor"], { sh });
   assert.match(down.out, /✗ server http:\/\/127\.0\.0\.1:5280: unreachable/);
+});
+
+test("finds the server container publishing a port, ranges included", () => {
+  assert.equal(
+    publishes("b53e 127.0.0.1:5280-5281->5280-5281/tcp, 127.0.0.1:5284->5284/tcp", 5280, 5280),
+    true,
+  );
+  assert.equal(publishes("x 0.0.0.0:5380->5280/tcp", 5380, 5280), true);
+  assert.equal(publishes("x 127.0.0.1:5380-5381->5280-5281/tcp", 5381, 5280), false);
+  assert.equal(publishes("x 127.0.0.1:8300->8000/tcp", 8300, 5280), false);
+  assert.equal(publishes("x 127.0.0.1:5280-5281->5280-5281/tcp", 5281, 5280), false);
+});
+
+test("the admin link names localhost, not a loopback IP the previews use", () => {
+  assert.equal(browserUrl("http://127.0.0.1:5280"), "http://localhost:5280");
+  assert.equal(browserUrl("http://[::1]:5280/"), "http://localhost:5280");
+  assert.equal(browserUrl("https://charet.example.com/"), "https://charet.example.com");
 });
