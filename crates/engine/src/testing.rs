@@ -86,11 +86,23 @@ fn engine_with(fakes: &Fakes) -> Engine {
 /// Records jobs. Screens render ready; with an image, the picture is `jpeg:<target>` and the
 /// element map points at `src/<target>.tsx:3:5`.
 #[derive(Default)]
-pub struct MemoryRenderer(Mutex<Vec<RenderJob>>, Mutex<Option<serde_json::Value>>);
+pub struct MemoryRenderer(
+    Mutex<Vec<RenderJob>>,
+    Mutex<Option<serde_json::Value>>,
+    Mutex<HashMap<String, Vec<String>>>,
+);
 
 impl MemoryRenderer {
     pub fn jobs(&self) -> Vec<RenderJob> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// Problems every later render of `target` reports (none when empty).
+    pub fn set_issues(&self, target: &str, issues: &[&str]) {
+        self.2.lock().unwrap().insert(
+            target.into(),
+            issues.iter().map(|i| (*i).to_owned()).collect(),
+        );
     }
 
     /// The element map of every later render.
@@ -111,9 +123,16 @@ impl Renderer for MemoryRenderer {
             })
             .unwrap_or_default()
             .to_owned();
+        let issues = self
+            .2
+            .lock()
+            .unwrap()
+            .get(&target)
+            .cloned()
+            .unwrap_or_default();
         Ok(Shot {
             ready: Some("true".into()),
-            issues: Vec::new(),
+            issues,
             image: job.image.map(|_| format!("jpeg:{target}").into_bytes()),
             elements: job.map.then(|| {
                 self.1.lock().unwrap().clone().unwrap_or_else(
@@ -489,6 +508,8 @@ impl Records for MemoryRecords {
             head: new.head.clone(),
             conflicts: Vec::new(),
             merged_version: None,
+            approved: None,
+            check: None,
             created_at: String::new(),
             updated_at: String::new(),
         };
@@ -691,6 +712,25 @@ impl ProjectStore for MemoryStore {
         let id = repo.add(files, parent.into_iter().map(str::to_owned).collect());
         repo.lines.insert(line.into(), id.clone());
         Ok(Some(id))
+    }
+    fn commit_detached(
+        &self,
+        project: &str,
+        parent: &str,
+        changes: &[FileChange],
+        _author: &Author,
+        _message: &str,
+    ) -> Result<String, StoreError> {
+        let mut repos = self.0.lock().unwrap();
+        let repo = repos.get_mut(project).unwrap();
+        let mut files = repo.files(parent).clone();
+        for change in changes {
+            match &change.content {
+                Some(content) => files.insert(change.path.clone(), content.clone()),
+                None => files.remove(&change.path),
+            };
+        }
+        Ok(repo.add(files, vec![parent.to_owned()]))
     }
     fn move_line(
         &self,

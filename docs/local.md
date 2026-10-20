@@ -27,6 +27,7 @@ The first build of the images takes a while (Rust and the web tool are compiled)
 | `CHARET_PORT` | `5280` | web tool and API |
 | `CHARET_PREVIEW_PORT` | `5281` | previews |
 | `CHARET_UPDATE_CHECK` | `true` | daily check for a new release (the only outside call) |
+| `CHARET_MERGE_CHECK` | `true` | build and open what a merge gives before main moves (`false` for a server without previews) |
 | `CHARET_TZ` | `UTC` | time zone of rendered screens (e.g. `Asia/Seoul`) |
 | `CHARET_DATA_DIR` | (volume `charet_data`) | a folder on this machine for projects, comments and captures |
 | `CHARET_USER` | `charet` | user the server runs as; with `CHARET_DATA_DIR`, the folder's owner (`uid:gid`) |

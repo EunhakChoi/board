@@ -577,8 +577,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Join the branch into main as a new version */
+        /**
+         * Join the branch into main as a new version
+         * @description First the merged result is built and the screens the change can reach are opened (the merge check). While it builds the answer is `pending` (try again); new problems answer `check_failed` with `detail.issues`. Protected files changed without an admin's approval answer `approval_required` with `detail.files` (an admin merging approves as they go).
+         */
         post: operations["mergeBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve the branch's protected-file changes as they are now (admins) */
+        post: operations["approveBranch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1323,8 +1346,22 @@ export interface components {
             /** @description Files that clashed with main; empty when clean */
             conflicts: string[];
             mergedVersion?: number;
+            /** @description The commit an admin approved its protected-file changes at */
+            approved?: string;
+            check?: components["schemas"]["MergeCheck"];
             createdAt: string;
             updatedAt: string;
+        };
+        /** @description The check of the commit merging the branch would make */
+        MergeCheck: {
+            main: string;
+            head: string;
+            /** @description The joined commit (on no line until the merge) */
+            commit: string;
+            /** @enum {string} */
+            state: "checking" | "passed" | "failed";
+            /** @description The build error, or `<kind> <id>: <problem>` lines */
+            issues: string[];
         };
         BranchEvent: {
             actor: components["schemas"]["Person"];
@@ -1344,6 +1381,10 @@ export interface components {
             since: string;
             /** @description Main moved on since the branch last caught up */
             behind: boolean;
+            /** @description Protected files it changes that an admin has not approved */
+            unapproved: string[];
+            /** @description Screens and stories (`kind:id`) its changes can reach, as far as main's captures tell; absent when a change may reach any of them */
+            affected?: string[];
             events: components["schemas"]["BranchEvent"][];
         };
         FileInput: {
@@ -2566,6 +2607,32 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Clash"];
+        };
+    };
+    approveBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     archiveBranch: {

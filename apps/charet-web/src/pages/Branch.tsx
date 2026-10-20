@@ -1,9 +1,12 @@
 import {
   ArrowLeft,
+  CircleCheck,
   Columns2,
   GitMerge,
   Layers,
+  LoaderCircle,
   MessageSquarePlus,
+  ShieldAlert,
   TriangleAlert,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -14,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
-import type { BranchDetail, Manifest, TargetKind } from "@/lib/api";
+import { type BranchDetail, HttpError, type Manifest, type TargetKind } from "@/lib/api";
 import { diffLines, fold } from "@/lib/diff";
 import { useLocale, useT } from "@/lib/i18n";
 import {
@@ -34,6 +37,44 @@ import { StatusBadge, when } from "./Branches";
 import { Empty } from "./Screens";
 
 type Tab = "screens" | "code" | "history";
+
+function active(branch: BranchDetail): boolean {
+  return branch.status === "open" || branch.status === "in_review";
+}
+
+/** The check of what merging gives: building, passed, or the problems that hold it back. */
+function MergeCheck({ check }: { check: NonNullable<BranchDetail["check"]> }) {
+  const t = useT();
+  if (check.state === "checking") {
+    return (
+      <div className="flex items-center gap-2 border-b px-6 py-2 text-sm text-muted-foreground">
+        <LoaderCircle className="size-4 animate-spin" />
+        {t("web.branch.checking")}
+      </div>
+    );
+  }
+  if (check.state === "passed") {
+    return (
+      <div className="flex items-center gap-2 border-b px-6 py-2 text-sm text-success">
+        <CircleCheck className="size-4" />
+        {t("web.branch.checkPassed")}
+      </div>
+    );
+  }
+  return (
+    <div className="border-b bg-destructive/10 px-6 py-2 text-sm text-destructive">
+      <p className="flex items-center gap-2">
+        <TriangleAlert className="size-4" />
+        {t("web.branch.checkFailed")}
+      </p>
+      <ul className="mt-1 list-disc pl-10 font-mono text-xs">
+        {check.issues.map((issue) => (
+          <li key={issue}>{issue}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** Where the comparison starts and ends: a merged branch is its version against the one before. */
 function revs(branch: BranchDetail): { before: string; after: string } {
@@ -84,6 +125,18 @@ export function Branch() {
             <span className="font-mono text-xs">{data.conflicts.join(", ")}</span>
           </span>
         </div>
+      )}
+      {active(data) && data.unapproved.length > 0 && (
+        <div className="flex items-start gap-2 border-b bg-warning/10 px-6 py-2 text-sm text-warning">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {t("web.branch.protected")}{" "}
+            <span className="font-mono text-xs">{data.unapproved.join(", ")}</span>
+          </span>
+        </div>
+      )}
+      {active(data) && data.check && data.check.head === data.head && (
+        <MergeCheck check={data.check} />
       )}
       {data.status === "merged" && data.mergedVersion && (
         <div className="flex items-center gap-2 border-b bg-muted/50 px-6 py-2 text-sm">
@@ -171,9 +224,23 @@ function Actions({ projectKey, branch }: { projectKey: string; branch: BranchDet
   const mayChange = branch.status === "in_review" || mine;
   const busy = Object.values(actions).some((a) => a.isPending);
   const error = Object.values(actions).find((a) => a.error)?.error;
+  const blocked = branch.unapproved.length > 0 && !isAdmin;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {error && <span className="text-sm text-destructive">{error.message}</span>}
+      {error && !(error instanceof HttpError && error.code === "check_failed") && (
+        <span className="text-sm text-destructive">{error.message}</span>
+      )}
+      {active && isAdmin && branch.unapproved.length > 0 && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => actions.approve.mutate(branch.number)}
+        >
+          <ShieldAlert />
+          {t("web.branch.approve")}
+        </Button>
+      )}
       {branch.status === "open" && mine && (
         <Button
           size="sm"
@@ -225,11 +292,12 @@ function Actions({ projectKey, branch }: { projectKey: string; branch: BranchDet
       {active && (
         <Button
           size="sm"
-          disabled={busy || branch.conflicts.length > 0}
+          disabled={busy || blocked || branch.conflicts.length > 0}
+          title={blocked ? t("web.branch.needsApproval") : undefined}
           onClick={() => actions.merge.mutate(branch.number)}
         >
-          <GitMerge />
-          {t("web.branch.merge")}
+          {actions.merge.isPending ? <LoaderCircle className="animate-spin" /> : <GitMerge />}
+          {actions.merge.isPending ? t("web.branch.merging") : t("web.branch.merge")}
         </Button>
       )}
     </div>
@@ -369,7 +437,13 @@ function Screens({
                 )}
               >
                 <span className="truncate">{target.title}</span>
-                {!known.has(id) && old.data && <Badge variant="info">{t("web.branch.new")}</Badge>}
+                {!known.has(id) && old.data ? (
+                  <Badge variant="info">{t("web.branch.new")}</Badge>
+                ) : (
+                  branch.affected?.includes(id) && (
+                    <Badge variant="outline">{t("web.branch.changed")}</Badge>
+                  )
+                )}
               </button>
             </li>
           );

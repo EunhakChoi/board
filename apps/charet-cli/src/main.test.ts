@@ -40,6 +40,8 @@ before(async () => {
       CHARET_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
       CHARET_REMOTE_BIND: `127.0.0.1:${remotePort}`,
       CHARET_UPDATE_CHECK: "false",
+      // No build service here to check merges with.
+      CHARET_MERGE_CHECK: "false",
     },
     stdio: "ignore",
   });

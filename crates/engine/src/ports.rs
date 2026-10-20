@@ -156,6 +156,15 @@ pub trait ProjectStore: Send + Sync {
         author: &Author,
         message: &str,
     ) -> Result<Option<String>, StoreError>;
+    /// Commits `changes` on top of `parent` without moving any line (a commit only builds use).
+    fn commit_detached(
+        &self,
+        project: &str,
+        parent: &str,
+        changes: &[FileChange],
+        author: &Author,
+        message: &str,
+    ) -> Result<String, StoreError>;
     /// Points `line` at `new` if it is still at `old` (`None` = the line must not exist yet).
     /// False when it had moved.
     fn move_line(

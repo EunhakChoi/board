@@ -189,6 +189,84 @@ impl Engine {
         Ok(Rendered { commit, results })
     }
 
+    /// The stored captures (`kind:id`) a change from `from` to `to` can reach, or `None` when it
+    /// changes a file no capture rendered from (it may reach any of them).
+    pub(crate) fn reach(
+        &self,
+        key: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<Option<BTreeSet<String>>, EngineError> {
+        let captures = self.ports.captures.list(key)?;
+        let app = app_dir(self.ports.store.read(key, to, "charet.json")?.as_deref());
+        let mut reached = BTreeSet::new();
+        for change in self.ports.store.diff(key, from, to)? {
+            let mut known = false;
+            for capture in &captures {
+                if capture.sources.iter().any(|s| join(&app, s) == change.path) {
+                    known = true;
+                    reached.insert(format!("{}:{}", capture.kind, capture.target));
+                }
+            }
+            if !known {
+                return Ok(None);
+            }
+        }
+        Ok(Some(reached))
+    }
+
+    /// Opens the screens and stories of `commit` (a ready build) that the change from `from` can
+    /// reach, plus those `main` has no capture of, in the light theme. Returns the problems found,
+    /// leaving out those the stored capture of `main` already had.
+    pub(crate) fn check_reach(
+        &self,
+        key: &str,
+        from: &str,
+        commit: &str,
+    ) -> Result<Vec<String>, EngineError> {
+        let settings = self.preview_settings()?;
+        let reach = self.reach(key, from, commit)?;
+        let theme = THEMES[0];
+        let stored: HashMap<String, Vec<String>> = self
+            .ports
+            .captures
+            .list(key)?
+            .into_iter()
+            .filter(|c| c.theme == theme)
+            .map(|c| (format!("{}:{}", c.kind, c.target), c.issues))
+            .collect();
+        let jobs: Vec<(Target, &'static str)> = self
+            .targets(key, commit)?
+            .into_iter()
+            .filter(|t| {
+                let id = format!("{}:{}", t.kind, t.id);
+                !stored.contains_key(&id) || reach.as_ref().is_none_or(|r| r.contains(&id))
+            })
+            .map(|t| (t, theme))
+            .collect();
+        let results = Self::run_parallel(&jobs, |(target, theme)| {
+            let shot = self.shoot(settings, key, commit, target, theme, None)?;
+            Ok(result(target, theme, &shot, false))
+        });
+        let mut problems = Vec::new();
+        for r in results {
+            let known = stored.get(&format!("{}:{}", r.kind, r.target));
+            let mut own: Vec<String> = r
+                .issues
+                .into_iter()
+                .filter(|i| known.is_none_or(|k| !k.contains(i)))
+                .collect();
+            if own.is_empty() && r.ready.is_none() && known.is_none() {
+                own.push("never got ready".into());
+            }
+            problems.extend(
+                own.into_iter()
+                    .map(|i| format!("{} {}: {i}", r.kind, r.target)),
+            );
+        }
+        Ok(problems)
+    }
+
     /// Stored captures, each marked stale when `main` moved in a way that can change it.
     pub fn captures(&self, actor: &Actor, key: &str) -> Result<Vec<CaptureStatus>, EngineError> {
         self.visible(actor, key, Command::ProjectView)?;

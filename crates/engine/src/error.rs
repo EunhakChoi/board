@@ -17,6 +17,10 @@ pub enum EngineError {
     },
     /// Joining two lines of work clashed in these files; someone has to settle them by hand.
     Clash(Vec<String>),
+    /// These protected files changed; an admin has to approve them first.
+    ApprovalNeeded(Vec<String>),
+    /// The merge check found these new problems in what merging would give.
+    CheckFailed(Vec<String>),
     /// A service the command needs is down or not configured.
     Unavailable(String),
     /// Not possible yet (a build still running); try again later.
@@ -52,6 +56,14 @@ impl std::fmt::Display for EngineError {
             Self::Exists(what) => write!(f, "{what} already exists"),
             Self::Conflict { head } => write!(f, "it moved to {head}; pull and try again"),
             Self::Clash(files) => write!(f, "changed on both sides: {}", files.join(", ")),
+            Self::ApprovalNeeded(files) => write!(
+                f,
+                "an admin has to approve the changes to {}",
+                files.join(", ")
+            ),
+            Self::CheckFailed(issues) => {
+                write!(f, "the merged result has problems: {}", issues.join("; "))
+            }
             Self::Unavailable(message) => write!(f, "unavailable: {message}"),
             Self::Changed(rev) => write!(
                 f,

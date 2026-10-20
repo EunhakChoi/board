@@ -79,8 +79,9 @@ test("a branch is compared, merged and restored", async ({ page, request }) => {
 
   await page.getByRole("button", { name: "Request review" }).click();
   await expect(page.getByText("In review", { exact: true })).toBeVisible();
+  // The merge first builds what it gives and opens the screens it reaches.
   await page.getByRole("button", { name: "Merge" }).click();
-  await expect(page.getByText(/Merged as v\d+/)).toBeVisible();
+  await expect(page.getByText(/Merged as v\d+/)).toBeVisible({ timeout: 180_000 });
 
   await page.goto(`${base()}/p/demo/versions`);
   const merged = page.locator("li").filter({ hasText: "Say which day" });

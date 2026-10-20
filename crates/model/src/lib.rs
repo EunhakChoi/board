@@ -146,8 +146,37 @@ pub struct Branch {
     /// The version it became, once merged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merged_version: Option<u32>,
+    /// The commit an admin approved its protected-file changes at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved: Option<String>,
+    /// The last check of what merging it would give.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<MergeCheck>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A check of the commit merging a branch would make: it is built and the screens the change can
+/// reach are opened. New problems hold the merge back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeCheck {
+    /// The `main` and branch commits that were joined.
+    pub main: String,
+    pub head: String,
+    /// The joined commit (on no line until the merge).
+    pub commit: String,
+    pub state: MergeCheckState,
+    /// What failed: the build error, or `<target> (<theme>): <problem>` lines.
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeCheckState {
+    Checking,
+    Passed,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -33,7 +33,8 @@ are in) and `--server <url>` (default: the checkout's server, else `CHARET_URL`,
 | `charet branches [--all]` | Drafts and branches in review (`--all`: merged, archived): `#n status author title [clash: files]` |
 | `charet branch [n]` | One branch: status, head, clash, link, changed files, history (defaults to the checkout's branch) |
 | `charet branch review [n]` | Asks the team to review a draft (author or admin) |
-| `charet branch merge [n]` | Merges into main as a new version; refused when files clash (named in the message) |
+| `charet branch approve [n]` | Approves the branch's protected-file changes (admin) |
+| `charet branch merge [n]` | Builds and checks what merging gives, then merges into main as a new version; refused when files clash, protected files wait for approval, or the check finds new problems (each named in the message) |
 | `charet branch catch-up [n]` | Takes the newest main into the branch; clashes are marked, then `charet pull` |
 | `charet branch archive\|reopen\|duplicate [n]` | Close without merging · bring back as a draft · copy as your own draft (drafts are their author's) |
 

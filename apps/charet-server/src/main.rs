@@ -97,6 +97,7 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
             ttl_secs: PREVIEW_TOKEN_SECS,
         })
         .with_tool_url(&config.tool_url())
+        .with_merge_check(config.merge_check)
         .with_secret(secret);
     // The owner: the local door acts as them; on a public server their token is the way in.
     let created = engine.ensure_owner().map_err(|e| e.to_string())?;

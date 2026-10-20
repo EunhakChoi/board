@@ -110,6 +110,25 @@ impl ProjectStore for GitStore {
         Ok(moved.then_some(commit))
     }
 
+    fn commit_detached(
+        &self,
+        project: &str,
+        parent: &str,
+        changes: &[FileChange],
+        author: &Author,
+        message: &str,
+    ) -> Result<String, StoreError> {
+        let git = self.git(project);
+        let scratch = format!("refs/charet/scratch/{}", unique());
+        let stream = fast_import_stream(&scratch, Some(parent), changes, author, message)?;
+        git.run(&["fast-import", "--quiet", "--done"], Some(&stream))?;
+        let commit = git
+            .rev_parse(&scratch)
+            .ok_or_else(|| StoreError("fast-import wrote no commit".into()));
+        git.run(&["update-ref", "-d", &scratch], None)?;
+        commit
+    }
+
     fn move_line(
         &self,
         project: &str,

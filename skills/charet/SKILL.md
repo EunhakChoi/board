@@ -91,6 +91,12 @@ charet ls --stale                   # screens whose capture is older than the co
   user asked for the change outright and works alone, `charet push -m "…" --merge` does both.
 - Merge refused with a clash: someone changed the same lines on main. `charet branch catch-up`,
   `charet pull`, settle the files named in the message, push, then merge again.
+- A merge first builds what merging gives and opens the screens the change can reach (it waits
+  while that builds). New errors there refuse it with the list: fix them on the branch, push,
+  merge again.
+- Changing `package.json`, lockfiles, `vite.config.*`, `tsconfig*.json`, `.npmrc` or `charet.json`
+  needs an admin's approval (`charet branch approve`); until then the branch's previews use main's
+  versions of those files, so a new dependency will not show up in `check` yet. Tell the user.
 - `[charet] missing mock GET /api/…` means the screen calls an API no handler answers. Add the
   handler; a silent failure there would show the team a broken screen.
 - Open the saved pictures and look at them before saying it works. A page can pass `check` and

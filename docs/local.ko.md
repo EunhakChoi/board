@@ -27,6 +27,7 @@ docker compose up -d
 | `CHARET_PORT` | `5280` | 웹 도구 · API |
 | `CHARET_PREVIEW_PORT` | `5281` | 미리보기 |
 | `CHARET_UPDATE_CHECK` | `true` | 하루 1회 새 버전 확인 (유일한 외부 호출) |
+| `CHARET_MERGE_CHECK` | `true` | 채택 전 merge 결과 build · 화면 검사 (미리보기 없는 server 는 `false`) |
 | `CHARET_TZ` | `UTC` | 렌더 화면의 time zone (예: `Asia/Seoul`) |
 | `CHARET_DATA_DIR` | (volume `charet_data`) | 프로젝트 · 댓글 · 캡처를 둘 이 기기의 폴더 |
 | `CHARET_USER` | `charet` | server 실행 user. `CHARET_DATA_DIR` 사용 시 폴더 주인 (`uid:gid`) |

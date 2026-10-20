@@ -93,6 +93,21 @@ impl From<EngineError> for ApiError {
                 format!("changed on both sides: {}", files.join(", ")),
             )
             .with_detail(serde_json::json!({ "files": files })),
+            EngineError::ApprovalNeeded(files) => Self::new(
+                StatusCode::FORBIDDEN,
+                "approval_required",
+                format!(
+                    "an admin has to approve the changes to {}",
+                    files.join(", ")
+                ),
+            )
+            .with_detail(serde_json::json!({ "files": files })),
+            EngineError::CheckFailed(issues) => Self::new(
+                StatusCode::CONFLICT,
+                "check_failed",
+                format!("the merged result has problems: {}", issues.join("; ")),
+            )
+            .with_detail(serde_json::json!({ "issues": issues })),
             EngineError::Pending(message) => Self::new(StatusCode::CONFLICT, "pending", message),
             EngineError::Changed(rev) => Self::new(
                 StatusCode::CONFLICT,

@@ -24,6 +24,12 @@ pub struct BranchDetail {
     pub since: String,
     /// `main` has moved on since the branch last caught up.
     pub behind: bool,
+    /// Protected files it changes that an admin has not approved yet.
+    pub unapproved: Vec<String>,
+    /// Screens and stories (`kind:id`) its changes can reach, as far as `main`'s captures tell;
+    /// absent when a change may reach any of them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub affected: Option<Vec<String>>,
     pub events: Vec<BranchEvent>,
 }
 
@@ -51,11 +57,21 @@ impl Engine {
         let changes = self.ports.store.diff(key, &since, &branch.head)?;
         let behind = branch.status.active() && since != main;
         let events = self.ports.records.branch_events(key, number)?;
+        let unapproved = if branch.status.active() {
+            self.unapproved(key, &branch, &since)?
+        } else {
+            Vec::new()
+        };
+        let affected = self
+            .reach(key, &since, &branch.head)?
+            .map(|reached| reached.into_iter().collect());
         Ok(BranchDetail {
             branch,
             changes,
             since,
             behind,
+            unapproved,
+            affected,
             events,
         })
     }
@@ -168,28 +184,20 @@ impl Engine {
             return Err(EngineError::Invalid(format!("branch {number} is closed")));
         }
         let main = self.main_head(key)?;
-        let title = format!("{} (#{number})", branch.title);
-        let joined =
-            match self
-                .ports
-                .store
-                .merge(key, &main, &branch.head, &author(actor), &title)?
-            {
-                Merged::Clean(commit) if commit == main => {
-                    return Err(EngineError::Invalid(format!(
-                        "branch {number} changes nothing"
-                    )));
-                }
-                Merged::Clean(commit) => commit,
-                Merged::Conflict(files) => {
-                    if branch.conflicts != files {
-                        branch.conflicts.clone_from(&files);
-                        self.save_branch(actor, key, &branch, "conflict", &files.join(", "))?;
-                        self.tell(actor, key, &branch, "branch.clash");
-                    }
-                    return Err(EngineError::Clash(files));
-                }
-            };
+        let since = self
+            .ports
+            .store
+            .merge_base(key, &branch.head, &main)?
+            .unwrap_or_else(|| branch.base.clone());
+        let unapproved = self.unapproved(key, &branch, &since)?;
+        if !unapproved.is_empty() {
+            // An admin merging approves as they go.
+            if actor.role() != Role::Admin {
+                return Err(EngineError::ApprovalNeeded(unapproved));
+            }
+            self.approve(actor, key, &mut branch)?;
+        }
+        let joined = self.check_merge(actor, key, &mut branch, &main)?;
         if !self
             .ports
             .store
@@ -453,7 +461,7 @@ impl Engine {
         Ok(branch)
     }
 
-    fn save_branch(
+    pub(crate) fn save_branch(
         &self,
         actor: &Actor,
         key: &str,
@@ -492,13 +500,13 @@ impl Engine {
     }
 
     /// Notifications and webhooks for a branch event (best effort).
-    fn tell(&self, actor: &Actor, key: &str, branch: &Branch, kind: &'static str) {
+    pub(crate) fn tell(&self, actor: &Actor, key: &str, branch: &Branch, kind: &'static str) {
         if let Ok(Some(project)) = self.ports.records.project(key) {
             self.branch_event(actor, &project, branch, kind);
         }
     }
 
-    fn find_branch(&self, key: &str, number: u32) -> Result<Branch, EngineError> {
+    pub(crate) fn find_branch(&self, key: &str, number: u32) -> Result<Branch, EngineError> {
         self.ports
             .records
             .branch(key, number)?

@@ -1,4 +1,4 @@
-//! Branch routes: list, start (or propose with files), push, review, merge, archive, reopen,
+//! Branch routes: list, start (or propose with files), push, review, approve, merge, archive, reopen,
 //! duplicate, catch up; and restoring a version.
 
 use axum::extract::{Path, State};
@@ -33,6 +33,10 @@ pub fn routes() -> Router<Engine> {
         .route(
             "/api/projects/{key}/branches/{number}/archive",
             post(archive),
+        )
+        .route(
+            "/api/projects/{key}/branches/{number}/approve",
+            post(approve),
         )
         .route("/api/projects/{key}/branches/{number}/reopen", post(reopen))
         .route(
@@ -151,6 +155,16 @@ pub async fn archive(
 ) -> Result<Json<Branch>, ApiError> {
     Ok(Json(
         blocking(move || engine.archive_branch(&actor, &key, number)).await?,
+    ))
+}
+
+pub async fn approve(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path((key, number)): Path<(String, u32)>,
+) -> Result<Json<Branch>, ApiError> {
+    Ok(Json(
+        blocking(move || engine.approve_branch(&actor, &key, number)).await?,
     ))
 }
 

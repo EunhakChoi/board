@@ -5,6 +5,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod guards;
 mod members;
 mod notices;
 pub mod policy;
@@ -71,6 +72,8 @@ pub struct Engine {
     live: Arc<RwLock<Live>>,
     tunnels: Option<Arc<dyn Tunnels>>,
     secret: Option<Arc<[u8; 32]>>,
+    /// Whether merges wait for the check of what they give (on by default, with previews).
+    merge_check: bool,
 }
 
 impl std::fmt::Debug for Engine {
@@ -90,6 +93,7 @@ impl Engine {
             live: Arc::default(),
             tunnels: None,
             secret: None,
+            merge_check: true,
         }
     }
 
@@ -111,6 +115,13 @@ impl Engine {
     #[must_use]
     pub fn with_tunnels(mut self, tunnels: Arc<dyn Tunnels>) -> Self {
         self.tunnels = Some(tunnels);
+        self
+    }
+
+    /// Turns the merge check off (a server without the build service).
+    #[must_use]
+    pub fn with_merge_check(mut self, on: bool) -> Self {
+        self.merge_check = on;
         self
     }
 
