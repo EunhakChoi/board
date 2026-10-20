@@ -855,7 +855,7 @@ async fn a_second_browser_replaces_the_first_but_not_the_cli() {
 }
 
 #[tokio::test]
-async fn visitors_look_with_a_made_up_name_until_turned_off() {
+async fn visitors_do_what_the_server_and_project_let_them() {
     let (engine, boss) = public_engine().await;
     json_of(
         &engine,
@@ -895,33 +895,24 @@ async fn visitors_look_with_a_made_up_name_until_turned_off() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "visitors only look");
-
-    let (status, _) = json_of(
-        &engine,
-        as_member(
-            "PUT",
-            "/api/admin/access",
-            &visitor,
-            Some(json!({"visitors": false})),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, access) = json_of(
-        &engine,
-        as_member(
-            "PUT",
-            "/api/admin/access",
-            &boss,
-            Some(json!({"visitors": false})),
-        ),
-    )
-    .await;
-    assert_eq!(
-        (status, access["visitors"].as_bool()),
-        (StatusCode::OK, Some(false))
-    );
+    assert_eq!(status, StatusCode::FORBIDDEN, "visitors look by default");
+    for who in [&visitor, &boss] {
+        let (status, _) = json_of(
+            &engine,
+            as_member(
+                "PUT",
+                "/api/admin/access",
+                who,
+                Some(json!({"visitors": "none"})),
+            ),
+        )
+        .await;
+        if who == &visitor {
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        } else {
+            assert_eq!(status, StatusCode::OK);
+        }
+    }
     let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &visitor, None)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, body) = call(engine.clone(), "/api/auth/me").await;
@@ -930,7 +921,81 @@ async fn visitors_look_with_a_made_up_name_until_turned_off() {
         (StatusCode::UNAUTHORIZED, Some("token_required"))
     );
     let (_, access) = json_of(&engine, as_member("GET", "/api/admin/access", &boss, None)).await;
-    assert_eq!(access["visitors"], false);
+    assert_eq!(access["visitors"], "none");
+}
+
+#[tokio::test]
+async fn a_project_lets_visitors_comment_but_never_check_out() {
+    let (engine, boss) = public_engine().await;
+    json_of(
+        &engine,
+        as_member("POST", "/api/projects", &boss, Some(json!({"key": "web"}))),
+    )
+    .await;
+    let response = charet_api::router(engine.clone())
+        .oneshot(Request::get("/api/auth/me").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let visitor = response.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let (status, _) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/web/checkout", &visitor, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "no checkout for visitors");
+
+    // This project lets them comment.
+    let (status, project) = json_of(
+        &engine,
+        as_member(
+            "PUT",
+            "/api/projects/web/visitors",
+            &boss,
+            Some(json!({"visitors": "comment"})),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (
+            status,
+            project["visitors"].as_str(),
+            project["visitorAccess"].as_str()
+        ),
+        (StatusCode::OK, Some("comment"), Some("comment"))
+    );
+    let (_, seen) = json_of(
+        &engine,
+        as_member("GET", "/api/projects/web", &visitor, None),
+    )
+    .await;
+    assert_eq!(seen["visitorAccess"], "comment");
+    let (status, _) = json_of(
+        &engine,
+        as_member(
+            "POST",
+            "/api/projects/web/comments",
+            &visitor,
+            Some(json!({"kind": "screen", "target": "home", "at": {"x": 1, "y": 1}, "body": "Hi"})),
+        ),
+    )
+    .await;
+    assert_ne!(status, StatusCode::FORBIDDEN, "commenting is allowed now");
+    json_of(
+        &engine,
+        as_member(
+            "PUT",
+            "/api/projects/web/visitors",
+            &boss,
+            Some(json!({"visitors": null})),
+        ),
+    )
+    .await;
 }
 
 #[tokio::test]

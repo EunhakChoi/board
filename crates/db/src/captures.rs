@@ -216,6 +216,8 @@ mod tests {
             key: "web".into(),
             title: "Web".into(),
             visibility: Visibility::Team,
+            visitors: None,
+            visitor_access: charet_model::VisitorAccess::View,
             origin: Origin::Empty,
             created_at: String::new(),
         })

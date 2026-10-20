@@ -262,6 +262,8 @@ pub(crate) mod tests {
             key: "web".into(),
             title: "Web".into(),
             visibility: charet_model::Visibility::Team,
+            visitors: None,
+            visitor_access: charet_model::VisitorAccess::View,
             origin: charet_model::Origin::Empty,
             created_at: String::new(),
         })

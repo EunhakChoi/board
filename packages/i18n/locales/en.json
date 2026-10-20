@@ -197,7 +197,7 @@
   "web.access.title": "Who can see it",
   "web.access.team": "Everyone on the team",
   "web.access.private": "Private",
-  "web.access.teamLead": "Everyone with a token sees the project (and visitors, when allowed).",
+  "web.access.teamLead": "Everyone with a token sees the project; visitors as set below.",
   "web.access.privateLead": "Only the people picked below and admins see it.",
   "web.access.nobody": "No other members yet.",
   "web.presence.here": "Here now",
@@ -295,7 +295,7 @@
   "web.team.reissue": "New token",
   "web.team.reissueHint": "The old token stops working and their browsers are signed out.",
   "web.team.visitors": "Visitors",
-  "web.team.visitorsLead": "People without a token can look at the team's projects (view only), under a made-up name.",
+  "web.team.visitorsLead": "People without a token come in under a made-up name and do what this allows. A project can set its own level (Access on the project).",
   "web.team.visitorsOn": "Can look",
   "web.team.visitorsOff": "Token required",
   "web.access.button": "Access",
@@ -415,5 +415,11 @@
   "web.branch.commentPlaceholder": "Comment on this spot of the branch…",
   "web.branch.event.duplicate": "started it as a copy of",
   "web.versions.restore": "Restore v{number}: a new version that undoes it",
-  "web.versions.restoreConfirm": "Undo v{number}?"
+  "web.versions.restoreConfirm": "Undo v{number}?",
+  "web.team.visitorsComment": "Can comment",
+  "web.team.visitorsNote": "Looking covers screens, flows, code and comments. Downloading the whole project (charet checkout) always needs a token.",
+  "web.access.visitors": "Visitors (no token)",
+  "web.access.visitorsServer": "Server setting",
+  "web.access.visitorsFollows": "Follows the server setting: {level}.",
+  "web.access.visitorsOwn": "This project's own setting, whatever the server says."
 }

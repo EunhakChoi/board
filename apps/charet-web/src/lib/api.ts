@@ -16,6 +16,7 @@ export type Project = Schemas["Project"];
 export type User = Schemas["User"];
 export type Member = Schemas["Member"];
 export type Role = Schemas["Role"];
+export type VisitorAccess = Schemas["VisitorAccess"];
 export type Notification = Schemas["Notification"];
 export type Webhook = Schemas["Webhook"];
 export type ShareMode = Schemas["ShareMode"];

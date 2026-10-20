@@ -186,7 +186,7 @@
   "web.access.title": "공개 범위",
   "web.access.team": "팀 전체",
   "web.access.private": "비공개",
-  "web.access.teamLead": "token 이 있는 사람 모두 이 프로젝트를 봐요 (허용하면 방문자도).",
+  "web.access.teamLead": "token 이 있는 모두가 봄. 방문자는 아래 설정대로.",
   "web.access.privateLead": "아래에서 고른 사람과 관리자만 봐요.",
   "web.access.nobody": "다른 팀원이 아직 없습니다.",
   "web.presence.here": "지금 보는 사람",
@@ -284,7 +284,7 @@
   "web.team.reissue": "token 재발급",
   "web.team.reissueHint": "이전 token 은 더 이상 동작하지 않고, 그 팀원의 브라우저는 로그아웃돼요.",
   "web.team.visitors": "방문자",
-  "web.team.visitorsLead": "token 이 없는 사람도 팀 공개 프로젝트를 볼 수 있어요 (보기만). 이름은 임의로 붙어요.",
+  "web.team.visitorsLead": "token 없는 사람은 임의 이름으로 들어와 여기서 정한 만큼 사용. 프로젝트별로 따로 정할 수 있음 (프로젝트의 접근 설정).",
   "web.team.visitorsOn": "볼 수 있음",
   "web.team.visitorsOff": "token 필요",
   "web.access.button": "공개 범위",
@@ -404,5 +404,11 @@
   "web.branch.commentPlaceholder": "branch 화면의 이 위치에 댓글…",
   "web.branch.event.duplicate": "복제해서 시작함:",
   "web.versions.restore": "v{number} 되돌리기: 그 변경을 취소하는 새 버전",
-  "web.versions.restoreConfirm": "v{number} 되돌릴까요?"
+  "web.versions.restoreConfirm": "v{number} 되돌릴까요?",
+  "web.team.visitorsComment": "댓글 가능",
+  "web.team.visitorsNote": "보기 = 화면 · 흐름 · 코드 · 댓글 읽기. 프로젝트 전체 내려받기 (charet checkout) 는 항상 token 필요.",
+  "web.access.visitors": "방문자 (token 없음)",
+  "web.access.visitorsServer": "서버 설정",
+  "web.access.visitorsFollows": "서버 설정을 따름: {level}.",
+  "web.access.visitorsOwn": "서버 설정과 상관없이 이 프로젝트만의 설정."
 }

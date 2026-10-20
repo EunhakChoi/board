@@ -68,8 +68,9 @@ commenter, viewer) and hand over their **token**, or the link that carries it
 (`…/?t=<token>`): it signs their browser in once and stays signed in. Tokens are shown and copied
 from the Team page at any time; **New token** stops the old one. When the same token signs in on a
 second browser, the first one is signed out (the CLI is not). People without a token are
-**visitors**: they look at the team's projects under a made-up name, until you set *Visitors* to
-*Token required*.
+**visitors**: they look at the team's projects under a made-up name. *Visitors* on the Team page sets
+whether they may look, also comment, or need a token; a project can set its own level under
+**Access**.
 
 The same rules hold on every address except this machine's `localhost:5280`, which is the admin
 (the member marked *This machine's admin*; their token works from other machines too).

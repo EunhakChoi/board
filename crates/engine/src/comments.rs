@@ -734,4 +734,47 @@ mod tests {
         assert!(gone.anchor.detached);
         assert_eq!((gone.anchor.x, gone.anchor.y), (500, 300));
     }
+
+    #[test]
+    fn visitors_comment_where_the_project_lets_them() {
+        let (engine, _, comment) = commented();
+        let visitor = engine
+            .visitor(&crate::members::new_visitor_id())
+            .unwrap()
+            .unwrap();
+        let add = |engine: &Engine| {
+            engine.add_comment(
+                &visitor,
+                "shop",
+                "screen",
+                "list",
+                "light",
+                &At::Point { x: 20, y: 15 },
+                "From outside",
+            )
+        };
+        // Looking only (the default).
+        assert!(matches!(add(&engine), Err(EngineError::Forbidden)));
+        engine
+            .set_project_visitors(
+                &Actor::Local,
+                "shop",
+                Some(charet_model::VisitorAccess::Comment),
+            )
+            .unwrap();
+        let mine = add(&engine).unwrap();
+        assert!(mine.author.id.starts_with("visitor:"));
+        assert_eq!(mine.author.name, visitor.name());
+        let answered = engine
+            .answer_comment(
+                &visitor,
+                "shop",
+                comment.id,
+                comment.rev,
+                ReplyKind::Reply,
+                "Agreed",
+            )
+            .unwrap();
+        assert_eq!(answered.replies.len(), 1);
+    }
 }

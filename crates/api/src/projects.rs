@@ -262,6 +262,25 @@ pub async fn update(
     Ok(Json(project))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VisitorsChange {
+    /// `null`: follow the server's setting.
+    visitors: Option<charet_model::VisitorAccess>,
+}
+
+/// `PUT /api/projects/{key}/visitors`: what visitors may do on this project (admins).
+pub async fn set_visitors(
+    State(engine): State<Engine>,
+    Caller(actor): Caller,
+    Path(key): Path<String>,
+    Json(change): Json<VisitorsChange>,
+) -> Result<Json<Project>, ApiError> {
+    let project =
+        blocking(move || engine.set_project_visitors(&actor, &key, change.visitors)).await?;
+    Ok(Json(project))
+}
+
 #[derive(Serialize)]
 pub struct Members {
     /// User ids.

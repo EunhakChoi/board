@@ -1,4 +1,4 @@
-//! Admin routes over members, their tokens and whether visitors may look.
+//! Admin routes over members, their tokens and what visitors may do.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -100,8 +100,8 @@ async fn reissue(
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Access {
-    /// Whether people without a token may look (as viewers).
-    visitors: bool,
+    /// What people without a token may do, unless a project says otherwise.
+    visitors: charet_model::VisitorAccess,
 }
 
 /// `GET /api/admin/access`
@@ -120,6 +120,6 @@ async fn set_access(
     Json(input): Json<Access>,
 ) -> Result<Json<Access>, ApiError> {
     let visitors = input.visitors;
-    blocking(move || engine.set_visitors_allowed(&actor, visitors)).await?;
+    blocking(move || engine.set_server_visitors(&actor, visitors)).await?;
     Ok(Json(Access { visitors }))
 }

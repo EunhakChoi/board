@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use charet_model::{Actor, Member, Role, User};
+use charet_model::{Actor, Member, Role, User, VisitorAccess};
 use sha2::{Digest, Sha256};
 
 use crate::policy::{Command, can};
@@ -22,7 +22,7 @@ pub const SESSION_SECS: u64 = 365 * 24 * 3600;
 const MAX_NAME: usize = 60;
 /// The member the local door acts as.
 pub(crate) const OWNER: &str = "sharing.owner";
-/// `false` when an admin turned visitors off.
+/// `false` when an admin turned visitors off, `comment` when they may comment; else they look.
 const VISITORS: &str = "access.visitors";
 
 /// Who a browser session belongs to.
@@ -170,24 +170,66 @@ impl Engine {
             .map(|u| u.actor()))
     }
 
-    /// Whether people without a token may look.
-    pub fn visitors_allowed(&self) -> Result<bool, EngineError> {
-        Ok(self.ports.settings.get(VISITORS)?.as_deref() != Some("false"))
+    /// What people without a token may do, unless a project says otherwise.
+    pub fn server_visitors(&self) -> Result<VisitorAccess, EngineError> {
+        Ok(match self.ports.settings.get(VISITORS)?.as_deref() {
+            Some("false") => VisitorAccess::None,
+            Some("comment") => VisitorAccess::Comment,
+            _ => VisitorAccess::View,
+        })
     }
 
-    /// [`Self::visitors_allowed`], for the admins' page.
-    pub fn visitors_setting(&self, actor: &Actor) -> Result<bool, EngineError> {
+    /// [`Self::server_visitors`], for the admins' page.
+    pub fn visitors_setting(&self, actor: &Actor) -> Result<VisitorAccess, EngineError> {
         admin(actor)?;
-        self.visitors_allowed()
+        self.server_visitors()
     }
 
-    pub fn set_visitors_allowed(&self, actor: &Actor, allowed: bool) -> Result<(), EngineError> {
+    pub fn set_server_visitors(
+        &self,
+        actor: &Actor,
+        access: VisitorAccess,
+    ) -> Result<(), EngineError> {
         admin(actor)?;
-        self.ports
-            .settings
-            .set(VISITORS, if allowed { "true" } else { "false" })?;
-        if !allowed {
+        let value = match access {
+            VisitorAccess::None => "false",
+            VisitorAccess::View => "true",
+            VisitorAccess::Comment => "comment",
+        };
+        self.ports.settings.set(VISITORS, value)?;
+        self.visitor_access_changed(None)
+    }
+
+    /// Whether a browser without a token gets in at all: the server lets visitors look, or some
+    /// team project does.
+    pub fn visitors_admitted(&self) -> Result<bool, EngineError> {
+        let server = self.server_visitors()?;
+        if server != VisitorAccess::None {
+            return Ok(true);
+        }
+        Ok(self.ports.records.projects()?.into_iter().any(|project| {
+            crate::projects::with_access(project, server).visitor_access != VisitorAccess::None
+        }))
+    }
+
+    /// After a visitor setting changed (on `project`, or server-wide): visitors no longer let in
+    /// are sent away, and pages reload what they may do.
+    pub(crate) fn visitor_access_changed(&self, project: Option<&str>) -> Result<(), EngineError> {
+        if !self.visitors_admitted()? {
             self.ports.realtime.kick(Kick::Visitors);
+        }
+        let keys = match project {
+            Some(key) => vec![key.to_owned()],
+            None => self
+                .ports
+                .records
+                .projects()?
+                .into_iter()
+                .map(|p| p.key)
+                .collect(),
+        };
+        for key in keys {
+            self.publish(&key, "project.updated", serde_json::json!({}));
         }
         self.ports
             .realtime
@@ -197,7 +239,7 @@ impl Engine {
 
     /// A visitor known by the id their browser keeps, while visitors are allowed.
     pub fn visitor(&self, id: &str) -> Result<Option<Actor>, EngineError> {
-        if !valid_visitor_id(id) || !self.visitors_allowed()? {
+        if !valid_visitor_id(id) || !self.visitors_admitted()? {
             return Ok(None);
         }
         Ok(Some(Actor::Visitor {
@@ -555,14 +597,47 @@ mod tests {
             .collect();
         assert_eq!(keys, ["web"]);
 
-        assert!(engine.visitors_allowed().unwrap());
-        engine.set_visitors_allowed(&admin, false).unwrap();
+        // Looking is not taking the whole project away.
+        assert!(matches!(
+            engine.checkout(&visitor, "web", None),
+            Err(EngineError::Forbidden)
+        ));
+
+        assert_eq!(engine.server_visitors().unwrap(), VisitorAccess::View);
+        engine
+            .set_server_visitors(&admin, VisitorAccess::None)
+            .unwrap();
         assert_eq!(engine.visitor(&id).unwrap(), None);
         assert!(fakes.realtime.kicks().contains(&Kick::Visitors));
         assert_eq!(
-            engine.set_visitors_allowed(&visitor, true),
+            engine.set_server_visitors(&visitor, VisitorAccess::View),
             Err(EngineError::Forbidden)
         );
+
+        // A token is needed, but one project still lets visitors in, and only there.
+        let web = engine
+            .set_project_visitors(&admin, "web", Some(VisitorAccess::Comment))
+            .unwrap();
+        assert_eq!(
+            (web.visitors, web.visitor_access),
+            (Some(VisitorAccess::Comment), VisitorAccess::Comment)
+        );
+        let visitor = engine.visitor(&id).unwrap().unwrap();
+        engine.create_project(&admin, "other", "O", None).unwrap();
+        let keys: Vec<_> = engine
+            .projects(&visitor)
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.key, p.visitor_access))
+            .collect();
+        assert_eq!(keys, [("web".to_owned(), VisitorAccess::Comment)]);
+        // Private wins over the project's visitor setting.
+        engine
+            .set_project_visitors(&admin, "secret", Some(VisitorAccess::Comment))
+            .unwrap();
+        assert!(engine.project(&visitor, "secret").is_err());
+        engine.set_project_visitors(&admin, "web", None).unwrap();
+        assert_eq!(engine.visitor(&id).unwrap(), None);
     }
 
     #[test]

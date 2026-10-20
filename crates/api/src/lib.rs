@@ -64,6 +64,7 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("put", "/api/projects/{key}/members/{user}"),
     ("delete", "/api/projects/{key}/members/{user}"),
     ("get", "/api/projects/{key}/checkout"),
+    ("put", "/api/projects/{key}/visitors"),
     ("get", "/api/projects/{key}/versions"),
     ("post", "/api/projects/{key}/versions/{number}/restore"),
     ("post", "/api/projects/{key}/versions/{number}/handoff"),
@@ -179,6 +180,7 @@ fn routes() -> Router<Engine> {
             put(projects::add_member).delete(projects::remove_member),
         )
         .route("/api/projects/{key}/checkout", get(projects::checkout))
+        .route("/api/projects/{key}/visitors", put(projects::set_visitors))
         .route("/api/projects/{key}/versions", get(projects::versions))
         .route("/api/projects/{key}/diff", get(projects::diff))
         .route("/api/projects/{key}/preview", get(preview::status))

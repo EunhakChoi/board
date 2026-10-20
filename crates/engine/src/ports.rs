@@ -63,6 +63,12 @@ pub trait Records: Send + Sync {
         title: &str,
         visibility: charet_model::Visibility,
     ) -> Result<(), StoreError>;
+    /// What visitors may do on a project (`None`: the server's setting).
+    fn set_project_visitors(
+        &self,
+        key: &str,
+        visitors: Option<charet_model::VisitorAccess>,
+    ) -> Result<(), StoreError>;
     /// Members (user ids) of a private project.
     fn members(&self, project: &str) -> Result<Vec<String>, StoreError>;
     fn is_member(&self, project: &str, user: &str) -> Result<bool, StoreError>;
