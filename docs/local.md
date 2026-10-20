@@ -133,6 +133,9 @@ Data goes to `~/.charet` (`CHARET_HOME`).
 - Project code (dependency installs, builds) runs only in charet-workspace, with install scripts
   turned off and a minimal environment. Previews run in the browser on their own origin with a
   signed, short-lived token.
+- Changes to files that run code at install or build time (package manifests, lockfiles, build
+  config) wait for an admin's approval; until then previews use `main`'s versions
+  ([workflow](workflow.md#merging)).
 - The only outside call is the daily release check (`CHARET_UPDATE_CHECK=false` turns it off). No
   code, screens or usage data are sent.
 

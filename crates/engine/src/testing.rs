@@ -1190,3 +1190,44 @@ impl crate::WebhookSender for MemorySender {
         Ok(200)
     }
 }
+
+impl Engine {
+    /// Moves `main` from `base` with `changes` as a new version, as a merged branch would. Only
+    /// tests skip the branch; people and agents go through one.
+    pub(crate) fn push(
+        &self,
+        actor: &charet_model::Actor,
+        key: &str,
+        base: &str,
+        message: &str,
+        changes: &[FileChange],
+    ) -> Result<charet_model::Version, crate::EngineError> {
+        let commit = self
+            .ports
+            .store
+            .commit_main(
+                key,
+                Some(base),
+                changes,
+                &crate::projects::author(actor),
+                message,
+            )?
+            .ok_or(crate::EngineError::Conflict {
+                head: String::new(),
+            })?;
+        let version = self.record_version(
+            key,
+            actor,
+            &crate::NewVersion {
+                commit,
+                kind: charet_model::VersionKind::Push,
+                actor: actor.name().to_owned(),
+                note: message.to_owned(),
+                branch: None,
+                restored: None,
+            },
+        )?;
+        self.ports.realtime.working(key, &actor.person(), false);
+        Ok(version)
+    }
+}

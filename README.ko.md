@@ -16,6 +16,7 @@ docker compose up -d     # 이후 http://localhost:5280 접속
 ```
 
 설정 · CLI · Docker 없이 실행 · 보안 참고: [docs/local.ko.md](docs/local.ko.md).
+변경이 임시 수정안에서 버전이 되기까지: [docs/workflow.ko.md](docs/workflow.ko.md).
 
 ## License
 

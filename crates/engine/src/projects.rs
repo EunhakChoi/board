@@ -119,52 +119,6 @@ impl Engine {
         Ok(Checkout { commit, archive })
     }
 
-    /// Commits `changes` to `main` on top of `base` and records a version. Fails with
-    /// [`EngineError::Conflict`] when `main` has moved since `base`.
-    pub fn push(
-        &self,
-        actor: &Actor,
-        key: &str,
-        base: &str,
-        message: &str,
-        changes: &[FileChange],
-    ) -> Result<Version, EngineError> {
-        self.visible(actor, key, Command::BranchEdit)?;
-        if changes.is_empty() {
-            return Err(EngineError::Invalid("nothing to push".into()));
-        }
-        check_files(changes)?;
-        let head = self
-            .ports
-            .store
-            .head(key)?
-            .ok_or(EngineError::NotFound("main"))?;
-        if head != base {
-            return Err(EngineError::Conflict { head });
-        }
-        let message = if message.trim().is_empty() {
-            "Push"
-        } else {
-            message.trim()
-        };
-        let commit = self
-            .ports
-            .store
-            .commit_main(key, Some(base), changes, &author(actor), message)?
-            .ok_or_else(|| EngineError::Conflict {
-                head: self
-                    .ports
-                    .store
-                    .head(key)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-            })?;
-        let version = self.record(key, &commit, VersionKind::Push, actor, message)?;
-        self.ports.realtime.working(key, &actor.person(), false);
-        Ok(version)
-    }
-
     /// Versions of `main`, newest first.
     pub fn versions(&self, actor: &Actor, key: &str) -> Result<Vec<Version>, EngineError> {
         self.visible(actor, key, Command::ProjectView)?;
@@ -409,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn import_then_push_then_conflict() {
+    fn import_then_merge_a_branch() {
         let engine = engine();
         let import = Import {
             files: vec![file("a.txt", "1")],
@@ -419,8 +373,8 @@ mod tests {
             .create_project(&Actor::Local, "web", "", Some(import))
             .unwrap();
         assert_eq!(v1.kind, VersionKind::Import);
-        let v2 = engine
-            .push(
+        engine
+            .propose(
                 &Actor::Local,
                 "web",
                 &v1.commit,
@@ -428,21 +382,8 @@ mod tests {
                 &[file("a.txt", "2")],
             )
             .unwrap();
-        assert_eq!(v2.number, 2);
-        // A second push from the stale base is refused with the current head.
-        let stale = engine.push(
-            &Actor::Local,
-            "web",
-            &v1.commit,
-            "late",
-            &[file("b.txt", "x")],
-        );
-        assert_eq!(
-            stale,
-            Err(EngineError::Conflict {
-                head: v2.commit.clone()
-            })
-        );
+        let v2 = engine.merge_branch(&Actor::Local, "web", 1).unwrap();
+        assert_eq!((v2.number, v2.kind), (2, VersionKind::Merge));
         assert_eq!(engine.versions(&Actor::Local, "web").unwrap()[0].number, 2);
         let changes = engine.diff(&Actor::Local, "web", "v1", "main").unwrap();
         assert_eq!(
@@ -474,15 +415,15 @@ mod tests {
         );
         let head = engine.checkout(&viewer(), "web", None).unwrap().commit;
         assert_eq!(
-            engine.push(&viewer(), "web", &head, "", &[file("a", "1")]),
+            engine.propose(&viewer(), "web", &head, "", &[file("a", "1")]),
             Err(EngineError::Forbidden)
         );
         assert!(matches!(
-            engine.push(&Actor::Local, "web", &head, "", &[file("../a", "1")]),
+            engine.propose(&Actor::Local, "web", &head, "", &[file("../a", "1")]),
             Err(EngineError::Invalid(_))
         ));
         assert!(matches!(
-            engine.push(&Actor::Local, "web", &head, "", &[]),
+            engine.propose(&Actor::Local, "web", &head, "", &[]),
             Err(EngineError::Invalid(_))
         ));
         assert_eq!(

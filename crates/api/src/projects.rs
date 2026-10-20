@@ -177,27 +177,6 @@ pub async fn checkout(
         .into_response())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PushInput {
-    base: String,
-    #[serde(default)]
-    message: String,
-    files: Vec<FileInput>,
-}
-
-pub async fn push(
-    State(engine): State<Engine>,
-    Caller(actor): Caller,
-    Path(key): Path<String>,
-    Json(body): Json<PushInput>,
-) -> Result<(StatusCode, Json<Version>), ApiError> {
-    let changes = decode(body.files)?;
-    let version =
-        blocking(move || engine.push(&actor, &key, &body.base, &body.message, &changes)).await?;
-    Ok((StatusCode::CREATED, Json(version)))
-}
-
 #[derive(Serialize)]
 pub struct VersionList {
     versions: Vec<Version>,

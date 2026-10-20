@@ -17,6 +17,7 @@ docker compose up -d     # then open http://localhost:5280
 ```
 
 Settings, the CLI, running without Docker and security notes: [docs/local.md](docs/local.md).
+How a change goes from a draft to a version: [docs/workflow.md](docs/workflow.md).
 
 ## License
 

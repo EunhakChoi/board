@@ -188,21 +188,24 @@ async fn import_checkout_push_versions_diff() {
     assert_eq!(commit.as_deref(), Some(v1.as_str()));
     assert_eq!(&bytes[..2], &[0x1f, 0x8b]);
 
-    let push = json!({ "base": v1, "message": "edit", "files": [
+    // Changes reach main only through a branch.
+    let proposal = json!({ "title": "edit", "from": v1, "files": [
         { "path": "src/a.ts", "content": b64("export const a = 2;\n") },
         { "path": "run.sh" }
     ]});
-    let (status, v2) = post(engine.clone(), "/api/projects/web/push", &push).await;
+    let (status, branch) = post(engine.clone(), "/api/projects/web/branches", &proposal).await;
+    assert_eq!(status, StatusCode::CREATED, "{branch}");
+    let (status, v2) = post(
+        engine.clone(),
+        "/api/projects/web/branches/1/merge",
+        &json!({}),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{v2}");
     assert_eq!(
         (v2["number"].as_u64(), v2["kind"].as_str()),
-        (Some(2), Some("push"))
+        (Some(2), Some("merge"))
     );
-
-    let (status, stale) = post(engine.clone(), "/api/projects/web/push", &push).await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(stale["code"], "conflict");
-    assert_eq!(stale["detail"]["head"], v2["commit"]);
 
     let (_, versions) = call(engine.clone(), "/api/projects/web/versions").await;
     assert_eq!(versions["versions"].as_array().unwrap().len(), 2);

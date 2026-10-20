@@ -430,25 +430,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{key}/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: components["parameters"]["ProjectKey"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Commit changed files on top of `base` and record a version */
-        post: operations["pushProject"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/projects/{key}/versions": {
         parameters: {
             query?: never;
@@ -2333,49 +2314,6 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-        };
-    };
-    pushProject: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: components["parameters"]["ProjectKey"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Commit the changes were made on (from checkout) */
-                    base: string;
-                    message?: string;
-                    files: components["schemas"]["FileInput"][];
-                };
-            };
-        };
-        responses: {
-            /** @description The new version */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Version"];
-                };
-            };
-            400: components["responses"]["Invalid"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /** @description `main` moved since `base`; `detail.head` is the current commit */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
         };
     };
     listVersions: {

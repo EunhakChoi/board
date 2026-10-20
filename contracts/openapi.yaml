@@ -711,50 +711,6 @@ paths:
                 format: binary
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/projects/{key}/push:
-    parameters:
-      - $ref: "#/components/parameters/ProjectKey"
-    post:
-      tags: [projects]
-      operationId: pushProject
-      summary: Commit changed files on top of `base` and record a version
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [base, files]
-              additionalProperties: false
-              properties:
-                base:
-                  type: string
-                  description: Commit the changes were made on (from checkout)
-                message:
-                  type: string
-                files:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/FileInput"
-      responses:
-        "201":
-          description: The new version
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Version"
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: "`main` moved since `base`; `detail.head` is the current commit"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /api/projects/{key}/versions:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
