@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { useT } from "@/lib/i18n";
 import {
+  useAccess,
   useMe,
   useProject,
   useProjectAccess,
@@ -59,7 +60,14 @@ function Access({ projectKey }: { projectKey: string }) {
   const isPrivate = project.data?.visibility === "private";
   const users = useUsers();
   const members = useProjectAccess(projectKey, isPrivate);
-  const { visibility, member } = useProjectAccessActions(projectKey);
+  const { visibility, member, visitors } = useProjectAccessActions(projectKey);
+  const server = useAccess(true).data?.visitors;
+  const level = (value: string | undefined) =>
+    value === "none"
+      ? t("web.team.visitorsOff")
+      : value === "comment"
+        ? t("web.team.visitorsComment")
+        : t("web.team.visitorsOn");
   const chosen = new Set(members.data?.members ?? []);
   const people = (users.data?.users ?? []).filter((u) => u.role !== "admin");
   return (
@@ -97,6 +105,28 @@ function Access({ projectKey }: { projectKey: string }) {
             <li className="p-2 text-xs text-muted-foreground">{t("web.access.nobody")}</li>
           )}
         </ul>
+      )}
+      {!isPrivate && project.data && (
+        <section aria-label={t("web.access.visitors")} className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold">{t("web.access.visitors")}</h3>
+          <Segmented
+            label={t("web.access.visitors")}
+            value={project.data.visitors ?? "server"}
+            onChange={(value) => visitors.mutate(value === "server" ? null : value)}
+            options={[
+              { value: "server", label: t("web.access.visitorsServer") },
+              { value: "none", label: t("web.team.visitorsOff") },
+              { value: "view", label: t("web.team.visitorsOn") },
+              { value: "comment", label: t("web.team.visitorsComment") },
+            ]}
+          />
+          <p className="text-xs text-muted-foreground">
+            {project.data.visitors === null
+              ? t("web.access.visitorsFollows", { level: level(server) })
+              : t("web.access.visitorsOwn")}
+          </p>
+          {visitors.error && <p className="text-sm text-destructive">{visitors.error.message}</p>}
+        </section>
       )}
     </section>
   );

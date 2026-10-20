@@ -199,9 +199,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whether people without a token may look (admins) */
+        /** What people without a token may do server-wide (admins) */
         get: operations["getAccess"];
-        /** Lets visitors look, or requires a token (admins) */
+        /** What visitors may do server-wide, unless a project says otherwise (admins) */
         put: operations["setAccess"];
         post?: never;
         delete?: never;
@@ -420,9 +420,28 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** The project files at a revision, as a gzipped tar */
+        /** The project files at a revision, as a gzipped tar (members; never visitors) */
         get: operations["checkoutProject"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/visitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** What visitors (no token) may do on this project (admins) */
+        put: operations["setProjectVisitors"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1303,9 +1322,13 @@ export interface components {
             owner: boolean;
         };
         Access: {
-            /** @description Whether people without a token may look (as viewers) */
-            visitors: boolean;
+            visitors: components["schemas"]["VisitorAccess"];
         };
+        /**
+         * @description What people without a token may do: `none` (a token is needed), `view` (screens, flows, code view, comments; no checkout), `comment` (view, and comment under their made-up name)
+         * @enum {string}
+         */
+        VisitorAccess: "none" | "view" | "comment";
         /**
          * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server; `lan`: this machine's LAN address, for trying out
          * @enum {string}
@@ -1360,7 +1383,7 @@ export interface components {
         };
         Me: {
             /**
-             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and only looks; `local` is the built-in admin before the charet has an owner
+             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and does what the server or the project lets visitors do (look, or also comment); `local` is the built-in admin before the charet has an owner
              * @enum {string}
              */
             kind: "user" | "visitor" | "local";
@@ -1376,6 +1399,9 @@ export interface components {
             title: string;
             /** @enum {string} */
             visibility: "team" | "private";
+            /** @description This project's own visitor setting; `null` follows the server's */
+            visitors: components["schemas"]["VisitorAccess"] | null;
+            visitorAccess: components["schemas"]["VisitorAccess"];
             /** @enum {string} */
             origin: "empty" | "template" | "import";
             /** Format: date-time */
@@ -2434,6 +2460,38 @@ export interface operations {
                     "application/gzip": string;
                 };
             };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProjectVisitors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description `null`: follow the server's setting */
+                    visitors: components["schemas"]["VisitorAccess"] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The project now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

@@ -11,6 +11,7 @@ import {
   type Theme,
   unwrap,
   unwrapEmpty,
+  type VisitorAccess,
 } from "./api.ts";
 
 const path = (key: string) => ({ params: { path: { key } } });
@@ -19,9 +20,10 @@ export function useProjects() {
   return useQuery({ queryKey: ["projects"], queryFn: () => unwrap(api.GET("/api/projects")) });
 }
 
-export function useProject(key: string) {
+export function useProject(key: string, enabled = true) {
   return useQuery({
     queryKey: ["project", key],
+    enabled,
     queryFn: () => unwrap(api.GET("/api/projects/{key}", path(key))),
   });
 }
@@ -303,9 +305,13 @@ export function useAdminActions() {
       onSettled: settled,
     }),
     visitors: useMutation({
-      mutationFn: (visitors: boolean) =>
+      mutationFn: (visitors: VisitorAccess) =>
         unwrap(api.PUT("/api/admin/access", { body: { visitors } })),
-      onSettled: settled,
+      onSettled: () => {
+        settled();
+        client.invalidateQueries({ queryKey: ["project"] });
+        client.invalidateQueries({ queryKey: ["projects"] });
+      },
     }),
   };
 }
@@ -324,6 +330,14 @@ export function useProjectAccessActions(key: string) {
     visibility: useMutation({
       mutationFn: (visibility: "team" | "private") =>
         unwrap(api.PATCH("/api/projects/{key}", { ...path(key), body: { visibility } })),
+      onSettled: () => {
+        client.invalidateQueries({ queryKey: ["project", key] });
+        client.invalidateQueries({ queryKey: ["projects"] });
+      },
+    }),
+    visitors: useMutation({
+      mutationFn: (visitors: VisitorAccess | null) =>
+        unwrap(api.PUT("/api/projects/{key}/visitors", { ...path(key), body: { visitors } })),
       onSettled: () => {
         client.invalidateQueries({ queryKey: ["project", key] });
         client.invalidateQueries({ queryKey: ["projects"] });

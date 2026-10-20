@@ -257,7 +257,7 @@ paths:
     get:
       tags: [access]
       operationId: getAccess
-      summary: Whether people without a token may look (admins)
+      summary: What people without a token may do server-wide (admins)
       responses:
         "200":
           description: Access
@@ -270,7 +270,7 @@ paths:
     put:
       tags: [access]
       operationId: setAccess
-      summary: Lets visitors look, or requires a token (admins)
+      summary: What visitors may do server-wide, unless a project says otherwise (admins)
       requestBody:
         required: true
         content:
@@ -690,7 +690,7 @@ paths:
     get:
       tags: [projects]
       operationId: checkoutProject
-      summary: The project files at a revision, as a gzipped tar
+      summary: The project files at a revision, as a gzipped tar (members; never visitors)
       parameters:
         - name: rev
           in: query
@@ -710,6 +710,40 @@ paths:
               schema:
                 type: string
                 format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/visitors:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    put:
+      tags: [access]
+      operationId: setProjectVisitors
+      summary: What visitors (no token) may do on this project (admins)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [visitors]
+              properties:
+                visitors:
+                  oneOf:
+                    - $ref: "#/components/schemas/VisitorAccess"
+                    - type: "null"
+                  description: "`null`: follow the server's setting"
+      responses:
+        "200":
+          description: The project now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/projects/{key}/versions:
@@ -2246,8 +2280,11 @@ components:
       required: [visitors]
       properties:
         visitors:
-          type: boolean
-          description: Whether people without a token may look (as viewers)
+          $ref: "#/components/schemas/VisitorAccess"
+    VisitorAccess:
+      type: string
+      enum: [none, view, comment]
+      description: "What people without a token may do: `none` (a token is needed), `view` (screens, flows, code view, comments; no checkout), `comment` (view, and comment under their made-up name)"
     ShareMode:
       type: string
       enum: [address, tailscale, funnel, ngrok, lan]
@@ -2356,7 +2393,7 @@ components:
           enum: [user, visitor, local]
           description: >-
             `user` is a member (by token, or the owner at this machine); `visitor` has no token
-            and only looks; `local` is the built-in admin before the charet has an owner
+            and does what the server or the project lets visitors do (look, or also comment); `local` is the built-in admin before the charet has an owner
         id:
           type: string
           description: "A member's id, or a visitor's (the web tool shows the visitor's made-up name from it)"
@@ -2369,7 +2406,7 @@ components:
           description: True through the local door (this machine's admin, no token needed)
     Project:
       type: object
-      required: [key, title, visibility, origin, createdAt]
+      required: [key, title, visibility, visitors, visitorAccess, origin, createdAt]
       properties:
         key:
           type: string
@@ -2378,6 +2415,13 @@ components:
         visibility:
           type: string
           enum: [team, private]
+        visitors:
+          description: "This project's own visitor setting; `null` follows the server's"
+          oneOf:
+            - $ref: "#/components/schemas/VisitorAccess"
+            - type: "null"
+        visitorAccess:
+          $ref: "#/components/schemas/VisitorAccess"
         origin:
           type: string
           enum: [empty, template, import]

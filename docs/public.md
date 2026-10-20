@@ -4,8 +4,8 @@
 
 In [local mode](local.md) the person at the machine is the admin without a token. Public mode is
 for a server only a team uses: nobody is trusted by address. Members come in with the **token** an
-admin hands over; everyone else is a visitor who can only look (or nobody, if the admin requires a
-token).
+admin hands over; everyone else is a visitor, who may look, also comment, or not come in at all, as
+the admin sets it.
 
 ## What you need
 
@@ -56,8 +56,12 @@ token on the page. Lost it? `charet-server admin-token` (in Docker:
 - **Members** (Team → Members): add a name and a role, then hand over the token or the link that
   carries it. The browser stays signed in; a second browser with the same token signs the first
   one out (the CLI is not affected: `charet login --token …`). **New token** stops the old one.
-- **Visitors**: without a token, people look at the team's projects (view only) under a made-up
-  name. Set *Visitors* to *Token required* to close that.
+- **Visitors**: without a token, people come in under a made-up name. *Visitors* on the Team page
+  sets what they may do on the team's projects: *Token required* (not at all), *Can look* (screens,
+  flows, code and comments) or *Can comment*. A project can set its own level under **Access**
+  (*Server setting* follows the Team page), so one project can take outside comments while the rest
+  needs a token. Private projects never show to visitors, and downloading a whole project
+  (`charet checkout`) always needs a token.
 
 ## Notifications and webhooks
 

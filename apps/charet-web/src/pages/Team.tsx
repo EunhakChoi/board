@@ -234,26 +234,28 @@ function CopyButton({
   );
 }
 
-/** Whether people without a token may look around (as viewers, with a made-up name). */
+/** What people without a token may do: nothing, look, or also comment (projects can differ). */
 function Visitors() {
   const t = useT();
   const access = useAccess(true);
   const { visitors } = useAdminActions();
-  const on = access.data?.visitors;
+  const level = access.data?.visitors;
   return (
     <Section title={t("web.team.visitors")} lead={t("web.team.visitorsLead")}>
-      <div className="flex items-center gap-3 p-3">
-        {on !== undefined && (
+      <div className="flex flex-col gap-2 p-3">
+        {level !== undefined && (
           <Segmented
             label={t("web.team.visitors")}
-            value={on ? "on" : "off"}
-            onChange={(value) => visitors.mutate(value === "on")}
+            value={level}
+            onChange={(value) => visitors.mutate(value)}
             options={[
-              { value: "on", label: t("web.team.visitorsOn") },
-              { value: "off", label: t("web.team.visitorsOff") },
+              { value: "none", label: t("web.team.visitorsOff") },
+              { value: "view", label: t("web.team.visitorsOn") },
+              { value: "comment", label: t("web.team.visitorsComment") },
             ]}
           />
         )}
+        <p className="text-xs text-muted-foreground">{t("web.team.visitorsNote")}</p>
         {visitors.error && <p className="text-sm text-destructive">{visitors.error.message}</p>}
       </div>
     </Section>

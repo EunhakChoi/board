@@ -83,6 +83,50 @@ test("with visitors turned off the server asks for a token", async ({ browser })
   }
 });
 
+test("a project can let visitors comment, even when the server asks for a token", async ({
+  browser,
+}) => {
+  const admin = await (await browser.newContext()).newPage();
+  await enter(admin, adminToken());
+  await admin.goto(`${base()}/p/demo/screens`);
+  await admin.getByRole("button", { name: "Access" }).click();
+  const visitors = admin.getByRole("region", { name: "Visitors (no token)" });
+  await visitors.getByRole("radio", { name: "Can comment" }).click();
+  await expect(visitors.getByRole("radio", { name: "Can comment" })).toBeChecked();
+  await admin.goto(`${base()}/team`);
+  const team = admin.getByRole("region", { name: "Visitors", exact: true });
+  await team.getByRole("radio", { name: "Token required" }).click();
+  await expect(team.getByRole("radio", { name: "Token required" })).toBeChecked();
+  try {
+    const outsider = await (await browser.newContext()).newPage();
+    await outsider.goto(`${base()}/p/demo/t/screen/tasks-list`);
+    // The page offers commenting (no "view only"), and the server takes the visitor's comment.
+    await expect(outsider.getByText(/Click an element or a spot on the screen/)).toBeVisible();
+    await expect(outsider.getByText("You can view this project but not comment.")).toHaveCount(0);
+    const added = await outsider.request.post(`${base()}/api/projects/demo/comments`, {
+      headers: { "x-charet-client": "e2e" },
+      data: {
+        kind: "screen",
+        target: "tasks-list",
+        at: { x: 30, y: 30 },
+        body: "A visitor's note",
+      },
+    });
+    expect(added.status()).toBe(201);
+    await expect(outsider.getByText("A visitor's note")).toBeVisible();
+    // The whole project stays with members.
+    const checkout = await outsider.request.get(`${base()}/api/projects/demo/checkout`);
+    expect(checkout.status()).toBe(403);
+  } finally {
+    await team.getByRole("radio", { name: "Can look" }).click();
+    await expect(team.getByRole("radio", { name: "Can look" })).toBeChecked();
+    await admin.request.put(`${base()}/api/projects/demo/visitors`, {
+      headers: { "x-charet-client": "e2e" },
+      data: { visitors: null },
+    });
+  }
+});
+
 test("charet login --token makes the CLI act as that member", async () => {
   const root = resolve(import.meta.dirname, "../../..");
   const config = mkdtempSync(join(tmpdir(), "charet-cli-login-"));

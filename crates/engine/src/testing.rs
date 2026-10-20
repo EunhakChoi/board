@@ -426,6 +426,22 @@ impl Records for MemoryRecords {
         }
         Ok(())
     }
+    fn set_project_visitors(
+        &self,
+        key: &str,
+        visitors: Option<charet_model::VisitorAccess>,
+    ) -> Result<(), StoreError> {
+        for p in self
+            .projects
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|p| p.key == key)
+        {
+            p.visitors = visitors;
+        }
+        Ok(())
+    }
     fn members(&self, project: &str) -> Result<Vec<String>, StoreError> {
         Ok(self
             .members

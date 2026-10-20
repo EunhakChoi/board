@@ -60,6 +60,19 @@ pub enum Visibility {
     Private,
 }
 
+/// What people without a token may do: on the whole server, or on one team project.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VisitorAccess {
+    /// Nothing: a token is needed.
+    None,
+    /// Look: screens, flows, code view, comments.
+    #[default]
+    View,
+    /// Look and comment under their made-up name.
+    Comment,
+}
+
 /// A project: one UI kept in its own store (a git repository managed by the server).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +81,13 @@ pub struct Project {
     pub key: String,
     pub title: String,
     pub visibility: Visibility,
+    /// What visitors may do here; `None` follows the server's setting.
+    #[serde(default)]
+    pub visitors: Option<VisitorAccess>,
+    /// What visitors may do here in effect (this project's setting, else the server's; nothing
+    /// while private). Filled in by the engine, not stored.
+    #[serde(default, skip_deserializing)]
+    pub visitor_access: VisitorAccess,
     pub origin: Origin,
     pub created_at: String,
 }

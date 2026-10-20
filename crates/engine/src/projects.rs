@@ -1,6 +1,8 @@
 //! Project commands: create, import, delete, checkout, push, versions, diff.
 
-use charet_model::{Actor, Origin, Project, Version, VersionKind, Visibility, valid_path};
+use charet_model::{
+    Actor, Origin, Project, Version, VersionKind, Visibility, VisitorAccess, valid_path,
+};
 
 use crate::policy::{Command, Target, can};
 use crate::{Author, Change, Engine, EngineError, FileChange, NewVersion};
@@ -61,6 +63,8 @@ impl Engine {
             key: key.to_owned(),
             title: title.to_owned(),
             visibility: Visibility::Team,
+            visitors: None,
+            visitor_access: VisitorAccess::View,
             origin,
             created_at: String::new(),
         };
@@ -102,11 +106,13 @@ impl Engine {
 
     /// Projects the actor can see.
     pub fn projects(&self, actor: &Actor) -> Result<Vec<Project>, EngineError> {
+        let server = self.server_visitors()?;
         Ok(self
             .ports
             .records
             .projects()?
             .into_iter()
+            .map(|project| with_access(project, server))
             .filter(|project| {
                 self.target(actor, project)
                     .is_ok_and(|target| can(actor, Command::ProjectView, Some(target)))
@@ -125,7 +131,7 @@ impl Engine {
         key: &str,
         rev: Option<&str>,
     ) -> Result<Checkout, EngineError> {
-        self.visible(actor, key, Command::ProjectView)?;
+        self.visible(actor, key, Command::Checkout)?;
         let commit = self.resolve(key, rev.unwrap_or("main"))?;
         let archive = self.ports.store.archive(key, &commit)?;
         if actor.role() >= charet_model::Role::Editor {
@@ -185,6 +191,7 @@ impl Engine {
             .records
             .project(key)?
             .ok_or(EngineError::NotFound("project"))?;
+        let project = with_access(project, self.server_visitors()?);
         let target = self.target(actor, &project)?;
         if !can(actor, Command::ProjectView, Some(target)) {
             // Hidden projects look missing rather than forbidden.
@@ -208,7 +215,21 @@ impl Engine {
             project: &project.key,
             visibility: project.visibility,
             member,
+            visitors: project.visitor_access,
         })
+    }
+
+    /// Sets what visitors may do on one project (`None`: follow the server's setting). Admins only.
+    pub fn set_project_visitors(
+        &self,
+        actor: &Actor,
+        key: &str,
+        visitors: Option<VisitorAccess>,
+    ) -> Result<Project, EngineError> {
+        self.visible(actor, key, Command::Admin)?;
+        self.ports.records.set_project_visitors(key, visitors)?;
+        self.visitor_access_changed(Some(key))?;
+        self.visible(actor, key, Command::Admin)
     }
 
     /// Renames a project or changes who can see it. Admins only.
@@ -227,11 +248,12 @@ impl Engine {
         self.ports
             .records
             .update_project(key, title, visibility.unwrap_or(project.visibility))?;
-        self.publish(key, "project.updated", serde_json::json!({}));
-        self.ports
-            .records
-            .project(key)?
-            .ok_or(EngineError::NotFound("project"))
+        if visibility.is_some_and(|v| v != project.visibility) {
+            self.visitor_access_changed(Some(key))?;
+        } else {
+            self.publish(key, "project.updated", serde_json::json!({}));
+        }
+        self.visible(actor, key, Command::Admin)
     }
 
     /// Who may see a private project besides admins (user ids).
@@ -318,6 +340,17 @@ pub(crate) fn check_files(files: &[FileChange]) -> Result<(), EngineError> {
         }
     }
     Ok(())
+}
+
+/// `project` with what visitors may do there in effect: its own setting, else the server's;
+/// nothing while it is private.
+pub(crate) fn with_access(mut project: Project, server: VisitorAccess) -> Project {
+    project.visitor_access = if project.visibility == Visibility::Private {
+        VisitorAccess::None
+    } else {
+        project.visitors.unwrap_or(server)
+    };
+    project
 }
 
 #[cfg(test)]

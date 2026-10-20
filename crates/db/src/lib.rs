@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use charet_engine::{BranchEvent, NewBranch, NewVersion, Records, Settings, StoreError};
-use charet_model::{Branch, Origin, Project, Version, VersionKind, Visibility};
+use charet_model::{Branch, Origin, Project, Version, VersionKind, Visibility, VisitorAccess};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use captures::CaptureStore;
@@ -34,6 +34,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0013_branch_comments.sql"),
     include_str!("migrations/0014_merge_guards.sql"),
     include_str!("migrations/0015_handoff.sql"),
+    include_str!("migrations/0016_visitor_access.sql"),
 ];
 
 /// The charet database: one SQLite file in WAL mode.
@@ -139,6 +140,20 @@ impl Records for Db {
             .execute(
                 "UPDATE projects SET title = ?2, visibility = ?3 WHERE key = ?1",
                 params![key, title, text(visibility)],
+            )
+            .map(drop)
+            .map_err(err)
+    }
+
+    fn set_project_visitors(
+        &self,
+        key: &str,
+        visitors: Option<VisitorAccess>,
+    ) -> Result<(), StoreError> {
+        self.lock()?
+            .execute(
+                "UPDATE projects SET visitors = ?2 WHERE key = ?1",
+                params![key, visitors.map(text)],
             )
             .map(drop)
             .map_err(err)
@@ -313,7 +328,8 @@ impl Records for Db {
     }
 }
 
-const PROJECT_COLUMNS: &str = "SELECT key, title, visibility, origin, created_at FROM projects";
+const PROJECT_COLUMNS: &str =
+    "SELECT key, title, visibility, origin, created_at, visitors FROM projects";
 const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at, branch, restored, \
      source_commit, handoff_commit, handoff_actor, handoff_at, source_tree";
 
@@ -322,6 +338,10 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         key: row.get(0)?,
         title: row.get(1)?,
         visibility: parse::<Visibility>(row, 2)?,
+        visitors: row
+            .get::<_, Option<String>>(5)?
+            .and_then(|text| serde_json::from_value(serde_json::Value::String(text)).ok()),
+        visitor_access: VisitorAccess::View,
         origin: parse::<Origin>(row, 3)?,
         created_at: row.get(4)?,
     })
@@ -419,6 +439,8 @@ mod tests {
             key: key.into(),
             title: key.to_uppercase(),
             visibility: Visibility::Team,
+            visitors: None,
+            visitor_access: VisitorAccess::View,
             origin: Origin::Import,
             created_at: String::new(),
         }
