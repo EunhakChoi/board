@@ -5,12 +5,16 @@
 //! - In review: any editor pushes, merges or archives it.
 //! - Merging joins it into `main` as a new version; every other active branch then catches up
 //!   with `main`, and clashes are only marked, for their authors to settle.
+//! - A draft nobody touched for [`IDLE_DAYS`] is archived; its author can reopen it.
 
 use charet_model::{Actor, Branch, BranchStatus, Role, Version, VersionKind};
 
 use crate::policy::Command;
 use crate::projects::{author, check_files};
 use crate::{BranchEvent, Change, Engine, EngineError, FileChange, Merged, NewBranch, NewVersion};
+
+/// Days without a change after which a draft is archived.
+pub const IDLE_DAYS: u64 = 14;
 
 /// A branch with what it changes and what happened to it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -253,6 +257,29 @@ impl Engine {
         branch.status = BranchStatus::Archived;
         self.save_branch(actor, key, &branch, "archive", "")?;
         Ok(branch)
+    }
+
+    /// Archives drafts (open branches) untouched for [`IDLE_DAYS`] as of `now` (Unix seconds), in
+    /// every project. Returns how many.
+    pub fn archive_idle(&self, now: u64) -> Result<usize, EngineError> {
+        let cutoff = iso(now.saturating_sub(IDLE_DAYS * 86_400));
+        let charet = Actor::User {
+            id: "charet".into(),
+            name: "charet".into(),
+            role: Role::Admin,
+        };
+        let mut archived = 0;
+        for project in self.ports.records.projects()? {
+            for mut branch in self.ports.records.branches(&project.key)? {
+                if branch.status == BranchStatus::Open && branch.updated_at < cutoff {
+                    branch.status = BranchStatus::Archived;
+                    let detail = format!("{IDLE_DAYS} days");
+                    self.save_branch(&charet, &project.key, &branch, "idle", &detail)?;
+                    archived += 1;
+                }
+            }
+        }
+        Ok(archived)
     }
 
     /// Brings an archived branch back as a draft (its author or an admin).
@@ -546,6 +573,27 @@ fn check_push(changes: &[FileChange]) -> Result<(), EngineError> {
     check_files(changes)
 }
 
+/// `secs` (Unix) as the stored timestamps write it: `2026-10-20T08:30:00.000Z`.
+fn iso(secs: u64) -> String {
+    // Days to a civil date (H. Hinnant's algorithm), for dates after 1970.
+    let z = secs / 86_400 + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    let rem = secs % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.000Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
+}
+
 fn short(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
@@ -705,6 +753,55 @@ mod tests {
                 head: caught.head.clone()
             }),
             "stale base"
+        );
+    }
+
+    #[test]
+    fn timestamps_match_the_stored_form() {
+        assert_eq!(iso(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(iso(1_792_485_000), "2026-10-20T08:30:00.000Z");
+        assert_eq!(iso(951_782_400), "2000-02-29T00:00:00.000Z");
+    }
+
+    #[test]
+    fn idle_drafts_are_archived() {
+        let (engine, base) = project();
+        let ann = person("ann", Role::Editor);
+        for title in ["idle", "fresh", "in review"] {
+            engine
+                .propose(&ann, "web", &base, title, &[file("a.txt", title)])
+                .unwrap();
+        }
+        engine.request_review(&ann, "web", 3).unwrap();
+        let now = 1_792_485_000;
+        for (number, at) in [
+            (1, "2026-10-01T00:00:00.000Z"),
+            (2, "2026-10-19T00:00:00.000Z"),
+            (3, "2026-09-01T00:00:00.000Z"),
+        ] {
+            let mut branch = engine.find_branch("web", number).unwrap();
+            branch.updated_at = at.into();
+            engine.ports.records.update_branch("web", &branch).unwrap();
+        }
+        assert_eq!(engine.archive_idle(now).unwrap(), 1);
+        let status = |n| engine.find_branch("web", n).unwrap().status;
+        assert_eq!(
+            [status(1), status(2), status(3)],
+            [
+                BranchStatus::Archived,
+                BranchStatus::Open,
+                BranchStatus::InReview
+            ]
+        );
+        let events = engine.branch(&ann, "web", 1).unwrap().events;
+        let last = events.last().unwrap();
+        assert_eq!(
+            (
+                last.kind.as_str(),
+                last.detail.as_str(),
+                last.actor.name.as_str()
+            ),
+            ("idle", "14 days", "charet")
         );
     }
 

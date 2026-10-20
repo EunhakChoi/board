@@ -198,8 +198,10 @@ const EVENTS = [
   "conflict",
   "merge",
   "archive",
+  "idle",
   "reopen",
   "duplicate",
+  "approve",
 ] as const;
 
 function eventText(t: ReturnType<typeof useT>, kind: string): string {
