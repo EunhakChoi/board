@@ -14,7 +14,7 @@ use charet_db::{CaptureStore, CommentStore, Db};
 use charet_engine::{Engine, Ports, PreviewSettings};
 use charet_render_client::RenderClient;
 use charet_store::GitStore;
-use charet_workspace_client::WorkspaceClient;
+use charet_workspace_client::{AgentClient, WorkspaceClient};
 
 use crate::config::Config;
 
@@ -76,6 +76,7 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
             config.data_dir().join("comments"),
         )),
         accounts: db.clone(),
+        agents: db.clone(),
         notices: db,
         webhooks: Arc::new(webhook::Sender::new()),
         realtime: Arc::new(Hub::new()),
@@ -99,6 +100,7 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
         .with_tool_url(&config.tool_url())
         .with_merge_check(config.merge_check)
         .with_secret(secret);
+    let engine = with_agents(engine, &config);
     // The owner: the local door acts as them; on a public server their token is the way in.
     let created = engine.ensure_owner().map_err(|e| e.to_string())?;
     if admin_token {
@@ -115,6 +117,9 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
         update::spawn(engine.clone());
     }
     archive_idle_drafts(engine.clone());
+    if config.agent.is_some() {
+        follow_agent_runs(engine.clone());
+    }
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.bind))?;
@@ -131,6 +136,11 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
         charet_api::remote_app(engine.clone(), config.web_dir.clone()),
     )
     .await?;
+    let agent_door = serve_remote(
+        config.agent.as_ref().map(|a| a.bind),
+        charet_api::agent_app(engine.clone()),
+    )
+    .await?;
     let previews = axum::serve(
         preview_listener,
         charet_api::preview_router(engine.clone(), &origin),
@@ -138,8 +148,31 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
     .with_graceful_shutdown(shutdown());
     let api = axum::serve(listener, charet_api::app(engine, config.web_dir.clone()))
         .with_graceful_shutdown(shutdown());
-    let (api, previews, remote) = tokio::join!(api.into_future(), previews.into_future(), remote);
-    api.and(previews).and(remote).map_err(|e| e.to_string())
+    let (api, previews, remote, agent_door) = tokio::join!(
+        api.into_future(),
+        previews.into_future(),
+        remote,
+        agent_door
+    );
+    api.and(previews)
+        .and(remote)
+        .and(agent_door)
+        .map_err(|e| e.to_string())
+}
+
+/// Turns the web agent on when `charet-agent` is configured.
+fn with_agents(engine: Engine, config: &Config) -> Engine {
+    match &config.agent {
+        Some(agent) => engine.with_agents(
+            Arc::new(AgentClient::new(&agent.url, agent.token.clone())),
+            charet_engine::AgentConfig {
+                env_keys: agent.keys.clone(),
+                script: agent.script,
+                max_running: agent.max_running,
+            },
+        ),
+        None => engine,
+    }
 }
 
 /// Lets a local charet run tunnels to its remote door, and reopens sharing that was on.
@@ -201,6 +234,12 @@ fn announce(config: &Config, admin_token: Option<String>) {
         },
         config.preview_url,
     );
+    if let Some(agent) = &config.agent {
+        println!(
+            "Web agent via {}; run containers come in at the agent door on {}.",
+            agent.url, agent.bind
+        );
+    }
     if let Some(addr) = config.remote_bind {
         println!(
             "Remote door on {addr}: tunnels and reverse proxies point here (members bring their token)."
@@ -214,7 +253,7 @@ fn announce(config: &Config, admin_token: Option<String>) {
     }
 }
 
-/// Listens on the remote door, when there is one; the future runs until shutdown.
+/// Listens on a door (remote, agent) when there is one; the future runs until shutdown.
 async fn serve_remote(
     addr: Option<std::net::SocketAddr>,
     app: axum::Router,
@@ -274,6 +313,24 @@ fn archive_idle_drafts(engine: Engine) {
                 eprintln!("charet-server: cannot archive idle drafts: {error}");
             }
             tokio::time::sleep(std::time::Duration::from_hours(1)).await;
+        }
+    });
+}
+
+/// Every second, takes in what web agent runs did and starts waiting ones.
+fn follow_agent_runs(engine: Engine) {
+    tokio::spawn(async move {
+        let mut last_error = String::new();
+        loop {
+            let run = engine.clone();
+            if let Ok(Err(error)) = tokio::task::spawn_blocking(move || run.agents_tick()).await {
+                let error = error.to_string();
+                if error != last_error {
+                    eprintln!("charet-server: web agent: {error}");
+                }
+                last_error = error;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     });
 }

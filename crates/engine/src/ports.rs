@@ -667,3 +667,124 @@ pub struct TunnelMode {
     /// The address it would give, or why it cannot be used.
     pub detail: String,
 }
+
+/// A run as it is first recorded.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewRun {
+    pub project: String,
+    pub branch: u32,
+    pub actor: Person,
+    pub agent: charet_model::AgentKind,
+    pub model: String,
+    pub prompt: String,
+    pub context: serde_json::Value,
+    pub attachments: Vec<charet_model::Attachment>,
+}
+
+/// How a run ended, or where it is.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RunUpdate {
+    pub state: Option<charet_model::RunState>,
+    pub error: Option<String>,
+    pub tokens_in: Option<u64>,
+    pub tokens_out: Option<u64>,
+    pub cost_usd: Option<f64>,
+    /// Sets (`Some(Some(hash))`) or clears (`Some(None)`) the container's token.
+    pub token_hash: Option<Option<String>>,
+    pub runner_seq: Option<u32>,
+    pub started: bool,
+    pub ended: bool,
+}
+
+/// Web agent runs and their conversations, kept by the database.
+pub trait AgentRecords: Send + Sync {
+    /// Records a queued run with the person's prompt as its first message.
+    fn insert_run(&self, run: &NewRun) -> Result<charet_model::AgentRun, StoreError>;
+    fn run(&self, id: u64) -> Result<Option<charet_model::AgentRun>, StoreError>;
+    /// A project's runs, oldest first; only one branch's when given.
+    fn runs(
+        &self,
+        project: &str,
+        branch: Option<u32>,
+    ) -> Result<Vec<charet_model::AgentRun>, StoreError>;
+    /// Runs not finished yet, on every project, oldest first.
+    fn open_runs(&self) -> Result<Vec<charet_model::AgentRun>, StoreError>;
+    /// Every run, newest first, for the cost table.
+    fn all_runs(&self) -> Result<Vec<charet_model::AgentRun>, StoreError>;
+    fn update_run(&self, id: u64, update: &RunUpdate) -> Result<(), StoreError>;
+    /// The unfinished run holding this token hash.
+    fn run_by_token(&self, hash: &str) -> Result<Option<charet_model::AgentRun>, StoreError>;
+    /// Appends a message (its `seq` is the next one).
+    fn add_message(
+        &self,
+        run: u64,
+        kind: charet_model::MessageKind,
+        text: &str,
+        tool: Option<&str>,
+    ) -> Result<charet_model::AgentMessage, StoreError>;
+    /// A run's messages after `after` (0: all).
+    fn messages(&self, run: u64, after: u32)
+    -> Result<Vec<charet_model::AgentMessage>, StoreError>;
+    fn attachments(&self, run: u64) -> Result<Vec<charet_model::Attachment>, StoreError>;
+}
+
+/// What the runner needs to start a run.
+#[derive(Clone, PartialEq)]
+pub struct RunnerStart {
+    pub id: u64,
+    pub agent: charet_model::AgentKind,
+    pub model: String,
+    /// The vendor key; empty for the script agent.
+    pub api_key: String,
+    pub project: String,
+    pub branch: u32,
+    /// The token the container uses at the server's agent door.
+    pub token: String,
+    pub prompt: String,
+    pub context: serde_json::Value,
+    pub images: Vec<charet_model::Attachment>,
+    /// Earlier turns on this branch, oldest first: (`user` | `assistant`, text).
+    pub history: Vec<(String, String)>,
+}
+
+impl std::fmt::Debug for RunnerStart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnerStart")
+            .field("id", &self.id)
+            .field("agent", &self.agent)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A line the runner saw from the agent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunnerEvent {
+    pub kind: charet_model::MessageKind,
+    pub text: String,
+    pub tool: Option<String>,
+}
+
+/// What a run has done so far.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RunnerProgress {
+    /// Events after the `after` asked for, and the count to ask after next time.
+    pub events: Vec<RunnerEvent>,
+    pub next: u32,
+    /// `None` while it runs; then done, failed or canceled.
+    pub finished: Option<charet_model::RunState>,
+    pub error: Option<String>,
+    pub tokens_in: u64,
+    pub tokens_out: u64,
+    pub cost_usd: Option<f64>,
+}
+
+/// `charet-agent`: runs coding agents in containers (`apps/charet-agent`).
+pub trait AgentRunner: Send + Sync {
+    fn start(&self, run: &RunnerStart) -> Result<(), WorkspaceError>;
+    /// Progress since `after` events; `None` when the runner does not know the run (restarted).
+    fn poll(&self, id: u64, after: u32) -> Result<Option<RunnerProgress>, WorkspaceError>;
+    fn cancel(&self, id: u64) -> Result<(), WorkspaceError>;
+    fn health(&self) -> Result<(), WorkspaceError> {
+        Ok(())
+    }
+}

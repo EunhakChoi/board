@@ -1090,6 +1090,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the web agent is on and which agents it offers (members) */
+        get: operations["getAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The web agent's settings (same as `/api/agent`, for the admins' page) */
+        get: operations["getAgentSettings"];
+        /** Default agent, models and API keys (admins). Keys are stored encrypted and never returned. */
+        put: operations["setAgentSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every web agent run and what each person spent (admins) */
+        get: operations["getAgentCosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/agent-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** The project's web agent runs, oldest first */
+        get: operations["listAgentRuns"];
+        put?: never;
+        /** Ask the web agent (editors). Without `branch` it starts a new draft; it waits while another run works on the same branch. */
+        post: operations["startAgentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/agent-runs/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        /** A run's conversation */
+        get: operations["listAgentMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/agent-runs/{id}/attachments/{seq}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+                /** @description 0-based, in the order attached */
+                seq: number;
+            };
+            cookie?: never;
+        };
+        /** An image attached to a run's prompt */
+        get: operations["getAgentAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/agent-runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop a run (its asker or an admin). What it already saved stays on the branch. */
+        post: operations["cancelAgentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1531,6 +1665,104 @@ export interface components {
             commit?: string;
             files: components["schemas"]["FileInput"][];
         };
+        /**
+         * @description `script` is a scripted stand-in for tests, offered only when the server enables it
+         * @enum {string}
+         */
+        AgentKind: "claude" | "codex" | "script";
+        /** @enum {string} */
+        RunState: "queued" | "running" | "done" | "failed" | "canceled";
+        AgentChoice: {
+            agent: components["schemas"]["AgentKind"];
+            /** @description A key is set (or none is needed) */
+            ready: boolean;
+            /**
+             * @description Where its API key comes from
+             * @enum {string}
+             */
+            key: "env" | "settings" | "none";
+            keyLast4?: string;
+            /** @description The model runs use unless they ask for another; empty is the agent's default */
+            model: string;
+        };
+        AgentStatus: {
+            enabled: boolean;
+            /** @description Why it is off */
+            reason?: string;
+            default: components["schemas"]["AgentKind"] | null;
+            agents: components["schemas"]["AgentChoice"][];
+        };
+        AgentSettingsChange: {
+            default?: components["schemas"]["AgentKind"];
+            /** @description Model per agent; an empty string goes back to the agent's default */
+            models?: {
+                [key: string]: string;
+            };
+            /** @description API key per agent; an empty string removes the saved one */
+            keys?: {
+                [key: string]: string;
+            };
+        };
+        StartAgentRun: {
+            prompt: string;
+            /** @description What the person pointed at (screen, element, source), passed to the agent as given */
+            context?: unknown;
+            /** @description Your draft or a branch in review to continue; absent starts a new draft */
+            branch?: number;
+            agent?: components["schemas"]["AgentKind"];
+            model?: string;
+            images?: {
+                /** @enum {string} */
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+                /** @description base64, up to 5 MB decoded */
+                data: string;
+            }[];
+        };
+        AgentRun: {
+            id: number;
+            project: string;
+            branch: number;
+            actor: components["schemas"]["Person"];
+            agent: components["schemas"]["AgentKind"];
+            model: string;
+            prompt: string;
+            context: unknown;
+            /** @description Images attached to the prompt */
+            attachments: number;
+            state: components["schemas"]["RunState"];
+            error: string | null;
+            tokensIn: number;
+            tokensOut: number;
+            /** @description `null` when the model's price is not known */
+            costUsd: number | null;
+            createdAt: string;
+            startedAt: string | null;
+            endedAt: string | null;
+        };
+        AgentMessage: {
+            run: number;
+            seq: number;
+            /** @enum {string} */
+            kind: "user" | "assistant" | "tool" | "status";
+            text: string;
+            /** @description For `tool`: the tool's name */
+            tool?: string;
+            createdAt: string;
+        };
+        AgentCosts: {
+            people: {
+                id: string;
+                name: string;
+                runs: number;
+                tokensIn: number;
+                tokensOut: number;
+                costUsd: number;
+                /** @description Runs whose model has no known price (not in `costUsd`) */
+                unpriced: number;
+            }[];
+            /** @description Newest first */
+            runs: components["schemas"]["AgentRun"][];
+        };
     };
     responses: {
         /** @description Files changed on both sides; `detail.files` lists them */
@@ -1632,6 +1864,7 @@ export interface components {
         };
     };
     parameters: {
+        RunId: number;
         /** @description A user id */
         MemberId: string;
         UserId: string;
@@ -3493,6 +3726,229 @@ export interface operations {
                 };
             };
             400: components["responses"]["Invalid"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The web agent as the server offers it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatus"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAgentSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The web agent as the server offers it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatus"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAgentSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSettingsChange"];
+            };
+        };
+        responses: {
+            /** @description The web agent now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatus"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAgentCosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Costs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCosts"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listAgentRuns: {
+        parameters: {
+            query?: {
+                /** @description Only this branch's runs */
+                branch?: number;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startAgentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAgentRun"];
+            };
+        };
+        responses: {
+            /** @description The run (queued or running) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listAgentMessages: {
+        parameters: {
+            query?: {
+                /** @description Only messages after this `seq` */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Messages, in order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMessage"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAgentAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+                /** @description 0-based, in the order attached */
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelAgentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

@@ -14,6 +14,7 @@ use charet_model::{Actor, Role};
 use serde::{Deserialize, Serialize};
 
 use crate::ApiError;
+use crate::agents::AgentCaller;
 use crate::projects::blocking;
 
 /// The session cookie on the tool origin.
@@ -56,6 +57,10 @@ impl FromRequestParts<Engine> for Caller {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, ApiError> {
+        // A run's container, let in by the agent door.
+        if let Some(AgentCaller(access)) = parts.extensions.get::<AgentCaller>() {
+            return Ok(Caller(access.actor.clone()));
+        }
         if local_door(parts, engine) {
             return Ok(Caller(engine.local_actor()));
         }

@@ -1,5 +1,6 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod agents;
 mod branches;
 mod browse;
 mod captures;
@@ -21,6 +22,10 @@ use std::sync::{Arc, RwLock};
 
 use sharing::Live;
 
+pub use agents::{
+    AgentAccess, AgentChoice, AgentConfig, AgentSettingsChange, AgentStatus, Costs, PersonCost,
+    RunInput,
+};
 pub use branches::BranchDetail;
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
@@ -31,11 +36,12 @@ pub use members::{
 };
 pub use notices::{Inbox, WEBHOOK_EVENTS, WebhookSecret};
 pub use ports::{
-    Accounts, Author, BranchEvent, Build, BuildState, BuildStep, BuiltFile, Capture, Captures,
-    Change, ChangeKind, Comments, FileChange, ImageKind, Joined, Kick, Merged, NewBranch,
-    NewComment, NewNotification, NewReply, NewUser, NewVersion, NewWebhook, Notices, Outgoing,
-    Peer, ProjectStore, Realtime, Records, RenderJob, Renderer, SessionRow, Settings, Shot,
-    StoreError, TunnelMode, TunnelOptions, Tunnels, WebhookSender, Workspace, WorkspaceError,
+    Accounts, AgentRecords, AgentRunner, Author, BranchEvent, Build, BuildState, BuildStep,
+    BuiltFile, Capture, Captures, Change, ChangeKind, Comments, FileChange, ImageKind, Joined,
+    Kick, Merged, NewBranch, NewComment, NewNotification, NewReply, NewRun, NewUser, NewVersion,
+    NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
+    RunUpdate, RunnerEvent, RunnerProgress, RunnerStart, SessionRow, Settings, Shot, StoreError,
+    TunnelMode, TunnelOptions, Tunnels, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};
@@ -56,6 +62,7 @@ pub struct Ports {
     pub realtime: Arc<dyn Realtime>,
     pub notices: Arc<dyn Notices>,
     pub webhooks: Arc<dyn WebhookSender>,
+    pub agents: Arc<dyn AgentRecords>,
 }
 
 impl std::fmt::Debug for Ports {
@@ -76,6 +83,10 @@ pub struct Engine {
     secret: Option<Arc<[u8; 32]>>,
     /// Whether merges wait for the check of what they give (on by default, with previews).
     merge_check: bool,
+    /// The web agent, when a runner is configured.
+    agents: Option<agents::Agents>,
+    /// One bookkeeping pass over runs at a time.
+    agent_turn: Arc<std::sync::Mutex<()>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -96,6 +107,8 @@ impl Engine {
             tunnels: None,
             secret: None,
             merge_check: true,
+            agents: None,
+            agent_turn: Arc::default(),
         }
     }
 
@@ -117,6 +130,13 @@ impl Engine {
     #[must_use]
     pub fn with_tunnels(mut self, tunnels: Arc<dyn Tunnels>) -> Self {
         self.tunnels = Some(tunnels);
+        self
+    }
+
+    /// Enables the web agent: runs go to `runner` (the `charet-agent` service).
+    #[must_use]
+    pub fn with_agents(mut self, runner: Arc<dyn AgentRunner>, config: AgentConfig) -> Self {
+        self.agents = Some(agents::Agents { runner, config });
         self
     }
 
