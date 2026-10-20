@@ -1,4 +1,0 @@
-$ board connections --from tasks-list
-tasks-list → tasks-open  "Open" (click)
-tasks-list → tasks-error  "Load fails" (error)
-[exit 0]

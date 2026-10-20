@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use board_engine::{Author, Change, ChangeKind, FileChange, ProjectStore, StoreError};
+use charet_engine::{Author, Change, ChangeKind, FileChange, ProjectStore, StoreError};
 
 const MAIN: &str = "refs/heads/main";
 
@@ -37,7 +37,7 @@ impl GitStore {
 
 impl ProjectStore for GitStore {
     fn remove(&self, project: &str) -> Result<(), StoreError> {
-        if !board_model::Project::valid_key(project) {
+        if !charet_model::Project::valid_key(project) {
             return Err(StoreError(format!("bad project key {project:?}")));
         }
         let dir = self.root.join(project);
@@ -77,7 +77,7 @@ impl ProjectStore for GitStore {
         message: &str,
     ) -> Result<Option<String>, StoreError> {
         let git = self.git(project);
-        let scratch = format!("refs/board/scratch/{}", unique());
+        let scratch = format!("refs/charet/scratch/{}", unique());
         let stream = fast_import_stream(&scratch, parent, changes, author, message)?;
         git.run(&["fast-import", "--quiet", "--done"], Some(&stream))?;
         let commit = git
@@ -297,7 +297,7 @@ mod tests {
     use super::*;
 
     fn store(case: &str) -> (GitStore, PathBuf) {
-        let root = std::env::temp_dir().join(format!("board-store-{}-{case}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("charet-store-{}-{case}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         (GitStore::new(&root), root)
     }

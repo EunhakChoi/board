@@ -1,0 +1,6 @@
+$ charet ls --stale
+tasks-list
+tasks-open
+settings-main
+button-outline
+[exit 0]

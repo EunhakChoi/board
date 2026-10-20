@@ -1,17 +1,17 @@
-//! Talks to `board-render` (Chromium screenshots and checks) over its internal HTTP API.
+//! Talks to `charet-render` (Chromium screenshots and checks) over its internal HTTP API.
 
 use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use board_engine::{ImageKind, RenderJob, Renderer, Shot, WorkspaceError};
+use charet_engine::{ImageKind, RenderJob, Renderer, Shot, WorkspaceError};
 use serde::{Deserialize, Serialize};
 use ureq::Agent;
 
 /// Largest render response (a full-page PNG plus the element map).
 const MAX_RESPONSE: u64 = 64 * 1024 * 1024;
 
-/// A `board-render` at `url`, authenticated with `token`.
+/// A `charet-render` at `url`, authenticated with `token`.
 #[derive(Clone)]
 pub struct RenderClient {
     url: String,
@@ -72,11 +72,11 @@ impl Renderer for RenderClient {
             .agent
             .get(format!("{}/health", self.url))
             .call()
-            .map_err(|e| WorkspaceError::Unavailable(format!("board-render: {e}")))?;
+            .map_err(|e| WorkspaceError::Unavailable(format!("charet-render: {e}")))?;
         match response.status().as_u16() {
             200 => Ok(()),
             status => Err(WorkspaceError::Failed(format!(
-                "board-render: status {status}"
+                "charet-render: status {status}"
             ))),
         }
     }
@@ -98,18 +98,18 @@ impl Renderer for RenderClient {
         }
         let mut response = request
             .send_json(&body)
-            .map_err(|e| WorkspaceError::Unavailable(format!("board-render: {e}")))?;
+            .map_err(|e| WorkspaceError::Unavailable(format!("charet-render: {e}")))?;
         let status = response.status().as_u16();
         let text = response
             .body_mut()
             .with_config()
             .limit(MAX_RESPONSE)
             .read_to_string()
-            .map_err(|e| WorkspaceError::Unavailable(format!("board-render: {e}")))?;
+            .map_err(|e| WorkspaceError::Unavailable(format!("charet-render: {e}")))?;
         if status != 200 {
             let head: String = text.chars().take(300).collect();
             return Err(WorkspaceError::Failed(format!(
-                "board-render status {status}: {head}"
+                "charet-render status {status}: {head}"
             )));
         }
         let wire: WireShot = serde_json::from_str(&text)

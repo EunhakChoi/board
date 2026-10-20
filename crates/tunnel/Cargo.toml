@@ -1,6 +1,6 @@
 [package]
-name = "board-tunnel"
-description = "Tunnels to the remote door of a local board: Tailscale serve and Funnel, through the tailscale CLI."
+name = "charet-tunnel"
+description = "Tunnels to the remote door of a local charet: Tailscale serve and Funnel, through the tailscale CLI."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-board-engine = { path = "../engine" }
+charet-engine = { path = "../engine" }
 ngrok = { version = "0.19.0", default-features = false, features = ["ring"] }
 tokio = { workspace = true, features = ["time"] }
 url = "2.5.8"

@@ -4,8 +4,8 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use board_engine::{At, CommentFilter, Engine};
-use board_model::{Comment, CommentStatus, ReplyKind};
+use charet_engine::{At, CommentFilter, Engine};
+use charet_model::{Comment, CommentStatus, ReplyKind};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;
@@ -119,7 +119,7 @@ pub struct AnswerInput {
 
 async fn answer(
     engine: Engine,
-    actor: board_model::Actor,
+    actor: charet_model::Actor,
     key: String,
     id: u64,
     kind: ReplyKind,

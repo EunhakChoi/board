@@ -1,5 +1,5 @@
 [package]
-name = "board-store"
+name = "charet-store"
 description = "Project store: one git repository per project (main, branches, versions)."
 version.workspace = true
 edition.workspace = true
@@ -7,8 +7,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-board-model = { path = "../model" }
-board-engine = { path = "../engine" }
+charet-model = { path = "../model" }
+charet-engine = { path = "../engine" }
 
 [lints]
 workspace = true

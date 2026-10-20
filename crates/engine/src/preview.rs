@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use board_model::Actor;
+use charet_model::Actor;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
@@ -19,7 +19,7 @@ use crate::{Build, BuildState, BuiltFile, Engine, EngineError};
 pub struct PreviewSettings {
     /// Public origin of the preview listener, e.g. `http://127.0.0.1:5281` (no trailing slash).
     pub origin: String,
-    /// The same listener as `board-render` reaches it (differs inside docker).
+    /// The same listener as `charet-render` reaches it (differs inside docker).
     pub render_origin: String,
     /// Key for preview tokens. Kept by the server, never sent anywhere.
     pub secret: [u8; 32],
@@ -42,7 +42,7 @@ pub struct Preview {
     pub commit: String,
     pub build: Build,
     /// `<origin>/<project>/<commit>/` once the build is ready. Pages are under it, e.g.
-    /// `.board/frame.html?screen=<id>&t=<token>`.
+    /// `.charet/frame.html?screen=<id>&t=<token>`.
     pub base_url: Option<String>,
     pub token: Option<String>,
 }
@@ -62,7 +62,7 @@ impl Engine {
         let commit = self.resolve(key, rev)?;
         let workspace = &self.ports.workspace;
         let build = match workspace.build(key, &commit)? {
-            // A build made for another base (an older board) is made again.
+            // A build made for another base (an older charet) is made again.
             Some(build)
                 if build.base == BUILD_BASE && !(retry && build.state == BuildState::Failed) =>
             {
@@ -164,7 +164,7 @@ fn check(
 mod tests {
     use super::*;
     use crate::testing::engine_with_preview;
-    use board_model::Actor;
+    use charet_model::Actor;
 
     fn settings() -> PreviewSettings {
         PreviewSettings {

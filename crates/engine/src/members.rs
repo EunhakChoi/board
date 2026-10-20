@@ -3,14 +3,14 @@
 //! A member is a name, a role and a token an admin hands over. The token signs a browser in once
 //! (a session cookie follows) and is what the CLI sends. Someone without a token is a visitor, a
 //! viewer with a made-up name, unless an admin turned visitors off. The person at the machine
-//! that runs a local board needs no token: the local door acts as the owner, an admin member
+//! that runs a local charet needs no token: the local door acts as the owner, an admin member
 //! made at first start.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use board_model::{Actor, Member, Role, User};
+use charet_model::{Actor, Member, Role, User};
 use sha2::{Digest, Sha256};
 
 use crate::policy::{Command, can};
@@ -112,7 +112,7 @@ impl Engine {
         }
         if self.owner_id()?.as_deref() == Some(id) {
             return Err(EngineError::Invalid(
-                "this is the admin of the machine board runs on; it stays".into(),
+                "this is the admin of the machine charet runs on; it stays".into(),
             ));
         }
         self.ports.accounts.delete_user(id)?;
@@ -220,7 +220,7 @@ impl Engine {
         Ok(created)
     }
 
-    /// The owner's token (`board-server admin-token`).
+    /// The owner's token (`charet-server admin-token`).
     pub fn owner_token(&self) -> Result<Option<String>, EngineError> {
         match self.owner()? {
             Some(user) => Ok(self.ports.accounts.user_token(&user.id)?),
@@ -280,7 +280,7 @@ impl Engine {
     fn keep_admin(&self, user: &User) -> Result<(), EngineError> {
         if self.owner_id()?.as_deref() == Some(user.id.as_str()) {
             return Err(EngineError::Invalid(
-                "the admin of the machine board runs on stays an admin".into(),
+                "the admin of the machine charet runs on stays an admin".into(),
             ));
         }
         let admins = self
@@ -400,7 +400,7 @@ pub(crate) fn now() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use board_model::Visibility;
+    use charet_model::Visibility;
 
     use super::*;
     use crate::testing::{engine, engine_with_fakes};

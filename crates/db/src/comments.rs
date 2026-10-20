@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use board_engine::{Comments, NewComment, NewReply, StoreError};
-use board_model::{Comment, CommentStatus, Person, Reply, ReplyKind};
+use charet_engine::{Comments, NewComment, NewReply, StoreError};
+use charet_model::{Comment, CommentStatus, Person, Reply, ReplyKind};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::{Db, err};
 
-/// [`Comments`] over the board database and a directory for snapshots.
+/// [`Comments`] over the charet database and a directory for snapshots.
 #[derive(Debug, Clone)]
 pub struct CommentStore {
     db: Arc<Db>,
@@ -74,7 +74,7 @@ fn comment_row(row: &Row<'_>) -> rusqlite::Result<(Comment, String)> {
             kind: row.get(1)?,
             target: row.get(2)?,
             theme: row.get(3)?,
-            anchor: board_model::Anchor::default(),
+            anchor: charet_model::Anchor::default(),
             body: row.get(5)?,
             author: Person {
                 id: row.get(6)?,
@@ -156,7 +156,7 @@ fn load(
 
 impl Comments for CommentStore {
     fn remove_project(&self, project: &str) -> Result<(), StoreError> {
-        if !board_model::Project::valid_key(project) {
+        if !charet_model::Project::valid_key(project) {
             return Err(StoreError(format!("bad project key {project:?}")));
         }
         crate::remove_dir(&self.dir.join(project))
@@ -267,7 +267,7 @@ impl Comments for CommentStore {
         &self,
         project: &str,
         id: u64,
-        anchor: &board_model::Anchor,
+        anchor: &charet_model::Anchor,
     ) -> Result<(), StoreError> {
         let anchor = serde_json::to_string(anchor).map_err(err)?;
         self.db
@@ -306,8 +306,8 @@ impl Comments for CommentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use board_engine::Records;
-    use board_model::{Anchor, Origin, Project, Visibility};
+    use charet_engine::Records;
+    use charet_model::{Anchor, Origin, Project, Visibility};
 
     fn store(case: &str) -> (CommentStore, PathBuf) {
         let db = Arc::new(Db::memory().unwrap());
@@ -320,7 +320,7 @@ mod tests {
         })
         .unwrap();
         let dir =
-            std::env::temp_dir().join(format!("board-comments-{}-{case}", std::process::id()));
+            std::env::temp_dir().join(format!("charet-comments-{}-{case}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         (CommentStore::new(db, &dir), dir)
     }

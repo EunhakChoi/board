@@ -1,3 +1,0 @@
-$ board sheet tasks-list button-default --out s.jpg
-[stderr] Wrote <out>/s.jpg
-[exit 0]

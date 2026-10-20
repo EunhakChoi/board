@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: board API
+  title: charet API
   version: 0.0.0
   description: >
-    HTTP contract between board-server and its clients (board-web, board-cli).
+    HTTP contract between charet-server and its clients (charet-web, charet-cli).
     Every route lives under /api. Errors share one shape (Error).
     Change this file first, then run `make gen-api`.
   license:
@@ -48,7 +48,7 @@ paths:
     get:
       tags: [system]
       operationId: getSystem
-      summary: Versions, links and whether the internal services answer (for `board doctor`)
+      summary: Versions, links and whether the internal services answer (for `charet doctor`)
       responses:
         "200":
           description: System information
@@ -91,7 +91,7 @@ paths:
       operationId: getMe
       summary: Who is calling
       description: >-
-        Through the local door of a local board, the owner. A browser without a session becomes
+        Through the local door of a local charet, the owner. A browser without a session becomes
         a visitor here (a cookie is set) while visitors are allowed; otherwise 401
         `token_required`. 401 `replaced`: the token signed in on another browser since.
       responses:
@@ -288,7 +288,7 @@ paths:
     get:
       tags: [admin]
       operationId: getSharing
-      summary: Whether and where this local board is shared (admins)
+      summary: Whether and where this local charet is shared (admins)
       responses:
         "200":
           description: Sharing
@@ -699,7 +699,7 @@ paths:
         "200":
           description: Gzipped tar of the files
           headers:
-            X-Board-Commit:
+            X-Charet-Commit:
               description: Commit id of the archive
               schema:
                 type: string
@@ -824,7 +824,7 @@ paths:
       summary: Static build of a revision, started on first call; poll until ready or failed
       description: >
         Once ready, pages are at `baseUrl` on the preview origin, e.g.
-        `{baseUrl}.board/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to
+        `{baseUrl}.charet/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to
         this project and commit.
       parameters:
         - name: rev
@@ -847,7 +847,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
-          description: board-workspace is not running, or previews are not configured
+          description: charet-workspace is not running, or previews are not configured
           content:
             application/json:
               schema:
@@ -1205,7 +1205,7 @@ paths:
         - $ref: "#/components/parameters/Rev"
       responses:
         "200":
-          description: The manifest (`.board/manifest.json`, see @board/sdk `Manifest`)
+          description: The manifest (`.charet/manifest.json`, see @charet/sdk `Manifest`)
           content:
             application/json:
               schema:
@@ -1266,7 +1266,7 @@ paths:
             type: string
       responses:
         "200":
-          description: The bytes; `text/plain` when UTF-8. `X-Board-Commit` is the commit read.
+          description: The bytes; `text/plain` when UTF-8. `X-Charet-Commit` is the commit read.
           content:
             text/plain:
               schema:
@@ -1361,7 +1361,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Unavailable:
-      description: A service board needs (board-workspace, board-render) is not running
+      description: A service charet needs (charet-workspace, charet-render) is not running
       content:
         application/json:
           schema:
@@ -1951,7 +1951,7 @@ components:
           enum: [user, visitor, local]
           description: >-
             `user` is a member (by token, or the owner at this machine); `visitor` has no token
-            and only looks; `local` is the built-in admin before the board has an owner
+            and only looks; `local` is the built-in admin before the charet has an owner
         id:
           type: string
           description: "A member's id, or a visitor's (the web tool shows the visitor's made-up name from it)"

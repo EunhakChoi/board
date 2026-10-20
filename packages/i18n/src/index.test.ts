@@ -5,14 +5,14 @@ import ko from "../locales/ko.json" with { type: "json" };
 import { detectLocale, t } from "./index.ts";
 
 test("fills placeholders and falls back to English", () => {
-  assert.equal(t("cli.version", { version: "0.0.0" }), "board 0.0.0");
-  assert.match(t("cli.usage", {}, "ko"), /^사용법: board <명령> \[옵션\]/);
+  assert.equal(t("cli.version", { version: "0.0.0" }), "charet 0.0.0");
+  assert.match(t("cli.usage", {}, "ko"), /^사용법: charet <명령> \[옵션\]/);
 });
 
 test("detects Korean from the environment, English otherwise", () => {
   assert.equal(detectLocale({ LANG: "ko_KR.UTF-8" }), "ko");
   assert.equal(detectLocale({ LANG: "C.UTF-8" }), "en");
-  assert.equal(detectLocale({ BOARD_LANG: "ko", LANG: "en_US" }), "ko");
+  assert.equal(detectLocale({ CHARET_LANG: "ko", LANG: "en_US" }), "ko");
 });
 
 test("every Korean key exists in English", () => {

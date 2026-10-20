@@ -1,10 +1,10 @@
-// Vite plugin for board projects:
-// - serves `.board/manifest.json` in dev and writes it into the build output
-// - adds `.board/frame.html` (the screen and story renderer) as a build entry
+// Vite plugin for charet projects:
+// - serves `.charet/manifest.json` in dev and writes it into the build output
+// - adds `.charet/frame.html` (the screen and story renderer) as a build entry
 // - marks host JSX elements with `data-src` (see source.ts)
 //
-// It works in dev and in preview builds (`BOARD_PREVIEW=1`, set by board-workspace). A plain
-// `vite build` of the app is left untouched, so the product's own build never carries board parts.
+// It works in dev and in preview builds (`CHARET_PREVIEW=1`, set by charet-workspace). A plain
+// `vite build` of the app is left untouched, so the product's own build never carries charet parts.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -13,8 +13,8 @@ import { type Plugin, type ResolvedConfig, runnerImport } from "vite";
 import { type ProjectDef, toManifest } from "./project.ts";
 import { addSourceLocations } from "./source.ts";
 
-export interface BoardPluginOptions {
-  /** Project definition module, relative to the vite root (default `.board/project.tsx` or `.ts`). */
+export interface CharetPluginOptions {
+  /** Project definition module, relative to the vite root (default `.charet/project.tsx` or `.ts`). */
   project?: string;
   /** Frame page, relative to the vite root. */
   frame?: string;
@@ -22,13 +22,13 @@ export interface BoardPluginOptions {
   sourceLocations?: boolean;
 }
 
-export const MANIFEST_PATH = ".board/manifest.json";
+export const MANIFEST_PATH = ".charet/manifest.json";
 
 /** The MSW service worker the frame registers, at the root of the build. */
 export const WORKER_FILE = "mockServiceWorker.js";
 
-/** Board-only static files (mock images, fixtures), served at the root next to the app's own. */
-export const BOARD_PUBLIC = ".board/public";
+/** Charet-only static files (mock images, fixtures), served at the root next to the app's own. */
+export const CHARET_PUBLIC = ".charet/public";
 
 /** Files under `dir`, as paths relative to it with `/` separators. */
 function filesUnder(dir: string, prefix = ""): string[] {
@@ -53,9 +53,9 @@ const CONTENT_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-/** Packages the app and board's frame must share (a second React breaks hooks). */
+/** Packages the app and charet's frame must share (a second React breaks hooks). */
 const SHARED = ["react", "react-dom"] as const;
-const BOARD_DIR = ".board";
+const CHARET_DIR = ".charet";
 
 /**
  * In a sandboxed preview (opaque origin) `localStorage`, `sessionStorage` and `document.cookie`
@@ -91,26 +91,26 @@ export const OPAQUE_SHIM = `(() => {
   }
 })();`;
 
-/** Set by board-workspace for preview builds. */
-export const PREVIEW_ENV = "BOARD_PREVIEW";
+/** Set by charet-workspace for preview builds. */
+export const PREVIEW_ENV = "CHARET_PREVIEW";
 
-export function board(options: BoardPluginOptions = {}): Plugin[] {
-  const frameFile = options.frame ?? ".board/frame.html";
+export function charet(options: CharetPluginOptions = {}): Plugin[] {
+  const frameFile = options.frame ?? ".charet/frame.html";
   let config: ResolvedConfig;
   const apply: Plugin["apply"] = (_config, env) =>
     env.command === "serve" || process.env[PREVIEW_ENV] === "1";
   const projectPath = () => {
     if (options.project) return join(config.root, options.project);
-    const tsx = join(config.root, ".board/project.tsx");
-    return existsSync(tsx) ? tsx : join(config.root, ".board/project.ts");
+    const tsx = join(config.root, ".charet/project.tsx");
+    return existsSync(tsx) ? tsx : join(config.root, ".charet/project.ts");
   };
 
   // The project's own copy in `public/` wins; otherwise the one from its msw package is served.
   const worker = (): string | undefined => {
     if (config.publicDir && existsSync(join(config.publicDir, WORKER_FILE))) return undefined;
-    // msw sits in the app's dependencies or in `.board/package.json`.
+    // msw sits in the app's dependencies or in `.charet/package.json`.
     for (const from of [
-      join(config.root, BOARD_DIR, "package.json"),
+      join(config.root, CHARET_DIR, "package.json"),
       join(config.root, "package.json"),
     ]) {
       try {
@@ -128,7 +128,7 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     if (!path || path.includes("..")) return false;
     let known = publicFiles.get(path);
     if (known === undefined) {
-      const dirs = [config.publicDir, join(config.root, BOARD_PUBLIC)].filter(Boolean) as string[];
+      const dirs = [config.publicDir, join(config.root, CHARET_PUBLIC)].filter(Boolean) as string[];
       known = dirs.some((dir) => existsSync(join(dir, path)) && statSync(join(dir, path)).isFile());
       publicFiles.set(path, known);
     }
@@ -136,10 +136,10 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
   };
 
   const manifest: Plugin = {
-    name: "board:manifest",
+    name: "charet:manifest",
     apply,
     config(user, env) {
-      // One React for the app and board's frame, also when `.board/package.json` installs the SDK
+      // One React for the app and charet's frame, also when `.charet/package.json` installs the SDK
       // apart from the app (its peers then resolve from the app root).
       const shared = { resolve: { dedupe: [...SHARED] } };
       if (env.command !== "build") return shared;
@@ -175,7 +175,7 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
     generateBundle() {
       const source = worker();
       if (source) this.emitFile({ type: "asset", fileName: WORKER_FILE, source });
-      const extra = join(config.root, BOARD_PUBLIC);
+      const extra = join(config.root, CHARET_PUBLIC);
       for (const file of filesUnder(extra)) {
         this.emitFile({ type: "asset", fileName: file, source: readFileSync(join(extra, file)) });
       }
@@ -192,8 +192,8 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
         }
         if (path?.startsWith(config.base)) {
           const rel = decodeURIComponent(path.slice(config.base.length));
-          const file = resolve(config.root, BOARD_PUBLIC, rel);
-          const extra = resolve(config.root, BOARD_PUBLIC);
+          const file = resolve(config.root, CHARET_PUBLIC, rel);
+          const extra = resolve(config.root, CHARET_PUBLIC);
           if (rel && file.startsWith(extra + sep) && existsSync(file) && statSync(file).isFile()) {
             const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
             res.setHeader("content-type", CONTENT_TYPES[ext] ?? "application/octet-stream");
@@ -229,15 +229,15 @@ export function board(options: BoardPluginOptions = {}): Plugin[] {
   };
 
   const source: Plugin = {
-    name: "board:source",
+    name: "charet:source",
     apply,
     enforce: "pre",
     transform(code, id) {
       const file = id.split("?")[0] as string;
       if (!/\.[mc]?[jt]sx?$/.test(file) || file.includes(`${sep}node_modules${sep}`)) return null;
       const rel = relative(config.root, file).split(sep).join("/");
-      // Only the app's own code: not dependencies outside the root, not board's frame files.
-      if (rel.startsWith("..") || rel.startsWith(".board/")) return null;
+      // Only the app's own code: not dependencies outside the root, not charet's frame files.
+      if (rel.startsWith("..") || rel.startsWith(".charet/")) return null;
       const locations = options.sourceLocations !== false && /x$/.test(file);
       const rebase = config.base !== "/";
       if (!locations && !rebase) return null;

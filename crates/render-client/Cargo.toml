@@ -1,6 +1,6 @@
 [package]
-name = "board-render-client"
-description = "Talks to board-render (Chromium screenshots and checks) over its internal HTTP API."
+name = "charet-render-client"
+description = "Talks to charet-render (Chromium screenshots and checks) over its internal HTTP API."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
-board-engine = { path = "../engine" }
+charet-engine = { path = "../engine" }
 
 [lints]
 workspace = true

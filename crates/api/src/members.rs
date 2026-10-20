@@ -4,8 +4,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use board_engine::{Engine, MemberChange};
-use board_model::{Member, Role};
+use charet_engine::{Engine, MemberChange};
+use charet_model::{Member, Role};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;

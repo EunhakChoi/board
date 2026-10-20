@@ -1,4 +1,4 @@
-//! Tunnels to the remote door of a local board (`docs/local.md`, "Share it from this machine").
+//! Tunnels to the remote door of a local charet (`docs/local.md`, "Share it from this machine").
 //!
 //! ngrok runs inside the server with the person's authtoken ([`Ngrok`]).
 //!
@@ -10,7 +10,7 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use board_engine::{ShareMode, TunnelMode, TunnelOptions, Tunnels};
+use charet_engine::{ShareMode, TunnelMode, TunnelOptions, Tunnels};
 use serde::Deserialize;
 
 mod ngrok;
@@ -58,9 +58,9 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 /// The tailscale CLI on this machine.
 #[derive(Debug, Clone)]
 pub struct Tailscale {
-    /// The CLI (`BOARD_TAILSCALE`, default `tailscale` on `PATH`).
+    /// The CLI (`CHARET_TAILSCALE`, default `tailscale` on `PATH`).
     pub cli: String,
-    /// tailscaled's socket when not the default (`BOARD_TAILSCALE_SOCKET`).
+    /// tailscaled's socket when not the default (`CHARET_TAILSCALE_SOCKET`).
     pub socket: Option<String>,
     /// Where tailscaled sends people: the remote door, e.g. `http://127.0.0.1:5284`.
     pub target: String,
@@ -265,7 +265,7 @@ mod tests {
     /// `funnel` with an admin-console link.
     fn fake(status: &str) -> (Tailscale, PathBuf) {
         let dir = std::env::temp_dir().join(format!(
-            "board-tunnel-{}-{}",
+            "charet-tunnel-{}-{}",
             std::process::id(),
             status.len()
         ));

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Product version, reported by every app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The GitHub repository releases come from.
-pub const REPOSITORY: &str = "EunhakChoi/board";
+pub const REPOSITORY: &str = "EunhakChoi/charet";
 
 /// What someone may do. Ordered from least to most: each role can do everything the roles before it can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -21,7 +21,7 @@ pub enum Role {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Actor {
-    /// The built-in admin before the board has an owner (tests, first start).
+    /// The built-in admin before the charet has an owner (tests, first start).
     Local,
     /// A member: came in with their token (or is the owner at this machine).
     User {
@@ -29,7 +29,7 @@ pub enum Actor {
         name: String,
         role: Role,
     },
-    /// Someone without a token, when the board lets visitors look. Always a viewer.
+    /// Someone without a token, when the charet lets visitors look. Always a viewer.
     Visitor { id: String, name: String },
 }
 
@@ -265,7 +265,7 @@ mod tests {
         for good in [
             "a",
             "apps/web/src/main.tsx",
-            ".board/project.ts",
+            ".charet/project.ts",
             ".gitignore",
         ] {
             assert!(valid_path(good), "{good}");
@@ -291,7 +291,7 @@ mod tests {
     }
 }
 
-/// A member of the board: a name, a role and a token (kept apart, see [`Member`]).
+/// A member of the charet: a name, a role and a token (kept apart, see [`Member`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {

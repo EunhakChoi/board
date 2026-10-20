@@ -12,7 +12,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use board_engine::{Build, Engine, PREVIEW_PREFIX, Preview};
+use charet_engine::{Build, Engine, PREVIEW_PREFIX, Preview};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::LocalDoor;
@@ -58,7 +58,7 @@ pub async fn status(
     Query(query): Query<PreviewQuery>,
 ) -> Result<Json<PreviewOut>, ApiError> {
     let rev = query.rev.unwrap_or_else(|| "main".to_owned());
-    // Through the remote door of a local board, previews come from that same address.
+    // Through the remote door of a local charet, previews come from that same address.
     let shared = (!local && engine.local_mode())
         .then(|| engine.tool_url())
         .flatten();
@@ -69,7 +69,7 @@ pub async fn status(
     if let (Some(base), Some(token)) = (shared, &preview.token) {
         preview.base_url = Some(format!(
             "{base}{}",
-            board_engine::preview_path(token, &key, &preview.commit)
+            charet_engine::preview_path(token, &key, &preview.commit)
         ));
     }
     Ok(Json(preview.into()))

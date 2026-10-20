@@ -1,6 +1,6 @@
 //! Working out who is calling, and coming in with a token (`docs/design/security.md` §2).
 //!
-//! In order: the local door of a local board (the owner), a token the CLI sends, a browser's
+//! In order: the local door of a local charet (the owner), a token the CLI sends, a browser's
 //! session cookie, a visitor's cookie. Every address but the local door follows the same rules.
 
 use axum::Json;
@@ -9,27 +9,27 @@ use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use board_engine::{Engine, EngineError, SESSION_SECS, SessionState};
-use board_model::{Actor, Role};
+use charet_engine::{Engine, EngineError, SESSION_SECS, SessionState};
+use charet_model::{Actor, Role};
 use serde::{Deserialize, Serialize};
 
 use crate::ApiError;
 use crate::projects::blocking;
 
 /// The session cookie on the tool origin.
-pub const SESSION_COOKIE: &str = "board_session";
+pub const SESSION_COOKIE: &str = "charet_session";
 /// The id a visitor's browser keeps, for their made-up name.
-pub const VISITOR_COOKIE: &str = "board_visitor";
+pub const VISITOR_COOKIE: &str = "charet_visitor";
 /// Changing requests that rely on a cookie must carry this header. Browsers only send custom
-/// headers cross-origin after a CORS preflight, which board never allows, so a page on another
+/// headers cross-origin after a CORS preflight, which charet never allows, so a page on another
 /// site cannot forge such a request.
-pub const CLIENT_HEADER: &str = "x-board-client";
+pub const CLIENT_HEADER: &str = "x-charet-client";
 
 /// Marks requests that came through the remote door (what tunnels and reverse proxies reach).
 #[derive(Debug, Clone, Copy)]
 pub struct Remote;
 
-/// True for a request through the local door of a local board: it acts as the owner.
+/// True for a request through the local door of a local charet: it acts as the owner.
 #[derive(Debug, Clone, Copy)]
 pub struct LocalDoor(pub bool);
 
@@ -216,7 +216,7 @@ pub async fn me(
     if bearer(&headers).is_some() {
         return Err(ApiError::unauthorized());
     }
-    let id = board_engine::new_visitor_id();
+    let id = charet_engine::new_visitor_id();
     let found = {
         let (engine, id) = (engine.clone(), id.clone());
         blocking(move || engine.visitor(&id)).await?
@@ -225,7 +225,7 @@ pub async fn me(
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "token_required",
-            "This board needs a token; ask an admin for one",
+            "This charet needs a token; ask an admin for one",
         ));
     };
     let mut response = Json(Me::new(actor, local)).into_response();
@@ -310,7 +310,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             COOKIE,
-            HeaderValue::from_static("a=1; board_session=tok; b=2"),
+            HeaderValue::from_static("a=1; charet_session=tok; b=2"),
         );
         assert_eq!(cookie(&headers, SESSION_COOKIE).as_deref(), Some("tok"));
         assert_eq!(cookie(&headers, "missing"), None);

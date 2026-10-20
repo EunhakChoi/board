@@ -1,0 +1,4 @@
+$ charet comments --all
+c1  open      screen tasks-list            Local admin: Rows need more spacing. [1 reply]
+c2  resolved  story button-default (dark)  Local admin: Contrast is low in dark mode [1 reply]
+[exit 1]

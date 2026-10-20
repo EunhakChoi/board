@@ -112,7 +112,7 @@ impl Engine {
         self
     }
 
-    /// Where people open the web tool, for links (`board url`, notifications).
+    /// Where people open the web tool, for links (`charet url`, notifications).
     #[must_use]
     pub fn with_tool_url(self, url: &str) -> Self {
         self.write_live(|live| live.home_url = Some(url.trim_end_matches('/').into()));
@@ -168,7 +168,7 @@ impl Engine {
             .or_else(|| live.home_url.as_deref().map(str::to_owned))
     }
 
-    /// True for a local board: the local door (this machine) acts as the owner.
+    /// True for a local charet: the local door (this machine) acts as the owner.
     pub fn local_mode(&self) -> bool {
         self.local_mode
     }

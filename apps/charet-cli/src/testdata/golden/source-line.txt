@@ -1,0 +1,6 @@
+$ charet source src/main.tsx:3 --context 1
+apps/web/src/main.tsx:3
+ 2  import { createRoot } from "react-dom/client";
+>3  import { App } from "./App";
+ 4
+[exit 0]

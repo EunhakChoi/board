@@ -4,7 +4,7 @@
 //! follow their element by score (see [`reanchor`]); when it is gone they stay where it was, marked
 //! detached, with the snapshot they were made on.
 
-use board_model::{Actor, Anchor, Comment, CommentStatus, ReplyKind};
+use charet_model::{Actor, Anchor, Comment, CommentStatus, ReplyKind};
 use serde::Deserialize;
 
 use crate::policy::Command;
@@ -361,7 +361,7 @@ mod tests {
     use super::*;
     use crate::BuildState;
     use crate::testing::{engine_with_fakes, file};
-    use board_model::Actor;
+    use charet_model::Actor;
     use serde_json::json;
 
     #[allow(clippy::too_many_arguments)]
@@ -506,7 +506,7 @@ mod tests {
             .preview(&Actor::Local, "shop", "main", false)
             .unwrap();
         fakes.workspace.finish(BuildState::Ready);
-        fakes.workspace.serve(".board/manifest.json", MANIFEST);
+        fakes.workspace.serve(".charet/manifest.json", MANIFEST);
         fakes.renderer.set_elements(json!([
             { "x": 0, "y": 0, "w": 800, "h": 600, "chain": ["List"], "sel": "body > main", "tag": "main", "text": "", "src": "src/list.tsx:3:5" },
             { "x": 10, "y": 10, "w": 60, "h": 20, "chain": ["List", "Button"], "sel": "body > main > button", "tag": "button", "text": "Add", "src": "src/list.tsx:7:9" }

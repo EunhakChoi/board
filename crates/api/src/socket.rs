@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use axum::http::header::{HOST, ORIGIN};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use board_engine::{Engine, Joined, Outgoing};
+use charet_engine::{Engine, Joined, Outgoing};
 use serde::Deserialize;
 
 use crate::projects::blocking;
@@ -32,7 +32,7 @@ pub async fn socket(
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "origin",
-            "realtime connections only from the board tool",
+            "realtime connections only from the charet tool",
         ));
     }
     let project = query.project.clone();
@@ -44,7 +44,7 @@ pub async fn socket(
 }
 
 /// The `Origin` (when sent) names the host the request went to.
-/// The page's origin is the address it was served from, or the board's own address (a proxy in
+/// The page's origin is the address it was served from, or the charet's own address (a proxy in
 /// front of the remote door may rewrite `Host`).
 fn same_origin(headers: &HeaderMap, tool_url: Option<&str>) -> bool {
     let Some(origin) = headers.get(ORIGIN).and_then(|v| v.to_str().ok()) else {
@@ -108,13 +108,13 @@ mod tests {
     #[test]
     fn origin_must_match_the_host() {
         let mut headers = HeaderMap::new();
-        headers.insert(HOST, HeaderValue::from_static("board.test"));
+        headers.insert(HOST, HeaderValue::from_static("charet.test"));
         assert!(same_origin(&headers, None), "no origin: not a browser");
-        headers.insert(ORIGIN, HeaderValue::from_static("https://board.test"));
+        headers.insert(ORIGIN, HeaderValue::from_static("https://charet.test"));
         assert!(same_origin(&headers, None));
         headers.insert(ORIGIN, HeaderValue::from_static("https://evil.test"));
         assert!(!same_origin(&headers, None));
-        // Behind a proxy that rewrites Host, the board's own address still counts.
+        // Behind a proxy that rewrites Host, the charet's own address still counts.
         headers.insert(HOST, HeaderValue::from_static("127.0.0.1:5284"));
         headers.insert(ORIGIN, HeaderValue::from_static("https://b.ngrok.app"));
         assert!(same_origin(&headers, Some("https://b.ngrok.app")));

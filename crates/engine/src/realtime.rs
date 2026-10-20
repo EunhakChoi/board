@@ -1,6 +1,6 @@
 //! Joining a project's realtime room, and the events commands publish there.
 
-use board_model::Actor;
+use charet_model::Actor;
 
 use crate::policy::Command;
 use crate::{Engine, EngineError, Joined, Peer};
@@ -46,7 +46,7 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
-    use board_model::Actor;
+    use charet_model::Actor;
 
     use crate::testing::{engine_with_fakes, file};
 

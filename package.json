@@ -1,5 +1,5 @@
 {
-  "name": "board-monorepo",
+  "name": "charet-monorepo",
   "private": true,
   "packageManager": "pnpm@12.5.1",
   "engines": {

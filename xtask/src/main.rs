@@ -1,24 +1,24 @@
 //! Repository tasks.
 //!
-//! - `layers`  a crate may depend only on board crates in lower layers
+//! - `layers`  a crate may depend only on charet crates in lower layers
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// Layer of every board crate. A crate may depend only on crates in strictly lower layers.
+/// Layer of every charet crate. A crate may depend only on crates in strictly lower layers.
 const LAYERS: &[(&str, u8)] = &[
-    ("board-model", 0),
-    ("board-engine", 1),
-    ("board-store", 2),
-    ("board-db", 2),
-    ("board-collab", 2),
-    ("board-workspace-client", 2),
-    ("board-render-client", 2),
-    ("board-tunnel", 2),
-    ("board-api", 3),
-    ("board-server", 4),
-    ("board-render", 4),
+    ("charet-model", 0),
+    ("charet-engine", 1),
+    ("charet-store", 2),
+    ("charet-db", 2),
+    ("charet-collab", 2),
+    ("charet-workspace-client", 2),
+    ("charet-render-client", 2),
+    ("charet-tunnel", 2),
+    ("charet-api", 3),
+    ("charet-server", 4),
+    ("charet-render", 4),
 ];
 
 fn main() -> ExitCode {
@@ -46,7 +46,7 @@ fn root() -> PathBuf {
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
-/// Checks every board crate under `crates/` and `apps/`. Returns the number of crates checked.
+/// Checks every charet crate under `crates/` and `apps/`. Returns the number of crates checked.
 fn layers(root: &Path) -> Result<usize, Vec<String>> {
     let layer: BTreeMap<&str, u8> = LAYERS.iter().copied().collect();
     let mut problems = Vec::new();
@@ -60,7 +60,7 @@ fn layers(root: &Path) -> Result<usize, Vec<String>> {
             problems.push(format!("cannot parse {}", manifest.display()));
             continue;
         };
-        if !name.starts_with("board-") {
+        if !name.starts_with("charet-") {
             continue;
         }
         count += 1;
@@ -68,7 +68,7 @@ fn layers(root: &Path) -> Result<usize, Vec<String>> {
             problems.push(format!("{name} has no layer; add it to LAYERS in xtask"));
             continue;
         };
-        for dep in deps.iter().filter(|dep| dep.starts_with("board-")) {
+        for dep in deps.iter().filter(|dep| dep.starts_with("charet-")) {
             match layer.get(dep.as_str()) {
                 Some(&lower) if lower < own => {}
                 Some(&other) => problems.push(format!(
@@ -146,8 +146,8 @@ mod tests {
             check(
                 "lower",
                 &[
-                    ("board-model", &[]),
-                    ("board-engine", &["board-model", "serde"])
+                    ("charet-model", &[]),
+                    ("charet-engine", &["charet-model", "serde"])
                 ]
             ),
             Ok(2)
@@ -159,18 +159,18 @@ mod tests {
         let problems = check(
             "higher",
             &[
-                ("board-model", &["board-engine"]),
-                ("board-store", &["board-db"]),
+                ("charet-model", &["charet-engine"]),
+                ("charet-store", &["charet-db"]),
             ],
         )
         .unwrap_err();
         assert_eq!(problems.len(), 2);
-        assert!(problems[0].contains("board-model (L0) depends on board-engine (L1)"));
+        assert!(problems[0].contains("charet-model (L0) depends on charet-engine (L1)"));
     }
 
     #[test]
     fn unknown_crates_are_rejected() {
-        let problems = check("unknown", &[("board-extra", &[])]).unwrap_err();
+        let problems = check("unknown", &[("charet-extra", &[])]).unwrap_err();
         assert!(problems[0].contains("has no layer"));
     }
 

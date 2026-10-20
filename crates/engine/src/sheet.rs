@@ -2,7 +2,7 @@
 
 use std::io::Cursor;
 
-use board_model::Actor;
+use charet_model::Actor;
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::{self, FilterType};
 use image::{Rgb, RgbImage};

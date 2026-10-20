@@ -1,0 +1,7 @@
+$ charet capture tasks-list --theme both --out shots
+ok    screen tasks-list (light)
+ok    screen tasks-list (dark)  unchanged
+All good (2 pages).
+<out>/shots/tasks-list.jpg
+<out>/shots/tasks-list.dark.jpg
+[exit 0]

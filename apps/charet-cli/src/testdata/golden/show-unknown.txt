@@ -1,0 +1,3 @@
+$ charet show nope
+[stderr] charet: No screen, story, page, flow, component or comment is called nope.
+[exit 1]

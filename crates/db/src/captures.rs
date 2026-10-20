@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use board_engine::{Capture, Captures, StoreError};
+use charet_engine::{Capture, Captures, StoreError};
 use rusqlite::{OptionalExtension, params};
 
 use crate::{Db, err, remove_dir};
 
-/// [`Captures`] over the board database and a directory for the files.
+/// [`Captures`] over the charet database and a directory for the files.
 #[derive(Debug, Clone)]
 pub struct CaptureStore {
     db: Arc<Db>,
@@ -206,8 +206,8 @@ impl CaptureStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use board_engine::Records;
-    use board_model::{Origin, Project, Visibility};
+    use charet_engine::Records;
+    use charet_model::{Origin, Project, Visibility};
 
     #[test]
     fn stores_replaces_and_reads_back() {
@@ -220,7 +220,7 @@ mod tests {
             created_at: String::new(),
         })
         .unwrap();
-        let dir = std::env::temp_dir().join(format!("board-captures-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("charet-captures-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let store = CaptureStore::new(db, &dir);
         let mut capture = Capture {

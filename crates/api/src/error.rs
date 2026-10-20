@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use board_engine::{EngineError, StoreError};
+use charet_engine::{EngineError, StoreError};
 use serde::Serialize;
 
 /// The one error shape of the API (`Error` in the contract).
@@ -61,7 +61,7 @@ impl ApiError {
 impl From<StoreError> for ApiError {
     fn from(error: StoreError) -> Self {
         // The message stays in the log; clients get a generic one.
-        eprintln!("board-server: storage error: {error}");
+        eprintln!("charet-server: storage error: {error}");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal",

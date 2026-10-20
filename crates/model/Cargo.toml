@@ -1,5 +1,5 @@
 [package]
-name = "board-model"
+name = "charet-model"
 description = "Domain model: projects, versions, branches, comments, anchors, screens and flows. Pure data, no I/O."
 version.workspace = true
 edition.workspace = true

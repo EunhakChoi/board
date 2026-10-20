@@ -1,11 +1,11 @@
-# board in local mode: `docker compose up -d`, then open http://localhost:5280.
+# charet in local mode: `docker compose up -d`, then open http://localhost:5280.
 #
 # Ports are published on this machine's loopback only; everyone who can reach them acts as the
-# built-in admin (no sign-in). Change them with BOARD_PORT / BOARD_PREVIEW_PORT.
-# BOARD_REMOTE_PORT (5284) is the remote door: closed until sharing is turned on in Settings, then
+# built-in admin (no sign-in). Change them with CHARET_PORT / CHARET_PREVIEW_PORT.
+# CHARET_REMOTE_PORT (5284) is the remote door: closed until sharing is turned on in Settings, then
 # it signs everyone in. Point tunnels and reverse proxies there, never at 5280.
 
-name: board
+name: charet
 
 x-server-build: &server-build
   context: .
@@ -15,7 +15,7 @@ services:
   # A random token the services use with each other, created once.
   tokens:
     build: *server-build
-    image: board-server:local
+    image: charet-server:local
     user: root
     command:
       - sh
@@ -26,7 +26,7 @@ services:
 
   server:
     build: *server-build
-    image: board-server:local
+    image: charet-server:local
     restart: unless-stopped
     depends_on:
       tokens:
@@ -36,37 +36,37 @@ services:
       render:
         condition: service_started
     environment:
-      BOARD_PUBLIC_URL: http://localhost:${BOARD_PORT:-5280}
-      BOARD_PREVIEW_URL: http://127.0.0.1:${BOARD_PREVIEW_PORT:-5281}
-      # board-render reaches previews through its loopback forward (see render below).
-      BOARD_RENDER_PREVIEW_URL: http://127.0.0.1:5281
-      BOARD_WORKSPACE_URL: http://workspace:5282
-      BOARD_WORKSPACE_TOKEN_FILE: /secrets/internal-token
-      BOARD_RENDER_URL: http://render:5283
-      BOARD_RENDER_TOKEN_FILE: /secrets/internal-token
-      BOARD_UPDATE_CHECK: ${BOARD_UPDATE_CHECK:-true}
+      CHARET_PUBLIC_URL: http://localhost:${CHARET_PORT:-5280}
+      CHARET_PREVIEW_URL: http://127.0.0.1:${CHARET_PREVIEW_PORT:-5281}
+      # charet-render reaches previews through its loopback forward (see render below).
+      CHARET_RENDER_PREVIEW_URL: http://127.0.0.1:5281
+      CHARET_WORKSPACE_URL: http://workspace:5282
+      CHARET_WORKSPACE_TOKEN_FILE: /secrets/internal-token
+      CHARET_RENDER_URL: http://render:5283
+      CHARET_RENDER_TOKEN_FILE: /secrets/internal-token
+      CHARET_UPDATE_CHECK: ${CHARET_UPDATE_CHECK:-true}
     ports:
-      - 127.0.0.1:${BOARD_PORT:-5280}:5280
-      - 127.0.0.1:${BOARD_PREVIEW_PORT:-5281}:5281
-      - 127.0.0.1:${BOARD_REMOTE_PORT:-5284}:5284
-    # With BOARD_DATA_DIR (a folder on this machine) set BOARD_USER to its owner, e.g. "1000:1000".
-    user: ${BOARD_USER:-board}
+      - 127.0.0.1:${CHARET_PORT:-5280}:5280
+      - 127.0.0.1:${CHARET_PREVIEW_PORT:-5281}:5281
+      - 127.0.0.1:${CHARET_REMOTE_PORT:-5284}:5284
+    # With CHARET_DATA_DIR (a folder on this machine) set CHARET_USER to its owner, e.g. "1000:1000".
+    user: ${CHARET_USER:-charet}
     volumes:
-      # Projects, versions, comments and captures: a Docker volume, or the folder BOARD_DATA_DIR.
-      - ${BOARD_DATA_DIR:-data}:/data
+      # Projects, versions, comments and captures: a Docker volume, or the folder CHARET_DATA_DIR.
+      - ${CHARET_DATA_DIR:-data}:/data
       - secrets:/secrets:ro
 
   workspace:
     build:
       context: .
       dockerfile: docker/workspace.Dockerfile
-    image: board-workspace:local
+    image: charet-workspace:local
     restart: unless-stopped
     depends_on:
       tokens:
         condition: service_completed_successfully
     environment:
-      BOARD_WORKSPACE_TOKEN_FILE: /secrets/internal-token
+      CHARET_WORKSPACE_TOKEN_FILE: /secrets/internal-token
     volumes:
       - workspace:/data
       - secrets:/secrets:ro
@@ -75,18 +75,18 @@ services:
     build:
       context: .
       dockerfile: docker/render.Dockerfile
-    image: board-render:local
+    image: charet-render:local
     restart: unless-stopped
     depends_on:
       tokens:
         condition: service_completed_successfully
     environment:
-      BOARD_RENDER_TOKEN_FILE: /secrets/internal-token
+      CHARET_RENDER_TOKEN_FILE: /secrets/internal-token
       # Previews as http://127.0.0.1:5281 (a trusted origin: the preview cookie and the mock
       # service worker need one), relayed to the server.
-      BOARD_RENDER_FORWARD: 127.0.0.1:5281=server:5281
+      CHARET_RENDER_FORWARD: 127.0.0.1:5281=server:5281
       # Time zone the rendered screens show dates in.
-      TZ: ${BOARD_TZ:-UTC}
+      TZ: ${CHARET_TZ:-UTC}
     shm_size: 1gb
     volumes:
       - secrets:/secrets:ro

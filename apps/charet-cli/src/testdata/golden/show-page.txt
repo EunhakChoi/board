@@ -1,0 +1,7 @@
+$ charet show tasks
+page tasks — Tasks (/)
+  The task list and its states
+  tasks-list   Task list        light + dark (stale)
+  tasks-open   Open tasks only  not captured
+  tasks-error  Load failed      light (1 issue)
+[exit 0]

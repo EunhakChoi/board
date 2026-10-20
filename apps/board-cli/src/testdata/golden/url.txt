@@ -1,3 +1,0 @@
-$ board url tasks-open
-http://localhost:5280/p/demo/t/screen/tasks-open
-[exit 0]

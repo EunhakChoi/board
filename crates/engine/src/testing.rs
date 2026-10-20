@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use board_model::{Comment, CommentStatus, Project, Reply, Role, User, Version, VersionKind};
+use charet_model::{Comment, CommentStatus, Project, Reply, Role, User, Version, VersionKind};
 
 use crate::{
     Accounts, Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind,
@@ -268,7 +268,7 @@ impl Comments for MemoryComments {
         &self,
         project: &str,
         id: u64,
-        anchor: &board_model::Anchor,
+        anchor: &charet_model::Anchor,
     ) -> Result<(), StoreError> {
         let mut all = self.0.lock().unwrap();
         if let Some((_, comment, _)) = all.iter_mut().find(|c| c.0 == project && c.1.id == id) {
@@ -387,7 +387,7 @@ impl Records for MemoryRecords {
         &self,
         key: &str,
         title: &str,
-        visibility: board_model::Visibility,
+        visibility: charet_model::Visibility,
     ) -> Result<(), StoreError> {
         for p in self
             .projects
@@ -778,7 +778,7 @@ impl crate::Realtime for MemoryRealtime {
             .unwrap()
             .push(("*".into(), format!("kick {who:?}")));
     }
-    fn working(&self, project: &str, person: &board_model::Person, on: bool) {
+    fn working(&self, project: &str, person: &charet_model::Person, on: bool) {
         self.events
             .lock()
             .unwrap()
@@ -789,8 +789,8 @@ impl crate::Realtime for MemoryRealtime {
 /// Notifications and webhooks in memory.
 #[derive(Default)]
 pub struct MemoryNotices {
-    notifications: Mutex<Vec<(String, board_model::Notification)>>,
-    hooks: Mutex<Vec<(board_model::Webhook, String)>>,
+    notifications: Mutex<Vec<(String, charet_model::Notification)>>,
+    hooks: Mutex<Vec<(charet_model::Webhook, String)>>,
 }
 
 impl crate::Notices for MemoryNotices {
@@ -800,7 +800,7 @@ impl crate::Notices for MemoryNotices {
             let id = all.len() as u64 + 1;
             all.push((
                 row.user.clone(),
-                board_model::Notification {
+                charet_model::Notification {
                     id,
                     kind: row.kind.clone(),
                     project: row.project.clone(),
@@ -820,7 +820,7 @@ impl crate::Notices for MemoryNotices {
         user: &str,
         unread_only: bool,
         limit: u32,
-    ) -> Result<Vec<board_model::Notification>, StoreError> {
+    ) -> Result<Vec<charet_model::Notification>, StoreError> {
         Ok(self
             .notifications
             .lock()
@@ -843,11 +843,14 @@ impl crate::Notices for MemoryNotices {
         }
         Ok(())
     }
-    fn webhooks(&self) -> Result<Vec<(board_model::Webhook, String)>, StoreError> {
+    fn webhooks(&self) -> Result<Vec<(charet_model::Webhook, String)>, StoreError> {
         Ok(self.hooks.lock().unwrap().clone())
     }
-    fn insert_webhook(&self, hook: &crate::NewWebhook) -> Result<board_model::Webhook, StoreError> {
-        let webhook = board_model::Webhook {
+    fn insert_webhook(
+        &self,
+        hook: &crate::NewWebhook,
+    ) -> Result<charet_model::Webhook, StoreError> {
+        let webhook = charet_model::Webhook {
             id: hook.id.clone(),
             url: hook.url.clone(),
             events: hook.events.clone(),
