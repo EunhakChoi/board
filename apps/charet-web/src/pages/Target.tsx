@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
+import { AgentPanel } from "@/components/AgentPanel";
 import { CommentThread } from "@/components/CommentThread";
 import { Live } from "@/components/Live";
 import { Cursors, Selections, usePointerShare } from "@/components/Presence";
@@ -19,7 +20,7 @@ import { type Anchor, captureImage, type Element, HttpError, type TargetKind } f
 import { useT } from "@/lib/i18n";
 import { elementAt, parseSource, repoPath } from "@/lib/layout";
 import { useProjectContext } from "@/lib/project";
-import { useAddComment, useAppDir, useCapture, useElements } from "@/lib/queries";
+import { useAddComment, useAgent, useAppDir, useCapture, useElements } from "@/lib/queries";
 import { useRoom } from "@/lib/realtime";
 import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
@@ -38,6 +39,9 @@ export function Target() {
   const [mode, setMode] = useState<"capture" | "live">("capture");
   const [pick, setPick] = useState<Selection | undefined>();
   const [focus, setFocus] = useState<number | undefined>();
+  const [side, setSide] = useState<"comments" | "agent">("comments");
+  const canEdit = useCan("editor");
+  const agent = useAgent(canEdit);
   // `?comment=12` (from a notification) opens on that comment.
   const [search] = useSearchParams();
   const linked = Number(search.get("comment")) || undefined;
@@ -156,35 +160,86 @@ export function Target() {
         </div>
       </section>
       <aside className="flex w-96 shrink-0 flex-col overflow-y-auto border-l">
+        {canEdit && agent.data?.enabled && (
+          <div className="border-b px-4 py-2">
+            <Segmented
+              label={t("web.target.side")}
+              value={side}
+              onChange={setSide}
+              options={[
+                { value: "comments", label: t("web.comments.title") },
+                { value: "agent", label: t("web.agent.title") },
+              ]}
+            />
+          </div>
+        )}
         <Inspector projectKey={key} pick={pick} />
-        <Composer
-          projectKey={key}
-          kind={kind}
-          id={id}
-          theme={theme}
-          pick={pick}
-          onDone={() => setPick(undefined)}
-        />
-        <div className="flex flex-col gap-3 p-4">
-          <h2 className="text-sm font-semibold">{t("web.comments.title")}</h2>
-          {comments.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t("web.comments.none")}</p>
-          )}
-          {[...comments]
-            .sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === "open" ? -1 : 1))
-            .map((comment) => (
-              <CommentThread
-                key={comment.id}
-                projectKey={key}
-                comment={comment}
-                active={focus === comment.id}
-                onFocus={() => setFocus(comment.id)}
-              />
-            ))}
-        </div>
+        {side === "agent" && canEdit && agent.data?.enabled ? (
+          <AgentPanel
+            projectKey={key}
+            context={agentContext(kind, id, theme, pick)}
+            contextLabel={contextLabel(kind, id, pick)}
+            onClearContext={pick ? () => setPick(undefined) : undefined}
+          />
+        ) : (
+          <>
+            <Composer
+              projectKey={key}
+              kind={kind}
+              id={id}
+              theme={theme}
+              pick={pick}
+              onDone={() => setPick(undefined)}
+            />
+            <div className="flex flex-col gap-3 p-4">
+              <h2 className="text-sm font-semibold">{t("web.comments.title")}</h2>
+              {comments.length === 0 && (
+                <p className="text-sm text-muted-foreground">{t("web.comments.none")}</p>
+              )}
+              {[...comments]
+                .sort((a, b) =>
+                  a.status === b.status ? a.id - b.id : a.status === "open" ? -1 : 1,
+                )
+                .map((comment) => (
+                  <CommentThread
+                    key={comment.id}
+                    projectKey={key}
+                    comment={comment}
+                    active={focus === comment.id}
+                    onFocus={() => setFocus(comment.id)}
+                  />
+                ))}
+            </div>
+          </>
+        )}
       </aside>
     </div>
   );
+}
+
+/** What the agent hears about where the person is looking. */
+function agentContext(
+  kind: TargetKind,
+  id: string,
+  theme: "light" | "dark",
+  pick: Selection | undefined,
+): Record<string, unknown> {
+  const where = { [kind]: id, theme };
+  if (pick?.kind === "element") {
+    const { chain, src, text, sel, tag } = pick.element;
+    return { ...where, element: { chain, src, text, selector: sel, tag } };
+  }
+  if (pick?.kind === "point") return { ...where, point: { x: pick.x, y: pick.y } };
+  return where;
+}
+
+function contextLabel(kind: TargetKind, id: string, pick: Selection | undefined): string {
+  if (pick?.kind === "element") {
+    const name = pick.element.chain.at(-1) ?? `<${pick.element.tag}>`;
+    return `${kind} ${id} · ${name}${pick.element.text ? ` "${pick.element.text.slice(0, 30)}"` : ""}`;
+  }
+  if (pick?.kind === "point") return `${kind} ${id} · (${pick.x}, ${pick.y})`;
+  return `${kind} ${id}`;
 }
 
 /** The capture with element highlights, the picked element or point, and comment pins. */

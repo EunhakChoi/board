@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
+import { AgentPanel } from "@/components/AgentPanel";
 import { CommentThread } from "@/components/CommentThread";
 import { Live } from "@/components/Live";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import { diffLines, fold } from "@/lib/diff";
 import { useLocale, useT } from "@/lib/i18n";
 import {
   useAddComment,
+  useAgent,
   useBranch,
   useBranchActions,
   useBranchComments,
@@ -36,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { StatusBadge, when } from "./Branches";
 import { Empty } from "./Screens";
 
-type Tab = "screens" | "code" | "history";
+type Tab = "screens" | "code" | "history" | "agent";
 
 function active(branch: BranchDetail): boolean {
   return branch.status === "open" || branch.status === "in_review";
@@ -93,6 +95,8 @@ export function Branch() {
   const [search, setSearch] = useSearchParams();
   const tab = (search.get("tab") as Tab | null) ?? "screens";
   const branch = useBranch(key, number);
+  const canEdit = useCan("editor");
+  const agent = useAgent(canEdit);
   if (branch.error)
     return <Empty text={t("web.common.error", { message: branch.error.message })} />;
   if (!branch.data) return <Empty text={t("web.common.loading")} />;
@@ -156,6 +160,9 @@ export function Branch() {
             { value: "screens", label: t("web.branch.tab.screens") },
             { value: "code", label: t("web.branch.tab.code") },
             { value: "history", label: t("web.branch.tab.history") },
+            ...(canEdit && agent.data?.enabled
+              ? [{ value: "agent" as const, label: t("web.agent.title") }]
+              : []),
           ]}
         />
         <span className="font-mono text-xs text-muted-foreground">
@@ -166,6 +173,14 @@ export function Branch() {
         <Screens projectKey={key} branch={data} before={before} after={after} />
       )}
       {tab === "code" && <Code projectKey={key} before={before} after={after} />}
+      {tab === "agent" && (
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col border-x">
+          {!active(data) && (
+            <p className="border-b p-3 text-sm text-muted-foreground">{t("web.agent.closed")}</p>
+          )}
+          <AgentPanel projectKey={key} branch={data.number} readOnly={!active(data)} />
+        </div>
+      )}
       {tab === "history" && (
         <ol className="flex-1 overflow-auto px-6 py-4 text-sm">
           {data.events.map((event, index) => (

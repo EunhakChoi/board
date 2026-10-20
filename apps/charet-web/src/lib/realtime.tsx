@@ -154,6 +154,8 @@ export function RealtimeProvider({ project, children }: { project: string; child
       if (kind === "capture.updated")
         keys.push(["captures", project], ["elements", project], ["comments", project]);
       if (kind === "project.updated") keys.push(["project", project], ["projects"], ["me"]);
+      if (kind === "agent.updated")
+        keys.push(["agent-runs", project], ["agent-messages", project], ["branches", project]);
       // A first load still in flight would answer the refetch too (no data yet means no restart),
       // possibly without what this event announced: cancel it, then fetch again.
       for (const queryKey of keys)

@@ -21,6 +21,10 @@ export type Notification = Schemas["Notification"];
 export type Webhook = Schemas["Webhook"];
 export type ShareMode = Schemas["ShareMode"];
 export type Sharing = Schemas["Sharing"];
+export type AgentRun = Schemas["AgentRun"];
+export type AgentMessage = Schemas["AgentMessage"];
+export type AgentKind = Schemas["AgentKind"];
+export type AgentStatus = Schemas["AgentStatus"];
 export type Theme = "light" | "dark";
 export type TargetKind = "screen" | "story";
 
@@ -79,4 +83,8 @@ export function captureImage(
 
 export function snapshotImage(key: string, comment: Pick<Comment, "id">) {
   return `/api/projects/${encodeURIComponent(key)}/comments/${comment.id}/snapshot`;
+}
+
+export function agentAttachment(key: string, run: number, seq: number) {
+  return `/api/projects/${encodeURIComponent(key)}/agent-runs/${run}/attachments/${seq}`;
 }

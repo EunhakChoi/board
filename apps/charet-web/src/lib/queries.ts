@@ -2,6 +2,8 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  type AgentKind,
+  type AgentRun,
   api,
   type Comment,
   HttpError,
@@ -563,5 +565,113 @@ export function useDiff(key: string, from: string | undefined, to: string | unde
           params: { path: { key }, query: { from: from ?? "", to: to ?? "" } },
         }),
       ),
+  });
+}
+
+// ---- web agent ---------------------------------------------------------------------------------
+
+/** Whether the web agent is on and which agents it offers. */
+export function useAgent(enabled = true) {
+  return useQuery({
+    queryKey: ["agent"],
+    enabled,
+    retry: false,
+    queryFn: () => unwrap(api.GET("/api/agent")),
+  });
+}
+
+const running = (runs: AgentRun[] | undefined) =>
+  (runs ?? []).some((r) => r.state === "queued" || r.state === "running");
+
+/** A branch's runs (or the project's), oldest first; polls while one is going. */
+export function useAgentRuns(key: string, branch: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["agent-runs", key, branch ?? "all"],
+    enabled,
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/agent-runs", {
+          params: { path: { key }, query: branch ? { branch } : {} },
+        }),
+      ),
+    refetchInterval: (query) => (running(query.state.data) ? 3000 : false),
+  });
+}
+
+/** A run's conversation; polls while it runs. */
+export function useAgentMessages(key: string, id: number, live: boolean) {
+  return useQuery({
+    queryKey: ["agent-messages", key, id],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/agent-runs/{id}/messages", {
+          params: { path: { key, id } },
+        }),
+      ),
+    refetchInterval: live ? 2000 : false,
+  });
+}
+
+export type NewAgentRun = {
+  prompt: string;
+  context?: unknown;
+  branch?: number;
+  agent?: AgentKind;
+  model?: string;
+  images?: { mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string }[];
+};
+
+export function useAgentActions(key: string) {
+  const client = useQueryClient();
+  const settled = () => {
+    void client.invalidateQueries({ queryKey: ["agent-runs", key] });
+    void client.invalidateQueries({ queryKey: ["agent-messages", key] });
+    void client.invalidateQueries({ queryKey: ["branches", key] });
+  };
+  return {
+    start: useMutation({
+      mutationFn: (body: NewAgentRun) =>
+        unwrap(api.POST("/api/projects/{key}/agent-runs", { ...path(key), body })),
+      onSettled: settled,
+    }),
+    cancel: useMutation({
+      mutationFn: (id: number) =>
+        unwrap(
+          api.POST("/api/projects/{key}/agent-runs/{id}/cancel", {
+            params: { path: { key, id } },
+          }),
+        ),
+      onSettled: settled,
+    }),
+  };
+}
+
+export function useAgentSettings(enabled: boolean) {
+  const client = useQueryClient();
+  return {
+    status: useQuery({
+      queryKey: ["admin", "agent"],
+      enabled,
+      queryFn: () => unwrap(api.GET("/api/admin/agent")),
+    }),
+    save: useMutation({
+      mutationFn: (body: {
+        default?: AgentKind;
+        models?: Record<string, string>;
+        keys?: Record<string, string>;
+      }) => unwrap(api.PUT("/api/admin/agent", { body })),
+      onSuccess: (status) => {
+        client.setQueryData(["admin", "agent"], status);
+        void client.invalidateQueries({ queryKey: ["agent"] });
+      },
+    }),
+  };
+}
+
+export function useAgentCosts(enabled: boolean) {
+  return useQuery({
+    queryKey: ["admin", "costs"],
+    enabled,
+    queryFn: () => unwrap(api.GET("/api/admin/costs")),
   });
 }
