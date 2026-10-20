@@ -214,7 +214,6 @@ function portOpen(port: number): Promise<boolean> {
   });
 }
 
-/** A public server: HTTPS on a fixed address, a provider that answers, an admin. */
 const isLocalUrl = (url: string) =>
   ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 
@@ -234,6 +233,7 @@ async function sharingCheck(ctx: Context, url: string): Promise<Check> {
       };
 }
 
+/** A public server: HTTPS on a fixed address (tokens travel with every request). */
 function publicChecks(ctx: Context, info: Awaited<ReturnType<typeof system>>): Check[] {
   const checks: Check[] = [];
   const local = isLocalUrl;
@@ -248,37 +248,6 @@ function publicChecks(ctx: Context, info: Awaited<ReturnType<typeof system>>): C
           },
     );
   }
-  const signIn = info.signIn;
-  if (!signIn) return checks;
-  if (!signIn.provider) {
-    checks.push({ state: "ok", text: t("cli.doctor.invitesOnly", {}, ctx.locale) });
-    if (!signIn.hasAdmin)
-      checks.push({ state: "warn", text: t("cli.doctor.noAdmin", {}, ctx.locale) });
-    return checks;
-  }
-  const callbackHost = signIn.callbackUrl ? new URL(signIn.callbackUrl).host : "";
-  const toolHost = info.toolUrl ? new URL(info.toolUrl).host : "";
-  checks.push(
-    !signIn.ok
-      ? {
-          state: "fail",
-          text: `sign-in (${signIn.provider})${signIn.error ? `: ${signIn.error}` : ""}`,
-          hint: t("cli.doctor.provider", {}, ctx.locale),
-        }
-      : callbackHost !== toolHost
-        ? {
-            state: "fail",
-            text: `sign-in callback ${signIn.callbackUrl} is not on ${toolHost}`,
-            hint: t("cli.doctor.callbackHost", {}, ctx.locale),
-          }
-        : {
-            state: "ok",
-            text: `sign-in (${signIn.provider}), callback ${signIn.callbackUrl}`,
-            hint: t("cli.doctor.callback", {}, ctx.locale),
-          },
-  );
-  if (!signIn.hasAdmin)
-    checks.push({ state: "warn", text: t("cli.doctor.noAdmin", {}, ctx.locale) });
   return checks;
 }
 

@@ -14,14 +14,14 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import { useVisitorName } from "./visitor.ts";
 
 export interface Peer {
   id: string;
   person: string;
   name: string;
-  kind: "local" | "user" | "guest";
+  kind: "local" | "user" | "visitor";
   role: string;
-  avatarUrl?: string | null;
 }
 
 /** What someone shares about where they are; every field is optional. */
@@ -285,10 +285,25 @@ export function RealtimeProvider({ project, children }: { project: string; child
     [following],
   );
 
-  const value = useMemo(
-    () => ({ ...state, share, following, follow }),
-    [state, share, following, follow],
-  );
+  // Visitors show under their made-up name in this page's language.
+  const visitorName = useVisitorName();
+  const value = useMemo(() => {
+    const named = (peer: Peer): Peer =>
+      peer.kind === "visitor"
+        ? { ...peer, name: visitorName(peer.person.replace(/^visitor:/, "")) }
+        : peer;
+    const peers = new Map(
+      [...state.peers].map(([id, entry]) => [id, { ...entry, peer: named(entry.peer) }]),
+    );
+    return {
+      ...state,
+      peers,
+      ...(state.me ? { me: named(state.me) } : {}),
+      share,
+      following,
+      follow,
+    };
+  }, [state, share, following, follow, visitorName]);
   return <RoomContext value={value}>{children}</RoomContext>;
 }
 

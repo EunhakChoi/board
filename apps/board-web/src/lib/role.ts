@@ -9,8 +9,3 @@ export function useCan(role: Role): boolean {
   const mine = me.data?.role;
   return mine !== undefined && RANK[mine] >= RANK[role];
 }
-
-/** People who came in through a share link are marked next to their name. */
-export function isGuest(person: { id: string }): boolean {
-  return person.id.startsWith("guest:");
-}

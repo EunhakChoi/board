@@ -21,36 +21,31 @@ pub enum Role {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Actor {
-    /// The built-in admin of local mode: the server only listens on localhost and needs no sign-in.
+    /// The built-in admin before the board has an owner (tests, first start).
     Local,
-    /// A signed-in member.
+    /// A member: came in with their token (or is the owner at this machine).
     User {
         id: String,
         name: String,
-        email: String,
         role: Role,
     },
-    /// Someone who came in through a share link. The link fixes the role and the one project.
-    Guest {
-        id: String,
-        name: String,
-        role: Role,
-        project: String,
-    },
+    /// Someone without a token, when the board lets visitors look. Always a viewer.
+    Visitor { id: String, name: String },
 }
 
 impl Actor {
     pub fn role(&self) -> Role {
         match self {
             Self::Local => Role::Admin,
-            Self::User { role, .. } | Self::Guest { role, .. } => *role,
+            Self::User { role, .. } => *role,
+            Self::Visitor { .. } => Role::Viewer,
         }
     }
 
     pub fn name(&self) -> &str {
         match self {
             Self::Local => "Local admin",
-            Self::User { name, .. } | Self::Guest { name, .. } => name,
+            Self::User { name, .. } | Self::Visitor { name, .. } => name,
         }
     }
 }
@@ -140,7 +135,7 @@ pub fn valid_path(path: &str) -> bool {
 /// Who wrote something, as shown next to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Person {
-    /// `local`, a user id, or `guest:<id>`.
+    /// `local`, a user id, or `visitor:<id>`.
     pub id: String,
     pub name: String,
 }
@@ -156,8 +151,8 @@ impl Actor {
                 id: id.clone(),
                 name: name.clone(),
             },
-            Self::Guest { id, name, .. } => Person {
-                id: format!("guest:{id}"),
+            Self::Visitor { id, name } => Person {
+                id: format!("visitor:{id}"),
                 name: name.clone(),
             },
         }
@@ -296,30 +291,16 @@ mod tests {
     }
 }
 
-/// Where a signed-in account stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UserStatus {
-    /// Signed in from outside the allowlist; waiting for an admin (an access request).
-    Pending,
-    Active,
-    /// An admin turned the access request down.
-    Rejected,
-    /// An admin took access away.
-    Removed,
-}
-
-/// An account that signed in through the identity provider (OIDC).
+/// A member of the board: a name, a role and a token (kept apart, see [`Member`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: String,
-    pub email: String,
     pub name: String,
-    pub avatar_url: Option<String>,
     pub role: Role,
-    pub status: UserStatus,
     pub created_at: String,
+    /// When the token was last used to come in (browser or CLI).
+    pub last_used_at: Option<String>,
 }
 
 impl User {
@@ -328,40 +309,20 @@ impl User {
         Actor::User {
             id: self.id.clone(),
             name: self.name.clone(),
-            email: self.email.clone(),
             role: self.role,
         }
     }
 }
 
-/// A link that lets people in without an account, into one project with a fixed role.
+/// A member as admins see them: with the token to hand over.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ShareLink {
-    pub id: String,
-    pub project: String,
-    /// `editor`, `commenter` or `viewer`.
-    pub role: Role,
-    /// What the admin called it ("design review"), may be empty.
-    pub label: String,
-    pub created_by: String,
-    pub created_at: String,
-    pub revoked_at: Option<String>,
-    /// How many people came in through it.
-    pub guests: u32,
-}
-
-/// A personal token the CLI (a coding agent) uses to act as a member.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliToken {
-    pub id: String,
-    /// What it is for, e.g. the machine (`laptop`).
-    pub name: String,
-    /// `device` (approved in the browser) or `manual` (created on the web).
-    pub via: String,
-    pub created_at: String,
-    pub last_used_at: Option<String>,
+pub struct Member {
+    #[serde(flatten)]
+    pub user: User,
+    pub token: String,
+    /// The account this machine's admin acts as (cannot be removed or demoted).
+    pub owner: bool,
 }
 
 /// Something that happened that a member should know about (their inbox).
@@ -370,7 +331,7 @@ pub struct CliToken {
 pub struct Notification {
     pub id: u64,
     /// The event: `comment.added`, `comment.replied`, `comment.resolved`, `comment.reopened`,
-    /// `access.requested`.
+    /// `version.created`.
     pub kind: String,
     pub project: Option<String>,
     /// Who did it.
@@ -402,24 +363,4 @@ pub struct Webhook {
     pub last_status: Option<u16>,
     pub last_error: Option<String>,
     pub last_delivery_at: Option<String>,
-}
-
-/// A one-time link into the server without an identity provider.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Invite {
-    pub id: String,
-    /// The role a new member gets (for a sign-in link, the member's role when it was made).
-    pub role: Role,
-    /// Set for a sign-in link: the member it signs in.
-    pub user: Option<String>,
-    /// What the admin called it ("Dana, design"), may be empty.
-    pub label: String,
-    pub created_by: String,
-    pub created_at: String,
-    /// Unix seconds.
-    pub expires_at: u64,
-    pub used_at: Option<String>,
-    /// The member who came in through it.
-    pub used_by: Option<String>,
 }

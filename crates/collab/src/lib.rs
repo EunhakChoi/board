@@ -221,13 +221,13 @@ impl Realtime for Hub {
 
     fn kick(&self, who: Kick) {
         self.with(|state| {
-            for (project, room) in &mut state.rooms {
+            for room in state.rooms.values_mut() {
                 let gone: Vec<u64> = room
                     .clients
                     .iter()
                     .filter(|(_, c)| match &who {
                         Kick::Person(person) => &c.peer.person == person,
-                        Kick::Guests(p) => p == project && c.peer.kind == "guest",
+                        Kick::Visitors => c.peer.kind == "visitor",
                     })
                     .map(|(id, _)| *id)
                     .collect();
@@ -272,7 +272,6 @@ mod tests {
             name: person.to_uppercase(),
             kind: kind.into(),
             role,
-            avatar_url: None,
         }
     }
 
@@ -355,8 +354,8 @@ mod tests {
     fn admin_events_kicks_and_working() {
         let hub = Hub::new();
         let mut admin = hub.join("web", peer("u1", "user", Role::Admin), None);
-        let mut guest = hub.join("web", peer("guest:g1", "guest", Role::Commenter), None);
-        let _ = next(&mut admin.receiver); // guest joined
+        let mut guest = hub.join("web", peer("visitor:g1", "visitor", Role::Viewer), None);
+        let _ = next(&mut admin.receiver); // visitor joined
         hub.publish_admins("access.requested", json!({ "email": "x@example.com" }));
         assert_eq!(next(&mut admin.receiver)["kind"], "access.requested");
         assert!(guest.receiver.try_recv().is_err());
@@ -372,7 +371,7 @@ mod tests {
         assert_eq!(next(&mut admin.receiver)["working"][0]["name"], "Ann");
         assert_eq!(next(&mut guest.receiver)["type"], "working");
 
-        hub.kick(Kick::Guests("web".into()));
+        hub.kick(Kick::Visitors);
         assert_eq!(next(&mut guest.receiver)["type"], "closed");
         assert_eq!(next(&mut admin.receiver)["type"], "leave");
         assert_eq!(hub.connections("web"), 1);

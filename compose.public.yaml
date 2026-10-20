@@ -1,4 +1,4 @@
-# Public mode: everyone signs in (invite links; Google or another provider optional). Use on top of compose.yaml:
+# Public mode: nobody is trusted by address; members come in with their token. Use on top of compose.yaml:
 #
 #   docker compose -f compose.yaml -f compose.public.yaml up -d
 #
@@ -12,7 +12,3 @@ services:
     environment:
       BOARD_PUBLIC_URL: ${BOARD_PUBLIC_URL:?set BOARD_PUBLIC_URL to the address people open}
       BOARD_PREVIEW_URL: ${BOARD_PUBLIC_PREVIEW_URL:-}
-      BOARD_OIDC_ISSUER: ${BOARD_OIDC_ISSUER:-https://accounts.google.com}
-      BOARD_OIDC_CLIENT_ID: ${BOARD_OIDC_CLIENT_ID:-}
-      BOARD_OIDC_CLIENT_SECRET: ${BOARD_OIDC_CLIENT_SECRET:-}
-      BOARD_ADMIN_EMAILS: ${BOARD_ADMIN_EMAILS:-}

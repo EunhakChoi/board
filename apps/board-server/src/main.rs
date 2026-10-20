@@ -11,8 +11,7 @@ use std::sync::Arc;
 
 use board_collab::Hub;
 use board_db::{CaptureStore, CommentStore, Db};
-use board_engine::{Engine, Ports, PreviewSettings, SignInSettings};
-use board_oidc::Oidc;
+use board_engine::{Engine, Ports, PreviewSettings};
 use board_render_client::RenderClient;
 use board_store::GitStore;
 use board_workspace_client::WorkspaceClient;
@@ -21,14 +20,20 @@ use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let config = match Config::from_env(std::env::args().skip(1), |key| std::env::var(key).ok()) {
+    // `board-server admin-token`: print the owner's token (a public server's way in) and exit.
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let admin_token = args.first().is_some_and(|a| a == "admin-token");
+    if admin_token {
+        args.remove(0);
+    }
+    let config = match Config::from_env(args, |key| std::env::var(key).ok()) {
         Ok(config) => config,
         Err(message) => {
             eprintln!("board-server: {message}");
             return ExitCode::FAILURE;
         }
     };
-    match run(config).await {
+    match run(config, admin_token).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("board-server: {message}");
@@ -37,7 +42,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(config: Config) -> Result<(), String> {
+async fn run(config: Config, admin_token: bool) -> Result<(), String> {
     std::fs::create_dir_all(config.data_dir())
         .map_err(|e| format!("cannot create {}: {e}", config.data_dir().display()))?;
     let secret = secret::load(&config.data_dir(), std::env::var("BOARD_SECRET_KEY").ok())?;
@@ -54,8 +59,7 @@ async fn run(config: Config) -> Result<(), String> {
             config.data_dir().join("comments"),
         )),
         accounts: db.clone(),
-        notices: db.clone(),
-        invites: db,
+        notices: db,
         webhooks: Arc::new(webhook::Sender::new()),
         realtime: Arc::new(Hub::new()),
         renderer: Arc::new(RenderClient::new(
@@ -68,7 +72,7 @@ async fn run(config: Config) -> Result<(), String> {
             config.workspace_token.clone(),
         )),
     };
-    let mut engine = Engine::new(ports, config.local_mode())
+    let engine = Engine::new(ports, config.local_mode())
         .with_preview(PreviewSettings {
             origin: config.preview_url.clone(),
             render_origin: config.render_preview_url.clone(),
@@ -77,28 +81,17 @@ async fn run(config: Config) -> Result<(), String> {
         })
         .with_tool_url(&config.tool_url())
         .with_secret(secret);
-    let mut setup_link = None;
-    // A public server always signs people in: invite links, plus the provider when set up.
-    if config.oidc.is_some() || !config.local_mode() {
-        let identity = config.oidc.as_ref().map(|oidc| {
-            Arc::new(Oidc::new(
-                &oidc.issuer,
-                &oidc.client_id,
-                &oidc.client_secret,
-                &config.oidc_redirect(),
-            )) as Arc<dyn board_engine::Identity>
-        });
-        engine = engine.with_sign_in(SignInSettings {
-            identity,
-            admin_emails: config.admin_emails.clone(),
-        });
-        if !config.local_mode() {
-            setup_link = engine
-                .issue_setup_token()
-                .map_err(|e| e.to_string())?
-                .map(|token| format!("{}/setup?token={token}", config.tool_url()));
-        }
+    // The owner: the local door acts as them; on a public server their token is the way in.
+    let created = engine.ensure_owner().map_err(|e| e.to_string())?;
+    if admin_token {
+        let token = engine
+            .owner_token()
+            .map_err(|e| e.to_string())?
+            .ok_or("the owner was removed")?;
+        println!("{token}");
+        return Ok(());
     }
+    let first_token = created.filter(|_| !config.local_mode());
     let engine = with_sharing(engine, &config).await?;
     if config.update_check {
         update::spawn(engine.clone());
@@ -109,7 +102,7 @@ async fn run(config: Config) -> Result<(), String> {
     let preview_listener = tokio::net::TcpListener::bind(config.preview_bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.preview_bind))?;
-    announce(&config, setup_link);
+    announce(&config, first_token);
     let origin = board_api::PreviewOrigin {
         frame_ancestors: config.tool_origins(),
         sandbox: false,
@@ -176,14 +169,14 @@ fn tailscale(target: &str) -> board_tunnel::Tailscale {
     }
 }
 
-/// Says where the server listens, and prints the setup link while there is no admin.
-fn announce(config: &Config, setup_link: Option<String>) {
+/// Says where the server listens, and prints a public server's admin token the first time.
+fn announce(config: &Config, admin_token: Option<String>) {
     println!(
         "board-server {} listening on {} ({}), previews on {}",
         board_model::VERSION,
         config.tool_url(),
         if config.local_mode() {
-            "local mode: no sign-in"
+            "local mode: this machine is the admin"
         } else {
             "public"
         },
@@ -191,12 +184,14 @@ fn announce(config: &Config, setup_link: Option<String>) {
     );
     if let Some(addr) = config.remote_bind {
         println!(
-            "Remote door on {addr}: point a tunnel or reverse proxy here, then turn sharing on in Settings."
+            "Remote door on {addr}: tunnels and reverse proxies point here (members bring their token)."
         );
     }
-    if let Some(link) = setup_link {
-        // Printed only here: whoever opens it first becomes the admin.
-        println!("No admin yet. Open this one-time setup link to become the admin:\n  {link}");
+    if let Some(token) = admin_token {
+        // Printed once; `board-server admin-token` prints it again.
+        println!(
+            "Admin token (enter it in the web tool; `board-server admin-token` shows it again):\n  {token}"
+        );
     }
 }
 

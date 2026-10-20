@@ -179,7 +179,7 @@ test("import, checkout, push, pull, versions and diff", async () => {
     "export const title = 'two';\n",
   );
 
-  assert.match((await board(["versions"], a)).out, /^v2\tpush\t\w+\tLocal admin\tretitle/);
+  assert.match((await board(["versions"], a)).out, /^v2\tpush\t\w+\tAdmin\tretitle/);
   assert.equal(
     (await board(["diff", "v1", "-p", "demo"])).out,
     "A\t.gitignore\nM\tapps/web/src/page.tsx",

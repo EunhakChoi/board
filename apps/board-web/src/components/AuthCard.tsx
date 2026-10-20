@@ -17,18 +17,3 @@ export function AuthCard({ title, children }: { title: string; children: ReactNo
     </div>
   );
 }
-
-/** The server route that sends the browser to the identity provider. */
-export function signInUrl({
-  setup,
-  returnTo,
-}: {
-  setup?: string | undefined;
-  returnTo?: string | undefined;
-}) {
-  const query = new URLSearchParams();
-  if (setup) query.set("setup", setup);
-  if (returnTo) query.set("returnTo", returnTo);
-  const text = query.toString();
-  return `/api/auth/oidc/start${text ? `?${text}` : ""}`;
-}

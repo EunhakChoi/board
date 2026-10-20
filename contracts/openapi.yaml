@@ -89,7 +89,11 @@ paths:
     get:
       tags: [auth]
       operationId: getMe
-      summary: Who is calling. In local mode this is the built-in admin.
+      summary: Who is calling
+      description: >-
+        Through the local door of a local board, the owner. A browser without a session becomes
+        a visitor here (a cookie is set) while visitors are allowed; otherwise 401
+        `token_required`. 401 `replaced`: the token signed in on another browser since.
       responses:
         "200":
           description: The calling actor
@@ -99,140 +103,50 @@ paths:
                 $ref: "#/components/schemas/Me"
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /api/auth/oidc/start:
-    get:
-      tags: [auth]
-      operationId: startSignIn
-      summary: Sends the browser to the identity provider to sign in
-      parameters:
-        - name: setup
-          in: query
-          description: Token from the one-time setup link; its first user becomes the admin
-          schema:
-            type: string
-        - name: returnTo
-          in: query
-          description: Path on the tool to come back to
-          schema:
-            type: string
-      responses:
-        "302":
-          description: Redirect to the provider
-        "503":
-          description: Sign-in is not configured or the provider does not answer
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /api/auth/oidc/callback:
-    get:
-      tags: [auth]
-      operationId: finishSignIn
-      summary: The provider sends the browser back here
-      description: >-
-        Sets the session cookie and redirects to `returnTo`, or redirects to
-        `/signin?error=<code>` (`setup_required`, `email_unverified`, `rejected`, `removed`,
-        `cancelled`, `expired`, `unavailable`, `failed`).
-      parameters:
-        - name: state
-          in: query
-          schema:
-            type: string
-        - name: code
-          in: query
-          schema:
-            type: string
-        - name: error
-          in: query
-          schema:
-            type: string
-      responses:
-        "302":
-          description: Redirect to the tool
-  /api/auth/logout:
+  /api/auth/token:
     post:
       tags: [auth]
-      operationId: logout
-      summary: Ends the session
-      responses:
-        "204":
-          description: Signed out
-  /api/admin/allow-rules:
-    get:
-      tags: [access]
-      operationId: listAllowRules
-      summary: Domains and addresses let in on their first sign-in (admins)
-      responses:
-        "200":
-          description: The allowlist
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [rules]
-                properties:
-                  rules:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/AllowRule"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-    post:
-      tags: [access]
-      operationId: addAllowRule
-      summary: Adds a domain or address to the allowlist (admins)
+      operationId: signInWithToken
+      summary: Signs the browser in with a member's token (sets the session cookie)
+      description: Another browser signed in with the same token is signed out; the CLI is not.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [kind, value]
               additionalProperties: false
+              required: [token]
               properties:
-                kind:
+                token:
                   type: string
-                  enum: [domain, email]
-                value:
-                  type: string
-                  description: "`example.com` or `someone@example.com`"
       responses:
-        "201":
-          description: The rule (the existing one when it was there already)
+        "200":
+          description: Signed in
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AllowRule"
-        "400":
-          $ref: "#/components/responses/Invalid"
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-  /api/admin/allow-rules/{id}:
-    delete:
-      tags: [access]
-      operationId: removeAllowRule
-      summary: Removes an allowlist rule (admins); people already in stay in
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Ends the browser's session (it is a visitor again)
       responses:
         "204":
-          description: Removed
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
+          description: Signed out
   /api/admin/users:
     get:
       tags: [access]
       operationId: listUsers
-      summary: Every account (admins); `pending` ones are access requests
+      summary: Every member with their token (admins)
       responses:
         "200":
-          description: Accounts, oldest first
+          description: Members, oldest first
           content:
             application/json:
               schema:
@@ -242,17 +156,45 @@ paths:
                   users:
                     type: array
                     items:
-                      $ref: "#/components/schemas/User"
+                      $ref: "#/components/schemas/Member"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [access]
+      operationId: addUser
+      summary: Adds a member and makes their token (admins)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, role]
+              properties:
+                name:
+                  type: string
+                role:
+                  $ref: "#/components/schemas/Role"
+      responses:
+        "201":
+          description: The new member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/Invalid"
         "403":
           $ref: "#/components/responses/Forbidden"
   /api/admin/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
     patch:
       tags: [access]
       operationId: changeUser
-      summary: Changes a member's role, removes them or lets them back in (admins)
-      description: Removing someone ends their sessions at once. The last admin cannot be demoted or removed.
-      parameters:
-        - $ref: "#/components/parameters/UserId"
+      summary: Renames a member or changes their role (admins)
+      description: The owner (this machine's admin) and the last admin stay admins.
       requestBody:
         required: true
         content:
@@ -261,152 +203,92 @@ paths:
               type: object
               additionalProperties: false
               properties:
+                name:
+                  type: string
                 role:
                   $ref: "#/components/schemas/Role"
-                status:
-                  type: string
-                  enum: [active, rejected, removed]
       responses:
         "200":
-          description: The account now
+          description: The member now
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/Member"
         "400":
           $ref: "#/components/responses/Invalid"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/admin/users/{id}/approve:
-    post:
+    delete:
       tags: [access]
-      operationId: approveUser
-      summary: Approves an access request; the person gets in at once (admins)
-      parameters:
-        - $ref: "#/components/parameters/UserId"
-      responses:
-        "200":
-          description: The account now
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/admin/users/{id}/reject:
-    post:
-      tags: [access]
-      operationId: rejectUser
-      summary: Declines an access request (admins)
-      parameters:
-        - $ref: "#/components/parameters/UserId"
-      responses:
-        "200":
-          description: The account now
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/auth/setup:
-    post:
-      tags: [auth]
-      operationId: finishSetup
-      summary: The setup link without a provider; the first to use it becomes the admin as `name`
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [token, name]
-              properties:
-                token:
-                  type: string
-                name:
-                  type: string
+      operationId: removeUser
+      summary: Removes a member; their token stops and their browsers are signed out (admins)
       responses:
         "204":
-          description: Signed in as the admin (session cookie set)
+          description: Removed
         "400":
           $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/invites/{token}:
+  /api/admin/users/{id}/token:
     parameters:
-      - name: token
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: "#/components/parameters/UserId"
+    post:
+      tags: [access]
+      operationId: reissueUserToken
+      summary: Gives a member a new token; the old one stops and their browsers are signed out (admins)
+      responses:
+        "200":
+          description: The member with the new token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/access:
     get:
-      tags: [auth]
-      operationId: getInvite
-      summary: What an invite or sign-in link does (no sign-in needed)
+      tags: [access]
+      operationId: getAccess
+      summary: Whether people without a token may look (admins)
       responses:
         "200":
-          description: The link
+          description: Access
           content:
             application/json:
               schema:
-                type: object
-                required: [kind, role]
-                properties:
-                  kind:
-                    type: string
-                    enum: [join, sign-in]
-                  role:
-                    $ref: "#/components/schemas/Role"
-                  name:
-                    type: string
-                    description: For a sign-in link, whose account it opens
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/invites/{token}/accept:
-    parameters:
-      - name: token
-        in: path
-        required: true
-        schema:
-          type: string
-    post:
-      tags: [auth]
-      operationId: acceptInvite
-      summary: Uses the link (a new member joins as `name`) and sets the session cookie
+                $ref: "#/components/schemas/Access"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [access]
+      operationId: setAccess
+      summary: Lets visitors look, or requires a token (admins)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              properties:
-                name:
-                  type: string
+              $ref: "#/components/schemas/Access"
       responses:
-        "204":
-          description: Signed in
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "200":
+          description: Access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Access"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/admin/sharing:
     get:
       tags: [admin]
       operationId: getSharing
-      summary: Whether and where this local board is shared (admin)
+      summary: Whether and where this local board is shared (admins)
       responses:
         "200":
           description: Sharing
@@ -419,7 +301,7 @@ paths:
     put:
       tags: [admin]
       operationId: startSharing
-      summary: Turns sharing on or changes its address; the first time makes the owner account (this machine only)
+      summary: Turns sharing on or changes its address (admins)
       requestBody:
         required: true
         content:
@@ -434,9 +316,6 @@ paths:
                 url:
                   type: string
                   description: "For `address`: the address other machines open (it must reach the remote door)"
-                ownerName:
-                  type: string
-                  description: Needed the first time
                 authtoken:
                   type: string
                   description: "For `ngrok`: a new authtoken (kept, never returned); else the saved one"
@@ -459,7 +338,7 @@ paths:
     delete:
       tags: [admin]
       operationId: stopSharing
-      summary: Turns sharing off (this machine only)
+      summary: Turns sharing off (admins)
       responses:
         "200":
           description: Sharing
@@ -469,120 +348,6 @@ paths:
                 $ref: "#/components/schemas/Sharing"
         "400":
           $ref: "#/components/responses/Invalid"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /api/admin/invites:
-    get:
-      tags: [admin]
-      operationId: listInvites
-      summary: Invites for new members, newest first (admin)
-      responses:
-        "200":
-          description: Invites (without tokens)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invites]
-                properties:
-                  invites:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Invite"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-    post:
-      tags: [admin]
-      operationId: createInvite
-      summary: A one-time invite for a new member with this role, open 7 days (admin)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [role]
-              properties:
-                role:
-                  $ref: "#/components/schemas/Role"
-                label:
-                  type: string
-      responses:
-        "201":
-          description: The invite and the address to hand out (shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invite, url]
-                properties:
-                  invite:
-                    $ref: "#/components/schemas/Invite"
-                  url:
-                    type: string
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /api/admin/invites/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-    delete:
-      tags: [admin]
-      operationId: revokeInvite
-      summary: Withdraws an invite (admin)
-      responses:
-        "204":
-          description: Withdrawn
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/admin/users/{id}/sign-in-link:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-    post:
-      tags: [admin]
-      operationId: createMemberSignInLink
-      summary: A one-time link that signs this member in, open 7 days (admin)
-      responses:
-        "201":
-          description: The invite and the address to hand out (shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invite, url]
-                properties:
-                  invite:
-                    $ref: "#/components/schemas/Invite"
-                  url:
-                    type: string
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/me/sign-in-link:
-    post:
-      tags: [auth]
-      operationId: createOwnSignInLink
-      summary: A one-time link to sign in on another device, open 15 minutes
-      responses:
-        "201":
-          description: The invite and the address to hand out (shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [invite, url]
-                properties:
-                  invite:
-                    $ref: "#/components/schemas/Invite"
-                  url:
-                    type: string
         "403":
           $ref: "#/components/responses/Forbidden"
   /api/me/notifications:
@@ -750,252 +515,6 @@ paths:
                 $ref: "#/components/schemas/Webhook"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/me/cli-tokens:
-    get:
-      tags: [tokens]
-      operationId: listCliTokens
-      summary: The caller's CLI tokens
-      responses:
-        "200":
-          description: Tokens (without their secrets)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [tokens]
-                properties:
-                  tokens:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/CliToken"
-        "400":
-          $ref: "#/components/responses/Invalid"
-    post:
-      tags: [tokens]
-      operationId: createCliToken
-      summary: Creates a personal CLI token; the secret is shown only now
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                name:
-                  type: string
-      responses:
-        "201":
-          description: The token
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/CliToken"
-                  - type: object
-                    required: [token]
-                    properties:
-                      token:
-                        type: string
-        "400":
-          $ref: "#/components/responses/Invalid"
-  /api/me/cli-tokens/{id}:
-    delete:
-      tags: [tokens]
-      operationId: revokeCliToken
-      summary: Revokes one of the caller's CLI tokens
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Revoked
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/auth/device:
-    post:
-      tags: [tokens]
-      operationId: startDeviceLogin
-      summary: A CLI starts a login to be approved in the browser (no sign-in needed)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                name:
-                  type: string
-                  description: What the CLI calls itself (the machine), shown on the approval page
-      responses:
-        "200":
-          description: Codes and where to approve
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [deviceCode, userCode, verificationUrl, verificationUrlComplete, interval, expiresIn]
-                properties:
-                  deviceCode:
-                    type: string
-                  userCode:
-                    type: string
-                  verificationUrl:
-                    type: string
-                  verificationUrlComplete:
-                    type: string
-                  interval:
-                    type: integer
-                    description: Seconds between polls
-                  expiresIn:
-                    type: integer
-  /api/auth/device/token:
-    post:
-      tags: [tokens]
-      operationId: pollDeviceLogin
-      summary: The CLI asks whether its login was approved
-      description: >-
-        `400` with code `authorization_pending` (ask again after `interval`), `access_denied` or
-        `expired_token`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [deviceCode]
-              additionalProperties: false
-              properties:
-                deviceCode:
-                  type: string
-      responses:
-        "200":
-          description: Approved; the token (handed out once)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [token]
-                properties:
-                  token:
-                    type: string
-        "400":
-          $ref: "#/components/responses/Invalid"
-  /api/auth/device/{code}:
-    get:
-      tags: [tokens]
-      operationId: getDeviceLogin
-      summary: A waiting CLI login, for the approval page
-      parameters:
-        - $ref: "#/components/parameters/UserCode"
-      responses:
-        "200":
-          description: The login
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [userCode, name, status]
-                properties:
-                  userCode:
-                    type: string
-                  name:
-                    type: string
-                  status:
-                    type: string
-                    enum: [pending, approved, denied]
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/auth/device/{code}/approve:
-    post:
-      tags: [tokens]
-      operationId: approveDeviceLogin
-      summary: Lets the waiting CLI act as the caller
-      parameters:
-        - $ref: "#/components/parameters/UserCode"
-      responses:
-        "204":
-          description: Approved
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/auth/device/{code}/deny:
-    post:
-      tags: [tokens]
-      operationId: denyDeviceLogin
-      summary: Turns the waiting CLI login down
-      parameters:
-        - $ref: "#/components/parameters/UserCode"
-      responses:
-        "204":
-          description: Denied
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/links/{token}:
-    get:
-      tags: [links]
-      operationId: getSharedLink
-      summary: What a share link opens (no sign-in needed)
-      parameters:
-        - $ref: "#/components/parameters/LinkToken"
-      responses:
-        "200":
-          description: The project and the role the link gives
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [project, projectTitle, role]
-                properties:
-                  project:
-                    type: string
-                  projectTitle:
-                    type: string
-                  role:
-                    $ref: "#/components/schemas/Role"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/links/{token}/enter:
-    post:
-      tags: [links]
-      operationId: enterSharedLink
-      summary: Comes in through a share link under a name; sets the session cookie
-      parameters:
-        - $ref: "#/components/parameters/LinkToken"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name]
-              additionalProperties: false
-              properties:
-                name:
-                  type: string
-                  description: 1-40 characters, shown next to what the guest does
-      responses:
-        "200":
-          description: In; the project to open
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [project]
-                properties:
-                  project:
-                    type: string
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "404":
-          $ref: "#/components/responses/NotFound"
   /api/projects:
     get:
       tags: [projects]
@@ -1159,90 +678,6 @@ paths:
       responses:
         "204":
           description: Removed
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/projects/{key}/share-links:
-    get:
-      tags: [links]
-      operationId: listShareLinks
-      summary: A project's share links, revoked ones included (admins)
-      parameters:
-        - $ref: "#/components/parameters/ProjectKey"
-      responses:
-        "200":
-          description: Links, newest first
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [links]
-                properties:
-                  links:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/ShareLink"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    post:
-      tags: [links]
-      operationId: createShareLink
-      summary: Creates a share link (admins); its address is shown only now
-      parameters:
-        - $ref: "#/components/parameters/ProjectKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [role]
-              additionalProperties: false
-              properties:
-                role:
-                  type: string
-                  enum: [editor, commenter, viewer]
-                label:
-                  type: string
-      responses:
-        "201":
-          description: The link and its address
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [link, token, url]
-                properties:
-                  link:
-                    $ref: "#/components/schemas/ShareLink"
-                  token:
-                    type: string
-                  url:
-                    type: string
-        "400":
-          $ref: "#/components/responses/Invalid"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/projects/{key}/share-links/{id}/revoke:
-    post:
-      tags: [links]
-      operationId: revokeShareLink
-      summary: Revokes a share link; everyone who came in through it is out at once (admins)
-      parameters:
-        - $ref: "#/components/parameters/ProjectKey"
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Revoked
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -1853,19 +1288,6 @@ components:
       description: A user id
       schema:
         type: string
-    UserCode:
-      name: code
-      in: path
-      required: true
-      description: The code the CLI printed (`BCDF-GHJK`)
-      schema:
-        type: string
-    LinkToken:
-      name: token
-      in: path
-      required: true
-      schema:
-        type: string
     UserId:
       name: id
       in: path
@@ -2359,7 +1781,7 @@ components:
           description: Latest released version; null when unknown or update checks are off
     SystemInfo:
       type: object
-      required: [version, latest, toolUrl, previewUrl, localMode, services, signIn]
+      required: [version, latest, toolUrl, previewUrl, localMode, services]
       properties:
         version:
           type: string
@@ -2381,28 +1803,6 @@ components:
               $ref: "#/components/schemas/ServiceState"
             render:
               $ref: "#/components/schemas/ServiceState"
-        signIn:
-          description: How people sign in (public servers); null in local mode
-          oneOf:
-            - type: "null"
-            - type: object
-              required: [provider, callbackUrl, ok, hasAdmin]
-              properties:
-                provider:
-                  type: [string, "null"]
-                  description: null when people come in through invite links only
-                callbackUrl:
-                  type: [string, "null"]
-                  description: Register this at the provider as the redirect URI
-                ok:
-                  type: boolean
-                  description: Whether the provider's discovery document loads
-                error:
-                  type: string
-                  description: Why it fails (admins only)
-                hasAdmin:
-                  type: boolean
-                  description: False until the setup link was used
     ServiceState:
       type: object
       required: [ok]
@@ -2417,31 +1817,46 @@ components:
       enum: [admin, editor, commenter, viewer]
     User:
       type: object
-      required: [id, email, name, role, status, createdAt]
+      required: [id, name, role, createdAt, lastUsedAt]
       properties:
         id:
           type: string
-        email:
-          type: string
         name:
           type: string
-        avatarUrl:
-          type: [string, "null"]
         role:
           $ref: "#/components/schemas/Role"
-        status:
-          type: string
-          enum: [pending, active, rejected, removed]
-          description: "`pending` = access request waiting for an admin"
         createdAt:
           type: string
+        lastUsedAt:
+          type: [string, "null"]
+          description: When the token was last used to come in (browser or CLI)
+    Member:
+      description: A member as admins see them, with the token to hand over
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [token, owner]
+          properties:
+            token:
+              type: string
+            owner:
+              type: boolean
+              description: This machine's admin (the local door acts as them); cannot be removed or demoted
+    Access:
+      type: object
+      additionalProperties: false
+      required: [visitors]
+      properties:
+        visitors:
+          type: boolean
+          description: Whether people without a token may look (as viewers)
     ShareMode:
       type: string
       enum: [address, tailscale, funnel, ngrok, lan]
       description: "`address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server; `lan`: this machine's LAN address, for trying out"
     Sharing:
       type: object
-      required: [fixed, mode, url, domain, owner, modes, warning, ngrokToken]
+      required: [fixed, mode, url, domain, modes, warning, ngrokToken]
       properties:
         modes:
           type: array
@@ -2475,41 +1890,6 @@ components:
             - type: "null"
         url:
           type: [string, "null"]
-        owner:
-          description: The account this machine acts as once sharing was turned on
-          oneOf:
-            - type: object
-              required: [id, name]
-              properties:
-                id:
-                  type: string
-                name:
-                  type: string
-            - type: "null"
-    Invite:
-      type: object
-      required: [id, role, user, label, createdBy, createdAt, expiresAt, usedAt, usedBy]
-      properties:
-        id:
-          type: string
-        role:
-          $ref: "#/components/schemas/Role"
-        user:
-          type: [string, "null"]
-          description: Set for a sign-in link
-        label:
-          type: string
-        createdBy:
-          type: string
-        createdAt:
-          type: string
-        expiresAt:
-          type: integer
-          description: Unix seconds
-        usedAt:
-          type: [string, "null"]
-        usedBy:
-          type: [string, "null"]
     Notification:
       type: object
       required: [id, kind, project, actor, text, link, data, createdAt, readAt]
@@ -2518,7 +1898,7 @@ components:
           type: integer
         kind:
           type: string
-          enum: [comment.added, comment.replied, comment.resolved, comment.reopened, access.requested]
+          enum: [comment.added, comment.replied, comment.resolved, comment.reopened]
         project:
           type: [string, "null"]
         actor:
@@ -2562,79 +1942,26 @@ components:
           type: [string, "null"]
         lastDeliveryAt:
           type: [string, "null"]
-    CliToken:
-      type: object
-      required: [id, name, via, createdAt, lastUsedAt]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        via:
-          type: string
-          enum: [device, manual]
-        createdAt:
-          type: string
-        lastUsedAt:
-          type: [string, "null"]
-    ShareLink:
-      type: object
-      required: [id, project, role, label, createdBy, createdAt, revokedAt, guests]
-      properties:
-        id:
-          type: string
-        project:
-          type: string
-        role:
-          $ref: "#/components/schemas/Role"
-        label:
-          type: string
-        createdBy:
-          type: string
-        createdAt:
-          type: string
-        revokedAt:
-          type: [string, "null"]
-        guests:
-          type: integer
-          description: How many people came in through it
-    AllowRule:
-      type: object
-      required: [id, kind, value]
-      properties:
-        id:
-          type: integer
-        kind:
-          type: string
-          enum: [domain, email]
-        value:
-          type: string
     Me:
       type: object
       required: [kind, name, role, localMode]
       properties:
         kind:
           type: string
-          enum: [user, guest, local, pending]
+          enum: [user, visitor, local]
           description: >-
-            `local` is the built-in admin of local mode (no sign-in); `pending` signed in and
-            waits for an admin to approve the access request
+            `user` is a member (by token, or the owner at this machine); `visitor` has no token
+            and only looks; `local` is the built-in admin before the board has an owner
         id:
           type: string
+          description: "A member's id, or a visitor's (the web tool shows the visitor's made-up name from it)"
         name:
-          type: string
-        email:
-          type: string
-        avatarUrl:
           type: string
         role:
           $ref: "#/components/schemas/Role"
-        project:
-          type: string
-          description: The one project a guest's share link opens
         localMode:
           type: boolean
-          description: True while the server only listens on localhost and needs no sign-in
+          description: True through the local door (this machine's admin, no token needed)
     Project:
       type: object
       required: [key, title, visibility, origin, createdAt]

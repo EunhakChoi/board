@@ -3,8 +3,9 @@
 [English](local.md) | **한국어**
 
 board 는 service 3개로 동작함: **board-server** (API · 웹 도구 · 미리보기), **board-workspace**
-(프로젝트 코드 install · build), **board-render** (Chromium: 캡처 · 검사). 로컬 모드는 로그인 없음 —
-port 에 닿는 사람은 모두 내장 관리자로 동작하므로 port 는 이 컴퓨터의 loopback 에만 열림.
+(프로젝트 코드 install · build), **board-render** (Chromium: 캡처 · 검사). 로컬 모드에서 이 컴퓨터
+사람은 token 불필요 — 5280 port 에 닿는 사람은 모두 board 관리자로 동작하므로 port 는 이 컴퓨터의
+loopback 에만 열림.
 
 ## Docker 로 실행 (권장)
 
@@ -58,33 +59,37 @@ printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> 
 docker compose up -d
 ```
 
-## 이 기기에서 바로 공유
+## 팀 · 공유
 
-로컬 board 는 재시작 없이 다른 사람에게 열 수 있음. 두 번째 port 인 **원격 문**
-(`127.0.0.1:5284`, `BOARD_REMOTE_BIND`) 사용: 공유를 켜기 전엔 닫혀 있고, 켜면 이 문으로 오는
-사람은 모두 초대 link 로 로그인.
+헤더의 **팀** 에 팀원 목록. 이름 · 권한 (관리자 · 편집 · 댓글 · 보기) 으로 팀원을 추가하고
+**token** 또는 token 이 담긴 link (`…/?t=<token>`) 전달 → 한 번 열면 그 브라우저는 계속 로그인.
+token 은 팀 화면에서 언제든 보기 · 복사 가능, **token 재발급** 시 이전 token 중지. 같은 token 으로
+다른 브라우저가 들어오면 이전 브라우저는 로그아웃 (CLI 는 유지). token 이 없는 사람은 **방문자**:
+임의 이름으로 팀 공개 프로젝트를 보기만 가능. *방문자* 를 *token 필요* 로 바꾸면 차단.
 
-1. **팀 › 공유** 에서 접속 방식 선택:
-   - **Tailscale 사설망** — 같은 tailnet 사람만 (Tailscale, 또는 Headscale 은 tailnet 안 HTTP).
-     board 가 `tailscale serve` 실행 후 기기 이름 표시.
-   - **Tailscale Funnel** — link 가진 누구나 기기의 `ts.net` 이름으로 로그인 화면까지 접근. 기기에
-     Funnel 이 꺼져 있으면 관리 화면 link 표시.
-   - **ngrok** — 서버가 ngrok tunnel 직접 실행 (ngrok 프로그램 불필요). ngrok dashboard 의
-     authtoken 입력 (서버에 보관, 다시 표시 안 함) 및 있으면 ngrok 도메인 입력 → 주소 고정.
-     `BOARD_NGROK_AUTHTOKEN` 도 가능.
-   - **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
-     `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
-   - **같은 네트워크** — 원격 문을 이 기기의 LAN 주소에도 열기 (HTTP). 시험용: link 에 IP 노출.
-     (Docker 는 대신 5284 port 를 LAN 에 publish.)
-2. 내 이름 (처음 한 번) 입력 후 공유 켜기.
-3. 같은 화면에서 사람 초대.
+이 컴퓨터의 `localhost:5280` 을 제외한 모든 주소에서 같은 규칙. `localhost:5280` 은 관리자
+(*이 PC 관리자* 로 표시된 팀원. 이 팀원의 token 은 다른 컴퓨터에서도 사용 가능).
 
-`board doctor` 로 공유 주소 응답 여부 확인. Tailscale 방식은 board-server 가 도는 곳에 `tailscale` CLI 필요 (`BOARD_TAILSCALE`,
-`BOARD_TAILSCALE_SOCKET`). Docker 에서는 **내 주소** 선택 후 host 에서
-`tailscale serve --bg http://127.0.0.1:5284` (또는 `tailscale funnel …`) 실행.
+다른 기기의 접속은 두 번째 port 인 **원격 문** (`127.0.0.1:5284`, `BOARD_REMOTE_BIND`) 으로 받음.
+**팀 › 공유** 에서 접속 방식 선택:
 
-이 기기는 로그인 없이 계속 사용 (2 에서 만든 owner 계정으로). 공유를 끄면 원격 문이 닫힘, 계정은
-유지. 미리보기도 같은 주소로 sandbox 상태로 제공. 팀 전용 server 는 [외부 공개 모드](public.ko.md) 참고.
+- **Tailscale 사설망** — 같은 tailnet 사람만 (Tailscale, 또는 Headscale 은 tailnet 안 HTTP).
+  board 가 `tailscale serve` 실행 후 기기 이름 표시.
+- **Tailscale Funnel** — 주소를 아는 누구나 기기의 `ts.net` 이름으로 접속. 기기에 Funnel 이 꺼져
+  있으면 관리 화면 link 표시.
+- **ngrok** — 서버가 ngrok tunnel 직접 실행 (ngrok 프로그램 불필요). ngrok dashboard 의 authtoken
+  입력 (서버에 보관, 다시 표시 안 함) 및 있으면 ngrok 도메인 입력 → 주소 고정.
+  `BOARD_NGROK_AUTHTOKEN` 도 가능.
+- **내 주소** — 직접 준비한 tunnel · reverse proxy (ngrok, cloudflared, nginx 등) 를
+  `127.0.0.1:5284` 로 연결. 5280 (모두 관리자) 연결 금지.
+- **같은 네트워크** — 원격 문을 이 기기의 LAN 주소에도 열기 (HTTP). 시험용: link 에 IP 노출, token
+  암호화 없이 전송. (Docker 는 대신 5284 port 를 LAN 에 publish.)
+
+공유 중에는 link (팀원 link · 알림) 가 공유 주소 사용. `board doctor` 로 응답 여부 확인. Tailscale
+방식은 board-server 가 도는 곳에 `tailscale` CLI 필요 (`BOARD_TAILSCALE`, `BOARD_TAILSCALE_SOCKET`).
+Docker 에서는 **내 주소** 선택 후 host 에서 `tailscale serve --bg http://127.0.0.1:5284` (또는
+`tailscale funnel …`) 실행. 미리보기도 같은 주소로 sandbox 상태로 제공. 팀 전용 server 는
+[외부 공개 모드](public.ko.md) 참고.
 
 ## CLI
 

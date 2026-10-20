@@ -323,13 +323,13 @@ fn author(actor: &Actor) -> Author {
             name: "Local admin".into(),
             email: "local@board.invalid".into(),
         },
-        Actor::User { name, email, .. } => Author {
+        Actor::User { id, name, .. } => Author {
             name: name.clone(),
-            email: email.clone(),
+            email: format!("{id}@member.invalid"),
         },
-        Actor::Guest { id, name, .. } => Author {
+        Actor::Visitor { id, name } => Author {
             name: name.clone(),
-            email: format!("{id}@guest.board.invalid"),
+            email: format!("{id}@visitor.invalid"),
         },
     }
 }
@@ -371,7 +371,6 @@ mod tests {
         Actor::User {
             id: "v".into(),
             name: "V".into(),
-            email: "v@example.com".into(),
             role: Role::Viewer,
         }
     }

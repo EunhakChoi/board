@@ -37,8 +37,7 @@ fn engine(local_mode: bool) -> Engine {
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
             comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
             accounts: db.clone(),
-            notices: db.clone(),
-            invites: db,
+            notices: db,
             webhooks: Arc::new(TeapotSender),
             realtime: Arc::new(board_collab::Hub::new()),
         },
@@ -286,10 +285,16 @@ async fn me_is_the_local_admin_in_local_mode() {
 }
 
 #[tokio::test]
-async fn me_needs_sign_in_outside_local_mode() {
-    let (status, body) = call(engine(false), "/api/auth/me").await;
+async fn others_need_a_token_or_are_visitors() {
+    let (status, body) = call(engine(false), "/api/projects").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body["code"], "unauthorized");
+    let (status, body) = call(engine(false), "/api/auth/me").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (&body["kind"], &body["role"]),
+        (&json!("visitor"), &json!("viewer"))
+    );
 }
 
 #[tokio::test]
@@ -591,206 +596,54 @@ async fn manifest_files_and_web() {
     std::fs::remove_dir_all(&web).unwrap();
 }
 
-/// An identity provider that signs in whoever the test names next.
-#[derive(Default)]
-struct ScriptedIdentity {
-    state: std::sync::Mutex<String>,
-    next: std::sync::Mutex<Option<String>>,
+/// A public board (no local door) with its owner signed in; returns the owner's cookie.
+async fn public_engine() -> (Engine, String) {
+    let engine = engine(false).with_tool_url("https://board.test");
+    let token = engine.ensure_owner().unwrap().unwrap();
+    let cookie = browser_token(&engine, &token).await;
+    (engine, cookie)
 }
 
-impl board_engine::Identity for ScriptedIdentity {
-    fn provider(&self) -> &'static str {
-        "scripted"
-    }
-    fn authorize_url(&self, request: &board_engine::AuthRequest) -> Result<String, WorkspaceError> {
-        self.state.lock().unwrap().clone_from(&request.state);
-        Ok(format!("https://idp.test/auth?state={}", request.state))
-    }
-    fn exchange(&self, _: &str, _: &str, _: &str) -> Result<board_engine::Claims, WorkspaceError> {
-        let who = self.next.lock().unwrap().take().unwrap();
-        Ok(board_engine::Claims {
-            subject: who.clone(),
-            email: format!("{who}@example.com"),
-            email_verified: true,
-            name: Some(who),
-            picture: None,
-        })
-    }
-}
-
-fn signed_in_engine() -> (Engine, Arc<ScriptedIdentity>) {
-    let idp = Arc::new(ScriptedIdentity::default());
-    let engine = engine(false)
-        .with_tool_url("https://board.test")
-        .with_sign_in(board_engine::SignInSettings {
-            identity: Some(idp.clone()),
-            admin_emails: vec!["boss@example.com".into()],
-        });
-    (engine, idp)
-}
-
-/// Runs the browser side of a sign-in as `who`; returns the session cookie value (if any) and
-/// where the callback redirected.
-async fn browser_sign_in(
-    engine: &Engine,
-    idp: &ScriptedIdentity,
-    who: &str,
-    query: &str,
-) -> (Option<String>, String) {
-    let (status, location) = redirect_of(
-        engine.clone(),
-        Request::get(format!("/api/auth/oidc/start{query}"))
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::FOUND);
-    assert!(location.unwrap().starts_with("https://idp.test/auth"));
-    *idp.next.lock().unwrap() = Some(who.into());
-    let state = idp.state.lock().unwrap().clone();
+/// Signs a browser in with `token`; returns the session cookie.
+async fn browser_token(engine: &Engine, token: &str) -> String {
     let response = board_api::router(engine.clone())
         .oneshot(
-            Request::get(format!("/api/auth/oidc/callback?state={state}&code=c"))
-                .body(Body::empty())
+            Request::post("/api/auth/token")
+                .header("content-type", "application/json")
+                .header("x-board-client", "test")
+                .body(Body::from(json!({ "token": token }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::FOUND);
-    let location = response.headers()["location"].to_str().unwrap().to_owned();
-    let cookie = response.headers().get("set-cookie").map(|c| {
-        let text = c.to_str().unwrap();
-        assert!(text.contains("HttpOnly") && text.contains("Secure"));
-        text.split(';').next().unwrap().to_owned()
-    });
-    (cookie, location)
-}
-
-#[tokio::test]
-async fn sign_in_session_csrf_and_logout() {
-    let (engine, idp) = signed_in_engine();
-    let (cookie, location) = browser_sign_in(&engine, &idp, "boss", "?returnTo=%2Fp%2Fweb").await;
-    let cookie = cookie.unwrap();
-    assert_eq!(location, "/p/web");
-    let me = board_api::router(engine.clone())
-        .oneshot(
-            Request::get("/api/auth/me")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(me.status(), StatusCode::OK);
-    let body = http_body_util::BodyExt::collect(me.into_body())
-        .await
+    assert_eq!(response.status(), StatusCode::OK);
+    let text = response.headers()["set-cookie"]
+        .to_str()
         .unwrap()
-        .to_bytes();
-    let me: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(
-        (me["kind"].as_str(), me["role"].as_str()),
-        (Some("user"), Some("admin"))
+        .to_owned();
+    assert!(
+        text.contains("HttpOnly") && text.contains("Secure"),
+        "{text}"
     );
+    text.split(';').next().unwrap().to_owned()
+}
 
-    // Changing requests need the client header.
-    let create = |with_header: bool| {
-        let mut request = Request::post("/api/projects")
-            .header("cookie", &cookie)
-            .header("content-type", "application/json");
-        if with_header {
-            request = request.header("x-board-client", "web");
-        }
-        request
-            .body(Body::from(r#"{"key":"web","title":"Web"}"#))
-            .unwrap()
-    };
-    let (status, body, _) = send(engine.clone(), create(false)).await;
-    assert_eq!(
-        status,
-        StatusCode::FORBIDDEN,
-        "{}",
-        String::from_utf8_lossy(&body)
-    );
-    let (status, _, _) = send(engine.clone(), create(true)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (status, _, _) = send(
-        engine.clone(),
-        Request::post("/api/auth/logout")
-            .header("cookie", &cookie)
-            .header("x-board-client", "web")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _, _) = send(
+/// An admin adds a member with `role`; returns their token and a browser cookie.
+async fn member(engine: &Engine, admin: &str, name: &str, role: &str) -> (String, String) {
+    let (status, made) = json_of(
         engine,
-        Request::get("/api/projects")
-            .header("cookie", &cookie)
-            .body(Body::empty())
-            .unwrap(),
+        as_member(
+            "POST",
+            "/api/admin/users",
+            admin,
+            Some(json!({ "name": name, "role": role })),
+        ),
     )
     .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn strangers_wait_and_nobody_gets_in_before_setup() {
-    let (engine, idp) = signed_in_engine();
-    let (cookie, location) = browser_sign_in(&engine, &idp, "eve", "").await;
-    assert_eq!(
-        (cookie, location.as_str()),
-        (None, "/signin?error=setup_required")
-    );
-
-    let token = engine.issue_setup_token().unwrap().unwrap();
-    let (cookie, _) = browser_sign_in(&engine, &idp, "ann", &format!("?setup={token}")).await;
-    assert!(cookie.is_some(), "the setup link lets the first admin in");
-
-    let (cookie, _) = browser_sign_in(&engine, &idp, "eve", "").await;
-    let cookie = cookie.unwrap();
-    let call = |path: &str| {
-        Request::get(path.to_owned())
-            .header("cookie", &cookie)
-            .body(Body::empty())
-            .unwrap()
-    };
-    let (status, body, _) = send(engine.clone(), call("/api/auth/me")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&body).unwrap()["kind"],
-        "pending"
-    );
-    let (status, body, _) = send(engine, call("/api/projects")).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&body).unwrap()["code"],
-        "pending"
-    );
-}
-
-#[tokio::test]
-async fn callback_without_a_code_goes_back_to_sign_in() {
-    let (engine, _) = signed_in_engine();
-    let (status, location) = redirect_of(
-        engine,
-        Request::get("/api/auth/oidc/callback?error=access_denied")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::FOUND);
-    assert_eq!(location.as_deref(), Some("/signin?error=cancelled"));
-}
-
-async fn redirect_of(engine: Engine, request: Request<Body>) -> (StatusCode, Option<String>) {
-    let response = board_api::router(engine).oneshot(request).await.unwrap();
-    let location = response
-        .headers()
-        .get("location")
-        .map(|v| v.to_str().unwrap().to_owned());
-    (response.status(), location)
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let token = made["token"].as_str().unwrap().to_owned();
+    let cookie = browser_token(engine, &token).await;
+    (token, cookie)
 }
 
 /// A JSON request with the session cookie and the client header.
@@ -806,332 +659,252 @@ fn as_member(method: &str, path: &str, cookie: &str, body: Option<Value>) -> Req
         .unwrap()
 }
 
+fn with_bearer(path: &str, token: &str) -> Request<Body> {
+    Request::get(path)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 async fn json_of(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) {
     let (status, body, _) = send(engine.clone(), request).await;
     (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
 }
 
 #[tokio::test]
-async fn admins_manage_the_allowlist_and_access_requests() {
-    let (engine, idp) = signed_in_engine();
-    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
-    let boss = boss.unwrap();
-    let (eve, _) = browser_sign_in(&engine, &idp, "eve", "").await;
-    let eve = eve.unwrap();
+async fn token_sign_in_session_csrf_and_logout() {
+    let (engine, boss) = public_engine().await;
+    let sign_in = |token: &str, header: bool| {
+        let mut request =
+            Request::post("/api/auth/token").header("content-type", "application/json");
+        if header {
+            request = request.header("x-board-client", "test");
+        }
+        request
+            .body(Body::from(json!({ "token": token }).to_string()))
+            .unwrap()
+    };
+    let (status, _) = json_of(&engine, sign_in("x", false)).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the client header is required"
+    );
+    let (status, body) = json_of(&engine, sign_in("wrong", true)).await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::UNAUTHORIZED, Some("invalid_token"))
+    );
 
-    let (status, rule) = json_of(
-        &engine,
-        as_member(
-            "POST",
-            "/api/admin/allow-rules",
-            &boss,
-            Some(json!({"kind": "domain", "value": "Team.example"})),
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &boss, None)).await;
+    assert_eq!(
+        (
+            me["kind"].as_str(),
+            me["name"].as_str(),
+            me["role"].as_str()
         ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(rule["value"], "team.example");
-    let (status, _) = json_of(
-        &engine,
-        as_member(
-            "POST",
-            "/api/admin/allow-rules",
-            &boss,
-            Some(json!({"kind": "domain", "value": "nodot"})),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    let (status, list) = json_of(
-        &engine,
-        as_member("GET", "/api/admin/allow-rules", &boss, None),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(list["rules"].as_array().unwrap().len(), 1);
+        (Some("user"), Some("Admin"), Some("admin"))
+    );
 
-    // eve waits; members cannot see the admin routes.
-    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/users", &eve, None)).await;
+    // Changing requests need the client header.
+    let create = |with_header: bool| {
+        let mut request = Request::post("/api/projects")
+            .header("cookie", &boss)
+            .header("content-type", "application/json");
+        if with_header {
+            request = request.header("x-board-client", "web");
+        }
+        request
+            .body(Body::from(r#"{"key":"web","title":"Web"}"#))
+            .unwrap()
+    };
+    let (status, _) = json_of(&engine, create(false)).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (_, users) = json_of(&engine, as_member("GET", "/api/admin/users", &boss, None)).await;
-    let pending = users["users"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|u| u["status"] == "pending")
-        .unwrap()
-        .clone();
-    assert_eq!(pending["email"], "eve@example.com");
-    let id = pending["id"].as_str().unwrap();
-    let (status, user) = json_of(
-        &engine,
-        as_member(
-            "POST",
-            &format!("/api/admin/users/{id}/approve"),
-            &boss,
-            None,
-        ),
-    )
-    .await;
-    assert_eq!(
-        (status, user["status"].as_str()),
-        (StatusCode::OK, Some("active"))
-    );
-    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &eve, None)).await;
-    assert_eq!(status, StatusCode::OK, "approved: eve is in at once");
+    let (status, _) = json_of(&engine, create(true)).await;
+    assert_eq!(status, StatusCode::CREATED);
 
-    let (status, user) = json_of(
-        &engine,
-        as_member(
-            "PATCH",
-            &format!("/api/admin/users/{id}"),
-            &boss,
-            Some(json!({"status": "removed"})),
-        ),
-    )
-    .await;
-    assert_eq!(
-        (status, user["status"].as_str()),
-        (StatusCode::OK, Some("removed"))
-    );
-    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &eve, None)).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED, "removal ends the session");
-
-    let rule_id = rule["id"].as_i64().unwrap();
-    let (status, _, _) = send(
-        engine.clone(),
-        as_member(
-            "DELETE",
-            &format!("/api/admin/allow-rules/{rule_id}"),
-            &boss,
-            None,
-        ),
-    )
-    .await;
+    let (status, _) = json_of(&engine, as_member("POST", "/api/auth/logout", &boss, None)).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &boss, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn share_links_let_guests_into_one_project() {
-    let (engine, idp) = signed_in_engine();
-    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
-    let boss = boss.unwrap();
-    for key in ["web", "other"] {
-        let (status, _) = json_of(
-            &engine,
-            as_member(
-                "POST",
-                "/api/projects",
-                &boss,
-                Some(json!({"key": key, "title": key})),
-            ),
-        )
-        .await;
-        assert_eq!(status, StatusCode::CREATED);
-    }
-    let (status, created) = json_of(
+async fn a_second_browser_replaces_the_first_but_not_the_cli() {
+    let (engine, boss) = public_engine().await;
+    let (token, first) = member(&engine, &boss, "Ann", "editor").await;
+    let second = browser_token(&engine, &token).await;
+    let (status, body) = json_of(&engine, as_member("GET", "/api/projects", &first, None)).await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::UNAUTHORIZED, Some("replaced"))
+    );
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &second, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, me) = json_of(&engine, with_bearer("/api/auth/me", &token)).await;
+    assert_eq!((status, me["name"].as_str()), (StatusCode::OK, Some("Ann")));
+    let (status, body) = json_of(&engine, with_bearer("/api/projects", "nope")).await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::UNAUTHORIZED, Some("invalid_token"))
+    );
+}
+
+#[tokio::test]
+async fn visitors_look_with_a_made_up_name_until_turned_off() {
+    let (engine, boss) = public_engine().await;
+    json_of(
         &engine,
-        as_member(
-            "POST",
-            "/api/projects/web/share-links",
-            &boss,
-            Some(json!({"role": "commenter", "label": "review"})),
-        ),
+        as_member("POST", "/api/projects", &boss, Some(json!({"key": "web"}))),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let token = created["token"].as_str().unwrap().to_owned();
-    assert_eq!(created["url"], format!("https://board.test/l/{token}"));
-
-    let (status, shared) = call(engine.clone(), &format!("/api/links/{token}")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        (shared["projectTitle"].as_str(), shared["role"].as_str()),
-        (Some("web"), Some("commenter"))
-    );
-
     let response = board_api::router(engine.clone())
-        .oneshot(
-            Request::post(format!("/api/links/{token}/enter"))
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"name":"Dana"}"#))
-                .unwrap(),
-        )
+        .oneshot(Request::get("/api/auth/me").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let guest = response.headers()["set-cookie"]
+    let visitor = response.headers()["set-cookie"]
         .to_str()
         .unwrap()
         .split(';')
         .next()
         .unwrap()
         .to_owned();
-
-    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &guest, None)).await;
-    assert_eq!(
-        (me["kind"].as_str(), me["project"].as_str()),
-        (Some("guest"), Some("web"))
-    );
-    let (_, projects) = json_of(&engine, as_member("GET", "/api/projects", &guest, None)).await;
-    let keys: Vec<_> = projects["projects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["key"].clone())
-        .collect();
-    assert_eq!(keys, [json!("web")], "a guest sees only the link's project");
+    assert!(visitor.starts_with("board_visitor="), "{visitor}");
+    let id = visitor.trim_start_matches("board_visitor=");
+    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &visitor, None)).await;
+    assert_eq!(me["id"], id, "the same visitor next time");
+    assert_eq!(me["name"], board_engine::visitor_name(id));
     let (status, _) = json_of(
         &engine,
-        as_member("GET", "/api/projects/other", &guest, None),
+        as_member("GET", "/api/projects/web", &visitor, None),
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::OK);
     let (status, _) = json_of(
         &engine,
-        as_member("GET", "/api/projects/web/share-links", &guest, None),
+        as_member(
+            "POST",
+            "/api/projects/web/comments",
+            &visitor,
+            Some(json!({"kind": "screen", "target": "home", "at": {"x": 1, "y": 1}, "body": "Hi"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "visitors only look");
+
+    let (status, _) = json_of(
+        &engine,
+        as_member(
+            "PUT",
+            "/api/admin/access",
+            &visitor,
+            Some(json!({"visitors": false})),
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-
-    let id = created["link"]["id"].as_str().unwrap();
-    let (status, _, _) = send(
-        engine.clone(),
+    let (status, access) = json_of(
+        &engine,
         as_member(
-            "POST",
-            &format!("/api/projects/web/share-links/{id}/revoke"),
+            "PUT",
+            "/api/admin/access",
             &boss,
-            None,
+            Some(json!({"visitors": false})),
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &guest, None)).await;
+    assert_eq!(
+        (status, access["visitors"].as_bool()),
+        (StatusCode::OK, Some(false))
+    );
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &visitor, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = call(engine.clone(), "/api/auth/me").await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::UNAUTHORIZED, Some("token_required"))
+    );
+    let (_, access) = json_of(&engine, as_member("GET", "/api/admin/access", &boss, None)).await;
+    assert_eq!(access["visitors"], false);
+}
+
+#[tokio::test]
+async fn admins_manage_members_and_their_tokens() {
+    let (engine, boss) = public_engine().await;
+    let (ann_token, ann) = member(&engine, &boss, "Ann", "editor").await;
+    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/users", &ann, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, list) = json_of(&engine, as_member("GET", "/api/admin/users", &boss, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let users = list["users"].as_array().unwrap();
+    assert_eq!(users.len(), 2);
+    assert_eq!(
+        (&users[0]["name"], &users[0]["owner"]),
+        (&json!("Admin"), &json!(true))
+    );
+    assert_eq!(users[1]["token"], ann_token.as_str());
+    assert!(users[1]["lastUsedAt"].is_string());
+    let id = users[1]["id"].as_str().unwrap().to_owned();
+
+    let (status, changed) = json_of(
+        &engine,
+        as_member(
+            "PATCH",
+            &format!("/api/admin/users/{id}"),
+            &boss,
+            Some(json!({"name": "Ann K", "role": "commenter"})),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, changed["name"].as_str(), changed["role"].as_str()),
+        (StatusCode::OK, Some("Ann K"), Some("commenter"))
+    );
+    let (status, reissued) = json_of(
+        &engine,
+        as_member("POST", &format!("/api/admin/users/{id}/token"), &boss, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(reissued["token"], ann_token.as_str());
+    let (status, _) = json_of(&engine, with_bearer("/api/projects", &ann_token)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the old token stopped");
+    let (status, _) = json_of(&engine, as_member("GET", "/api/projects", &ann, None)).await;
     assert_eq!(
         status,
         StatusCode::UNAUTHORIZED,
-        "revoked: the guest is out"
-    );
-    let (status, _) = call(engine, &format!("/api/links/{token}")).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn device_login_issues_a_cli_token() {
-    let (engine, idp) = signed_in_engine();
-    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
-    let boss = boss.unwrap();
-    let (status, started) = post(
-        engine.clone(),
-        "/api/auth/device",
-        &json!({"name": "laptop"}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    let code = started["userCode"].as_str().unwrap().to_owned();
-    assert_eq!(
-        started["verificationUrlComplete"],
-        format!("https://board.test/device?code={code}")
-    );
-    let device = json!({"deviceCode": started["deviceCode"]});
-    let (status, pending) = post(engine.clone(), "/api/auth/device/token", &device).await;
-    assert_eq!(
-        (status, pending["code"].as_str()),
-        (StatusCode::BAD_REQUEST, Some("authorization_pending"))
+        "the browser was signed out"
     );
 
-    let (status, request) = json_of(
+    let owner = users[0]["id"].as_str().unwrap();
+    let (status, _) = json_of(
         &engine,
-        as_member("GET", &format!("/api/auth/device/{code}"), &boss, None),
+        as_member("DELETE", &format!("/api/admin/users/{owner}"), &boss, None),
     )
     .await;
-    assert_eq!(
-        (status, request["name"].as_str()),
-        (StatusCode::OK, Some("laptop"))
-    );
-    let (status, _, _) = send(
-        engine.clone(),
-        as_member(
-            "POST",
-            &format!("/api/auth/device/{code}/approve"),
-            &boss,
-            None,
-        ),
+    assert_eq!(status, StatusCode::BAD_REQUEST, "the owner stays");
+    let (status, _) = json_of(
+        &engine,
+        as_member("DELETE", &format!("/api/admin/users/{id}"), &boss, None),
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, issued) = post(engine.clone(), "/api/auth/device/token", &device).await;
-    assert_eq!(status, StatusCode::OK);
-    let token = issued["token"].as_str().unwrap().to_owned();
-
-    // The token acts as boss, without the client header.
-    let bearer = |path: &str| {
-        Request::get(path.to_owned())
-            .header("authorization", format!("Bearer {token}"))
-            .body(Body::empty())
-            .unwrap()
-    };
-    let (status, body, _) = send(engine.clone(), bearer("/api/auth/me")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&body).unwrap()["email"],
-        "boss@example.com"
-    );
-    let created = Request::post("/api/projects")
-        .header("authorization", format!("Bearer {token}"))
-        .header("content-type", "application/json")
-        .body(Body::from(r#"{"key":"cli","title":"CLI"}"#))
-        .unwrap();
-    let (status, _, _) = send(engine.clone(), created).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (_, tokens) = json_of(&engine, as_member("GET", "/api/me/cli-tokens", &boss, None)).await;
-    assert_eq!(tokens["tokens"][0]["via"], "device");
-
-    let logout = Request::post("/api/auth/logout")
-        .header("authorization", format!("Bearer {token}"))
-        .body(Body::empty())
-        .unwrap();
-    let (status, _, _) = send(engine.clone(), logout).await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, body, _) = send(engine, bearer("/api/projects")).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&body).unwrap()["code"],
-        "invalid_token"
-    );
 }
 
 #[tokio::test]
-async fn system_answers_before_sign_in_without_details() {
-    let (engine, _) = signed_in_engine();
-    let (status, system) = call(engine, "/api/system").await;
+async fn system_answers_without_a_token_without_details() {
+    let (status, system) = call(engine(false), "/api/system").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(system["localMode"], false);
     assert!(system["services"]["workspace"].get("error").is_none());
-    assert_eq!(
-        system["signIn"],
-        json!({"provider": "scripted", "callbackUrl": "", "ok": true, "hasAdmin": false})
-    );
+    assert!(system.get("signIn").is_none());
 }
 
 #[tokio::test]
 async fn private_projects_hide_from_non_members() {
-    let (engine, idp) = signed_in_engine();
-    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
-    let boss = boss.unwrap();
-    json_of(
-        &engine,
-        as_member(
-            "POST",
-            "/api/admin/allow-rules",
-            &boss,
-            Some(json!({"kind": "domain", "value": "example.com"})),
-        ),
-    )
-    .await;
-    let (ann, _) = browser_sign_in(&engine, &idp, "ann", "").await;
-    let ann = ann.unwrap();
+    let (engine, boss) = public_engine().await;
+    let ann = member(&engine, &boss, "ann", "editor").await.1;
     json_of(
         &engine,
         as_member(
@@ -1261,23 +1034,10 @@ async fn realtime_room_relays_presence_and_events() {
     assert!(tokio_tungstenite::connect_async(request).await.is_err());
 }
 
-/// Boss (admin) and Ann (editor) signed in, and a project `web`; returns their cookies.
+/// Boss (the owner) and Ann (editor) signed in, and a project `web`; returns their cookies.
 async fn boss_and_ann() -> (Engine, String, String) {
-    let (engine, idp) = signed_in_engine();
-    let (boss, _) = browser_sign_in(&engine, &idp, "boss", "").await;
-    let boss = boss.unwrap();
-    json_of(
-        &engine,
-        as_member(
-            "POST",
-            "/api/admin/allow-rules",
-            &boss,
-            Some(json!({"kind": "domain", "value": "example.com"})),
-        ),
-    )
-    .await;
-    let (ann, _) = browser_sign_in(&engine, &idp, "ann", "").await;
-    let ann = ann.unwrap();
+    let (engine, boss) = public_engine().await;
+    let ann = member(&engine, &boss, "ann", "editor").await.1;
     json_of(
         &engine,
         as_member(
@@ -1318,7 +1078,7 @@ async fn inbox_gets_comments_and_marks_read() {
     assert_eq!(inbox["notifications"][0]["kind"], "comment.added");
     assert_eq!(
         inbox["notifications"][0]["text"],
-        "boss commented on screen home: Look"
+        "Admin commented on screen home: Look"
     );
     let (_, read) = json_of(
         &engine,
@@ -1381,118 +1141,6 @@ async fn webhooks_are_admin_settings_with_a_secret_shown_once() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
-/// The cookie a response set, as `name=value`.
-fn set_cookie(headers: &axum::http::HeaderMap) -> String {
-    headers["set-cookie"]
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned()
-}
-
-async fn post_raw(engine: &Engine, path: &str, body: Value) -> axum::response::Response {
-    board_api::router(engine.clone())
-        .oneshot(
-            Request::post(path)
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-}
-
-#[tokio::test]
-async fn invite_links_without_a_provider() {
-    let engine = engine(false)
-        .with_tool_url("https://board.test")
-        .with_sign_in(board_engine::SignInSettings {
-            identity: None,
-            admin_emails: Vec::new(),
-        });
-    let (_, system) = call(engine.clone(), "/api/system").await;
-    assert_eq!(system["signIn"]["provider"], Value::Null);
-    let setup = engine.issue_setup_token().unwrap().unwrap();
-    let response = post_raw(
-        &engine,
-        "/api/auth/setup",
-        json!({"token": setup, "name": "Boss"}),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let boss = set_cookie(response.headers());
-    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &boss, None)).await;
-    assert_eq!(
-        (me["name"].as_str(), me["role"].as_str()),
-        (Some("Boss"), Some("admin"))
-    );
-    assert!(me.get("email").is_none());
-
-    let (status, made) = json_of(
-        &engine,
-        as_member(
-            "POST",
-            "/api/admin/invites",
-            &boss,
-            Some(json!({"role": "viewer", "label": "Dana"})),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let url = made["url"].as_str().unwrap();
-    let token = url.strip_prefix("https://board.test/i/").unwrap();
-    let (status, view) = call(engine.clone(), &format!("/api/invites/{token}")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(view, json!({"kind": "join", "role": "viewer"}));
-    let response = post_raw(
-        &engine,
-        &format!("/api/invites/{token}/accept"),
-        json!({"name": "Dana"}),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let dana = set_cookie(response.headers());
-    let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &dana, None)).await;
-    assert_eq!(me["role"], "viewer");
-    let again = post_raw(
-        &engine,
-        &format!("/api/invites/{token}/accept"),
-        json!({"name": "Eve"}),
-    )
-    .await;
-    assert_eq!(again.status(), StatusCode::NOT_FOUND);
-
-    // Dana's link for her phone opens her account.
-    let (status, own) = json_of(
-        &engine,
-        as_member("POST", "/api/me/sign-in-link", &dana, None),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    let token = own["url"]
-        .as_str()
-        .unwrap()
-        .rsplit('/')
-        .next()
-        .unwrap()
-        .to_owned();
-    let (_, view) = call(engine.clone(), &format!("/api/invites/{token}")).await;
-    assert_eq!(view["kind"], "sign-in");
-    assert_eq!(view["name"], "Dana");
-    let (status, _) = json_of(&engine, as_member("GET", "/api/admin/invites", &dana, None)).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _) = redirect_of(
-        engine.clone(),
-        Request::get("/api/auth/oidc/start")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-}
-
 #[tokio::test]
 async fn one_address_serves_previews_sandboxed_from_the_tool() {
     let mut settings = preview_settings();
@@ -1542,31 +1190,20 @@ async fn remote(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) 
     )
 }
 
-/// An admin invites someone, who joins through the remote door; returns their session cookie.
-async fn join_remotely(engine: &Engine) -> String {
-    let (_, made) = post(
-        engine.clone(),
-        "/api/admin/invites",
-        &json!({ "role": "admin" }),
-    )
-    .await;
-    let token = made["url"]
-        .as_str()
-        .unwrap()
-        .rsplit('/')
-        .next()
-        .unwrap()
-        .to_owned();
-    let accepted = board_api::remote_app(engine.clone(), None)
+/// A browser signs in through the remote door; returns its session cookie.
+async fn remote_sign_in(engine: &Engine, token: &str) -> String {
+    let response = board_api::remote_app(engine.clone(), None)
         .oneshot(
-            Request::post(format!("/api/invites/{token}/accept"))
+            Request::post("/api/auth/token")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({ "name": "Eve" }).to_string()))
+                .header("x-board-client", "test")
+                .body(Body::from(json!({ "token": token }).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    accepted.headers()["set-cookie"]
+    assert_eq!(response.status(), StatusCode::OK);
+    response.headers()["set-cookie"]
         .to_str()
         .unwrap()
         .split(';')
@@ -1576,16 +1213,25 @@ async fn join_remotely(engine: &Engine) -> String {
 }
 
 #[tokio::test]
-async fn sharing_opens_a_remote_door_that_signs_people_in() {
+async fn the_remote_door_goes_by_token_and_the_local_door_is_the_owner() {
     let engine = engine(true)
         .with_tool_url("http://localhost:5280")
         .with_preview(preview_settings());
+    let owner_token = engine.ensure_owner().unwrap().unwrap();
     let me = || Request::get("/api/auth/me").body(Body::empty()).unwrap();
+    let (_, local) = call(engine.clone(), "/api/auth/me").await;
+    assert_eq!(
+        (&local["kind"], &local["name"], &local["localMode"]),
+        (&json!("user"), &json!("Admin"), &json!(true))
+    );
+    // Through the remote door nobody is the owner: without a token, a visitor.
     let (status, body) = remote(&engine, me()).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(body["code"], "sharing_off");
+    assert_eq!(
+        (status, body["kind"].as_str()),
+        (StatusCode::OK, Some("visitor"))
+    );
 
-    let share = json!({ "mode": "address", "url": "https://b.example.com/", "ownerName": "Kim" });
+    let share = json!({ "mode": "address", "url": "https://b.example.com/" });
     let request = Request::put("/api/admin/sharing")
         .header("content-type", "application/json")
         .body(Body::from(share.to_string()))
@@ -1594,16 +1240,6 @@ async fn sharing_opens_a_remote_door_that_signs_people_in() {
     let shared: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(status, StatusCode::OK, "{shared}");
     assert_eq!(shared["url"], "https://b.example.com");
-    assert_eq!(shared["owner"]["name"], "Kim");
-
-    // This machine now acts as the owner; the remote door wants a sign-in.
-    let (_, local) = call(engine.clone(), "/api/auth/me").await;
-    assert_eq!(
-        (&local["kind"], &local["name"]),
-        (&json!("user"), &json!("Kim"))
-    );
-    let (status, _) = remote(&engine, me()).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (_, system) = remote(
         &engine,
         Request::get("/api/system").body(Body::empty()).unwrap(),
@@ -1613,16 +1249,19 @@ async fn sharing_opens_a_remote_door_that_signs_people_in() {
     assert_eq!(system["toolUrl"], "https://b.example.com");
     assert_eq!(system["previewUrl"], "https://b.example.com");
 
-    // Someone let in remotely sees previews on the shared address, and cannot move it.
-    let cookie = join_remotely(&engine).await;
+    // An editor who came in remotely sees previews on the shared address but cannot move it.
+    let (_, made) = post(
+        engine.clone(),
+        "/api/admin/users",
+        &json!({ "name": "Eve", "role": "editor" }),
+    )
+    .await;
+    let eve = remote_sign_in(&engine, made["token"].as_str().unwrap()).await;
     let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
     assert_eq!(status, StatusCode::CREATED);
     let (status, preview) = remote(
         &engine,
-        Request::get("/api/projects/web/preview")
-            .header("cookie", &cookie)
-            .body(Body::empty())
-            .unwrap(),
+        as_member("GET", "/api/projects/web/preview", &eve, None),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{preview}");
@@ -1635,28 +1274,19 @@ async fn sharing_opens_a_remote_door_that_signs_people_in() {
     );
     let (status, _) = remote(
         &engine,
-        Request::delete("/api/admin/sharing")
-            .header("cookie", &cookie)
-            .header("x-board-client", "web")
-            .body(Body::empty())
-            .unwrap(),
+        as_member("DELETE", "/api/admin/sharing", &eve, None),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    let (status, bytes, _) = send(
-        engine.clone(),
-        Request::delete("/api/admin/sharing")
-            .body(Body::empty())
-            .unwrap(),
+    // The owner's token works from anywhere, like any admin's.
+    let owner = remote_sign_in(&engine, &owner_token).await;
+    let (status, stopped) = remote(
+        &engine,
+        as_member("DELETE", "/api/admin/sharing", &owner, None),
     )
     .await;
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&bytes)
-    );
+    assert_eq!(status, StatusCode::OK, "{stopped}");
     let (status, _) = remote(&engine, me()).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::OK, "the remote door stays open");
 }

@@ -12,7 +12,7 @@ pub enum Command {
     BranchEdit,
     BranchMerge,
     VersionRestore,
-    /// Approve access requests, issue share links, keys, webhooks, project settings.
+    /// Members and their tokens, sharing, webhooks, project settings.
     Admin,
     /// Export and mark handoff, import into a project (CLI only).
     Handoff,
@@ -46,11 +46,9 @@ pub fn can(actor: &Actor, command: Command, target: Option<Target<'_>>) -> bool 
     }
     match (actor, target) {
         (Actor::Local | Actor::User { .. }, None) | (Actor::Local, Some(_)) => true,
-        // A share link opens exactly one project and never server-wide settings.
-        (Actor::Guest { project, .. }, Some(target)) => {
-            project == target.project && command != Command::Admin && command != Command::Handoff
-        }
-        (Actor::Guest { .. }, None) => false,
+        // Visitors look at the team's projects and nothing server-wide.
+        (Actor::Visitor { .. }, Some(target)) => target.visibility == Visibility::Team,
+        (Actor::Visitor { .. }, None) => false,
         (Actor::User { role, .. }, Some(target)) => {
             *role == Role::Admin || target.visibility == Visibility::Team || target.member
         }
@@ -65,17 +63,7 @@ mod tests {
         Actor::User {
             id: "u".into(),
             name: "U".into(),
-            email: "u@example.com".into(),
             role,
-        }
-    }
-
-    fn guest(role: Role, project: &str) -> Actor {
-        Actor::Guest {
-            id: "g".into(),
-            name: "G".into(),
-            role,
-            project: project.into(),
         }
     }
 
@@ -110,17 +98,20 @@ mod tests {
     }
 
     #[test]
-    fn guests_reach_one_project_and_never_admin() {
-        let editor = guest(Role::Editor, "p");
-        assert!(can(&editor, Command::BranchMerge, TEAM));
-        let other = Some(Target {
-            project: "q",
-            visibility: Visibility::Team,
+    fn visitors_only_look_at_team_projects() {
+        let visitor = Actor::Visitor {
+            id: "v".into(),
+            name: "V".into(),
+        };
+        assert!(can(&visitor, Command::ProjectView, TEAM));
+        assert!(!can(&visitor, Command::CommentAdd, TEAM));
+        assert!(!can(&visitor, Command::ProjectView, None));
+        let private = Some(Target {
+            project: "p",
+            visibility: Visibility::Private,
             member: false,
         });
-        assert!(!can(&editor, Command::ProjectView, other));
-        assert!(!can(&editor, Command::ProjectView, None));
-        assert!(!can(&guest(Role::Admin, "p"), Command::Admin, TEAM));
+        assert!(!can(&visitor, Command::ProjectView, private));
     }
 
     #[test]

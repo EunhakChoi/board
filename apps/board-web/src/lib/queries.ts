@@ -209,37 +209,44 @@ export function useAnswer(key: string) {
   });
 }
 
-/** Who is looking: the local admin, a member, a guest, or someone waiting for approval. */
+/** Who is looking: this machine's admin, a member, or a visitor. */
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
     retry: (count, error) => !(error instanceof HttpError && error.status < 500) && count < 3,
     queryFn: () => unwrap(api.GET("/api/auth/me")),
-    // Someone waiting for approval is let in as soon as an admin approves.
-    refetchInterval: (query) => (query.state.data?.kind === "pending" ? 5_000 : false),
+  });
+}
+
+/** Comes in with a member's token; a fresh page load picks it up everywhere. */
+export function useEnterToken() {
+  return useMutation({
+    mutationFn: (token: string) => unwrap(api.POST("/api/auth/token", { body: { token } })),
   });
 }
 
 export function useSignOut() {
   return useMutation({
     mutationFn: () => unwrapEmpty(api.POST("/api/auth/logout")).catch(() => undefined),
-    onSettled: () => window.location.assign("/signin"),
+    onSettled: () => window.location.assign("/"),
   });
 }
 
-/** Accounts and the allowlist, for the admin's Team page. Polled so new requests show up. */
-export function useUsers() {
+/** Members with their tokens, for the admin's Team page. */
+export function useUsers(enabled = true) {
   return useQuery({
     queryKey: ["admin", "users"],
     queryFn: () => unwrap(api.GET("/api/admin/users")),
+    enabled,
     refetchInterval: 10_000,
   });
 }
 
-export function useAllowRules() {
+export function useAccess(enabled: boolean) {
   return useQuery({
-    queryKey: ["admin", "allow-rules"],
-    queryFn: () => unwrap(api.GET("/api/admin/allow-rules")),
+    queryKey: ["admin", "access"],
+    queryFn: () => unwrap(api.GET("/api/admin/access")),
+    enabled,
   });
 }
 
@@ -248,123 +255,31 @@ export function useAdminActions() {
   const settled = () => client.invalidateQueries({ queryKey: ["admin"] });
   const user = (id: string) => ({ params: { path: { id } } });
   return {
-    approve: useMutation({
-      mutationFn: (id: string) => unwrap(api.POST("/api/admin/users/{id}/approve", user(id))),
-      onSettled: settled,
-    }),
-    reject: useMutation({
-      mutationFn: (id: string) => unwrap(api.POST("/api/admin/users/{id}/reject", user(id))),
+    add: useMutation({
+      mutationFn: (body: { name: string; role: Role }) =>
+        unwrap(api.POST("/api/admin/users", { body })),
       onSettled: settled,
     }),
     change: useMutation({
-      mutationFn: ({
-        id,
-        ...body
-      }: {
-        id: string;
-        role?: Role;
-        status?: "active" | "rejected" | "removed";
-      }) => unwrap(api.PATCH("/api/admin/users/{id}", { ...user(id), body })),
+      mutationFn: ({ id, ...body }: { id: string; name?: string; role?: Role }) =>
+        unwrap(api.PATCH("/api/admin/users/{id}", { ...user(id), body })),
+      onSettled: () => {
+        settled();
+        // Renaming the owner renames this machine's admin.
+        client.invalidateQueries({ queryKey: ["me"] });
+      },
+    }),
+    reissue: useMutation({
+      mutationFn: (id: string) => unwrap(api.POST("/api/admin/users/{id}/token", user(id))),
       onSettled: settled,
     }),
-    addRule: useMutation({
-      mutationFn: (body: { kind: "domain" | "email"; value: string }) =>
-        unwrap(api.POST("/api/admin/allow-rules", { body })),
+    remove: useMutation({
+      mutationFn: (id: string) => unwrapEmpty(api.DELETE("/api/admin/users/{id}", user(id))),
       onSettled: settled,
     }),
-    removeRule: useMutation({
-      mutationFn: (id: number) =>
-        unwrapEmpty(api.DELETE("/api/admin/allow-rules/{id}", { params: { path: { id } } })),
-      onSettled: settled,
-    }),
-  };
-}
-
-export function useShareLinks(key: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["share-links", key],
-    enabled,
-    queryFn: () => unwrap(api.GET("/api/projects/{key}/share-links", path(key))),
-  });
-}
-
-export function useShareLinkActions(key: string) {
-  const client = useQueryClient();
-  const settled = () => client.invalidateQueries({ queryKey: ["share-links", key] });
-  return {
-    create: useMutation({
-      mutationFn: (body: { role: "editor" | "commenter" | "viewer"; label: string }) =>
-        unwrap(api.POST("/api/projects/{key}/share-links", { ...path(key), body })),
-      onSettled: settled,
-    }),
-    revoke: useMutation({
-      mutationFn: (id: string) =>
-        unwrapEmpty(
-          api.POST("/api/projects/{key}/share-links/{id}/revoke", {
-            params: { path: { key, id } },
-          }),
-        ),
-      onSettled: settled,
-    }),
-  };
-}
-
-/** What a share link opens, for the name page. */
-export function useSharedLink(token: string) {
-  return useQuery({
-    queryKey: ["shared-link", token],
-    retry: false,
-    queryFn: () => unwrap(api.GET("/api/links/{token}", { params: { path: { token } } })),
-  });
-}
-
-export function useEnterLink(token: string) {
-  return useMutation({
-    mutationFn: (name: string) =>
-      unwrap(api.POST("/api/links/{token}/enter", { params: { path: { token } }, body: { name } })),
-  });
-}
-
-export function useDeviceLogin(code: string) {
-  return useQuery({
-    queryKey: ["device", code],
-    enabled: code.length > 0,
-    retry: false,
-    queryFn: () => unwrap(api.GET("/api/auth/device/{code}", { params: { path: { code } } })),
-  });
-}
-
-export function useDecideDevice(code: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (approve: boolean) =>
-      unwrapEmpty(
-        api.POST(approve ? "/api/auth/device/{code}/approve" : "/api/auth/device/{code}/deny", {
-          params: { path: { code } },
-        }),
-      ),
-    onSettled: () => client.invalidateQueries({ queryKey: ["device", code] }),
-  });
-}
-
-export function useCliTokens() {
-  return useQuery({
-    queryKey: ["cli-tokens"],
-    queryFn: () => unwrap(api.GET("/api/me/cli-tokens")),
-  });
-}
-
-export function useCliTokenActions() {
-  const client = useQueryClient();
-  const settled = () => client.invalidateQueries({ queryKey: ["cli-tokens"] });
-  return {
-    create: useMutation({
-      mutationFn: (name: string) => unwrap(api.POST("/api/me/cli-tokens", { body: { name } })),
-      onSettled: settled,
-    }),
-    revoke: useMutation({
-      mutationFn: (id: string) =>
-        unwrapEmpty(api.DELETE("/api/me/cli-tokens/{id}", { params: { path: { id } } })),
+    visitors: useMutation({
+      mutationFn: (visitors: boolean) =>
+        unwrap(api.PUT("/api/admin/access", { body: { visitors } })),
       onSettled: settled,
     }),
   };
@@ -463,69 +378,13 @@ export function useWebhookActions() {
   };
 }
 
-/** Versions, links and how people sign in (no sign-in needed). */
+/** Versions, links and services (answers without a token). */
 export function useSystem() {
   return useQuery({
     queryKey: ["system"],
     queryFn: () => unwrap(api.GET("/api/system")),
     staleTime: 60_000,
   });
-}
-
-export function useFinishSetup() {
-  return useMutation({
-    mutationFn: (body: { token: string; name: string }) =>
-      unwrapEmpty(api.POST("/api/auth/setup", { body })),
-  });
-}
-
-export function useInvite(token: string) {
-  return useQuery({
-    queryKey: ["invite", token],
-    retry: false,
-    queryFn: () => unwrap(api.GET("/api/invites/{token}", { params: { path: { token } } })),
-  });
-}
-
-export function useAcceptInvite(token: string) {
-  return useMutation({
-    mutationFn: (name: string) =>
-      unwrapEmpty(
-        api.POST("/api/invites/{token}/accept", { params: { path: { token } }, body: { name } }),
-      ),
-  });
-}
-
-export function useInvites() {
-  return useQuery({
-    queryKey: ["admin", "invites"],
-    queryFn: () => unwrap(api.GET("/api/admin/invites")),
-  });
-}
-
-export function useInviteActions() {
-  const client = useQueryClient();
-  const settled = () => client.invalidateQueries({ queryKey: ["admin", "invites"] });
-  return {
-    create: useMutation({
-      mutationFn: (body: { role: Role; label: string }) =>
-        unwrap(api.POST("/api/admin/invites", { body })),
-      onSettled: settled,
-    }),
-    revoke: useMutation({
-      mutationFn: (id: string) =>
-        unwrapEmpty(api.DELETE("/api/admin/invites/{id}", { params: { path: { id } } })),
-      onSettled: settled,
-    }),
-    memberLink: useMutation({
-      mutationFn: (id: string) =>
-        unwrap(api.POST("/api/admin/users/{id}/sign-in-link", { params: { path: { id } } })),
-    }),
-  };
-}
-
-export function useOwnSignInLink() {
-  return useMutation({ mutationFn: () => unwrap(api.POST("/api/me/sign-in-link")) });
 }
 
 export function useSharing(enabled: boolean) {
@@ -540,13 +399,11 @@ export function useSharingActions() {
   const client = useQueryClient();
   const settled = () => {
     client.invalidateQueries({ queryKey: ["admin", "sharing"] });
-    // Turning sharing on the first time makes this machine act as the new owner.
-    client.invalidateQueries({ queryKey: ["me"] });
     client.invalidateQueries({ queryKey: ["system"] });
   };
   return {
     start: useMutation({
-      mutationFn: (body: { mode: ShareMode; url?: string; ownerName?: string }) =>
+      mutationFn: (body: { mode: ShareMode; url?: string; authtoken?: string; domain?: string }) =>
         unwrap(api.PUT("/api/admin/sharing", { body })),
       onSettled: settled,
     }),

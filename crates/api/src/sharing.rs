@@ -1,4 +1,4 @@
-//! Sharing a local board from the web tool: the address other machines use, and the owner.
+//! Sharing a local board from the web tool: the tunnel that runs and the address links use.
 
 use axum::extract::State;
 use axum::routing::get;
@@ -20,7 +20,6 @@ pub struct SharingView {
     mode: Option<ShareMode>,
     url: Option<String>,
     domain: Option<String>,
-    owner: Option<OwnerView>,
     modes: Vec<ModeView>,
     warning: Option<String>,
     ngrok_token: Option<String>,
@@ -33,12 +32,6 @@ pub struct ModeView {
     detail: String,
 }
 
-#[derive(Serialize)]
-pub struct OwnerView {
-    id: String,
-    name: String,
-}
-
 impl From<SharingStatus> for SharingView {
     fn from(status: SharingStatus) -> Self {
         Self {
@@ -46,10 +39,6 @@ impl From<SharingStatus> for SharingView {
             mode: status.sharing.as_ref().map(|s| s.mode),
             domain: status.sharing.as_ref().and_then(|s| s.domain.clone()),
             url: status.sharing.map(|s| s.url),
-            owner: status.owner.map(|o| OwnerView {
-                id: o.id,
-                name: o.name,
-            }),
             modes: status
                 .modes
                 .into_iter()
@@ -79,12 +68,11 @@ pub struct StartInput {
     mode: ShareMode,
     #[serde(default)]
     url: String,
-    owner_name: Option<String>,
     authtoken: Option<String>,
     domain: Option<String>,
 }
 
-/// `PUT /api/admin/sharing`: turns sharing on, or changes its address (this machine only).
+/// `PUT /api/admin/sharing`: turns sharing on, or changes its address (admins).
 async fn start(
     State(engine): State<Engine>,
     Caller(actor): Caller,
@@ -93,7 +81,6 @@ async fn start(
     let request = ShareRequest {
         mode: input.mode,
         url: input.url,
-        owner_name: input.owner_name,
         authtoken: input.authtoken,
         domain: input.domain,
     };
@@ -104,7 +91,7 @@ async fn start(
     ))
 }
 
-/// `DELETE /api/admin/sharing`: turns sharing off (this machine only).
+/// `DELETE /api/admin/sharing`: turns sharing off (admins).
 async fn stop(
     State(engine): State<Engine>,
     Caller(actor): Caller,

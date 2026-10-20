@@ -3,16 +3,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use board_model::{
-    CliToken, Comment, CommentStatus, Project, Reply, Role, ShareLink, User, UserStatus, Version,
-    VersionKind,
-};
+use board_model::{Comment, CommentStatus, Project, Reply, Role, User, Version, VersionKind};
 
 use crate::{
-    Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuiltFile, Capture, Captures,
-    Change, ChangeKind, Claims, Comments, Device, Engine, FileChange, Guest, Identity, NewComment,
-    NewReply, NewShareLink, NewUser, Ports, PreviewSettings, ProjectStore, Records, RenderJob,
-    Renderer, Settings, Shot, SignInSettings, StoreError, Workspace, WorkspaceError as IdpError,
+    Accounts, Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind,
+    Comments, Engine, FileChange, NewComment, NewReply, NewUser, Ports, PreviewSettings,
+    ProjectStore, Records, RenderJob, Renderer, SessionRow, Settings, Shot, StoreError, Workspace,
     WorkspaceError,
 };
 
@@ -78,7 +74,6 @@ fn engine_with(fakes: &Fakes) -> Engine {
             accounts: Arc::new(MemoryAccounts::default()),
             realtime: fakes.realtime.clone(),
             notices: fakes.notices.clone(),
-            invites: Arc::new(MemoryInvites::default()),
             webhooks: fakes.sender.clone(),
         },
         true,
@@ -609,51 +604,18 @@ impl ProjectStore for MemoryStore {
     }
 }
 
-/// An engine with sign-in on (not local mode), behind a scripted identity provider.
-pub fn engine_with_sign_in(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>) {
-    let (engine, idp, _) = signed_in_with_fakes(admin_emails);
-    (engine, idp)
-}
-
-/// [`engine_with_sign_in`] with the fakes behind it.
-pub fn signed_in_with_fakes(admin_emails: &[&str]) -> (Engine, Arc<FakeIdentity>, Fakes) {
-    let idp = Arc::new(FakeIdentity::default());
-    let fakes = fakes();
-    let mut engine = engine_with(&fakes).with_sign_in(SignInSettings {
-        identity: Some(idp.clone()),
-        admin_emails: admin_emails.iter().map(|e| (*e).to_owned()).collect(),
-    });
-    engine.local_mode = false;
-    (engine, idp, fakes)
-}
-
-/// A public engine with no identity provider: people come in through invite links.
-pub fn engine_without_provider() -> Engine {
-    let mut engine = engine_with(&fakes()).with_sign_in(SignInSettings {
-        identity: None,
-        admin_emails: Vec::new(),
-    });
+/// A public engine (no local door).
+pub fn public_engine() -> Engine {
+    let mut engine = engine_with(&fakes());
     engine.local_mode = false;
     engine
 }
 
-/// Adds an allowlist rule straight to the accounts.
-pub fn allow(engine: &Engine, kind: &str, value: &str) {
-    engine.ports.accounts.add_allow_rule(kind, value).unwrap();
-}
-
-/// Accounts in memory.
+/// Members in memory: (token, user), sessions by hash: (user, expires, replaced).
 #[derive(Default)]
 pub struct MemoryAccounts {
-    users: Mutex<Vec<(String, String, User)>>,
-    sessions: Mutex<HashMap<String, (String, u64)>>,
-    setup: Mutex<Option<String>>,
-    rules: Mutex<Vec<AllowRule>>,
-    links: Mutex<Vec<(String, ShareLink)>>,
-    guests: Mutex<Vec<(Guest, String)>>,
-    guest_sessions: Mutex<HashMap<String, (String, u64)>>,
-    tokens: Mutex<Vec<(String, String, CliToken)>>,
-    devices: Mutex<HashMap<String, Device>>,
+    users: Mutex<Vec<(String, User)>>,
+    sessions: Mutex<HashMap<String, (String, u64, bool)>>,
 }
 
 impl Accounts for MemoryAccounts {
@@ -663,81 +625,72 @@ impl Accounts for MemoryAccounts {
             .lock()
             .unwrap()
             .iter()
-            .find(|u| u.2.id == id)
-            .map(|u| u.2.clone()))
+            .find(|(_, u)| u.id == id)
+            .map(|(_, u)| u.clone()))
     }
-
-    fn user_by_subject(&self, provider: &str, subject: &str) -> Result<Option<User>, StoreError> {
+    fn users(&self) -> Result<Vec<User>, StoreError> {
         Ok(self
             .users
             .lock()
             .unwrap()
             .iter()
-            .find(|u| u.0 == provider && u.1 == subject)
-            .map(|u| u.2.clone()))
+            .map(|(_, u)| u.clone())
+            .collect())
     }
-
     fn insert_user(&self, new: &NewUser) -> Result<User, StoreError> {
         let user = User {
             id: new.id.clone(),
-            email: new.email.clone(),
             name: new.name.clone(),
-            avatar_url: new.avatar_url.clone(),
             role: new.role,
-            status: new.status,
-            created_at: "2026-10-19T00:00:00Z".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            last_used_at: None,
         };
         self.users
             .lock()
             .unwrap()
-            .push((new.provider.clone(), new.subject.clone(), user.clone()));
+            .push((new.token.clone(), user.clone()));
         Ok(user)
     }
-
-    fn update_profile(
-        &self,
-        id: &str,
-        email: &str,
-        name: &str,
-        avatar_url: Option<&str>,
-    ) -> Result<(), StoreError> {
-        for u in self
-            .users
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .filter(|u| u.2.id == id)
-        {
-            u.2.email = email.into();
-            u.2.name = name.into();
-            u.2.avatar_url = avatar_url.map(Into::into);
-        }
-        Ok(())
+    fn update_user(&self, id: &str, name: &str, role: Role) -> Result<bool, StoreError> {
+        let mut users = self.users.lock().unwrap();
+        let Some((_, user)) = users.iter_mut().find(|(_, u)| u.id == id) else {
+            return Ok(false);
+        };
+        user.name = name.to_owned();
+        user.role = role;
+        Ok(true)
     }
-
-    fn set_access(&self, id: &str, role: Role, status: UserStatus) -> Result<(), StoreError> {
-        for u in self
-            .users
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .filter(|u| u.2.id == id)
-        {
-            u.2.role = role;
-            u.2.status = status;
-        }
-        Ok(())
+    fn delete_user(&self, id: &str) -> Result<bool, StoreError> {
+        let mut users = self.users.lock().unwrap();
+        let before = users.len();
+        users.retain(|(_, u)| u.id != id);
+        self.sessions.lock().unwrap().retain(|_, (u, ..)| u != id);
+        Ok(users.len() != before)
     }
-
-    fn has_admin(&self) -> Result<bool, StoreError> {
+    fn user_token(&self, id: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .users
             .lock()
             .unwrap()
             .iter()
-            .any(|u| u.2.role == Role::Admin && u.2.status == UserStatus::Active))
+            .find(|(_, u)| u.id == id)
+            .map(|(t, _)| t.clone()))
     }
-
+    fn set_user_token(&self, id: &str, token: &str) -> Result<bool, StoreError> {
+        let mut users = self.users.lock().unwrap();
+        let Some((old, _)) = users.iter_mut().find(|(_, u)| u.id == id) else {
+            return Ok(false);
+        };
+        token.clone_into(old);
+        Ok(true)
+    }
+    fn user_by_token(&self, token: &str) -> Result<Option<User>, StoreError> {
+        let mut users = self.users.lock().unwrap();
+        Ok(users.iter_mut().find(|(t, _)| t == token).map(|(_, u)| {
+            u.last_used_at = Some("now".into());
+            u.clone()
+        }))
+    }
     fn insert_session(
         &self,
         token_hash: &str,
@@ -747,364 +700,35 @@ impl Accounts for MemoryAccounts {
         self.sessions
             .lock()
             .unwrap()
-            .insert(token_hash.into(), (user.into(), expires_at));
+            .insert(token_hash.into(), (user.into(), expires_at, false));
         Ok(())
     }
-
-    fn session_user(&self, token_hash: &str, now: u64) -> Result<Option<User>, StoreError> {
-        let user = self
-            .sessions
-            .lock()
-            .unwrap()
-            .get(token_hash)
-            .filter(|(_, expires)| *expires > now)
-            .map(|(user, _)| user.clone());
-        match user {
-            Some(id) => self.user(&id),
-            None => Ok(None),
+    fn session(&self, token_hash: &str, now: u64) -> Result<Option<SessionRow>, StoreError> {
+        let Some((user, expires, replaced)) =
+            self.sessions.lock().unwrap().get(token_hash).cloned()
+        else {
+            return Ok(None);
+        };
+        if expires <= now {
+            return Ok(None);
         }
+        Ok(self.user(&user)?.map(|user| SessionRow { user, replaced }))
     }
-
+    fn replace_sessions(&self, user: &str, except_hash: &str) -> Result<(), StoreError> {
+        for (hash, (u, _, replaced)) in self.sessions.lock().unwrap().iter_mut() {
+            if u == user && hash != except_hash {
+                *replaced = true;
+            }
+        }
+        Ok(())
+    }
     fn delete_session(&self, token_hash: &str) -> Result<(), StoreError> {
         self.sessions.lock().unwrap().remove(token_hash);
         Ok(())
     }
-
-    fn set_setup_token(&self, token_hash: &str) -> Result<(), StoreError> {
-        *self.setup.lock().unwrap() = Some(token_hash.into());
+    fn delete_sessions(&self, user: &str) -> Result<(), StoreError> {
+        self.sessions.lock().unwrap().retain(|_, (u, ..)| u != user);
         Ok(())
-    }
-
-    fn take_setup_token(&self, token_hash: &str) -> Result<bool, StoreError> {
-        let mut setup = self.setup.lock().unwrap();
-        if setup.as_deref() == Some(token_hash) {
-            *setup = None;
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    fn allow_rules(&self) -> Result<Vec<AllowRule>, StoreError> {
-        Ok(self.rules.lock().unwrap().clone())
-    }
-
-    fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError> {
-        let mut rules = self.rules.lock().unwrap();
-        let before = rules.len();
-        rules.retain(|r| r.id != id);
-        Ok(rules.len() < before)
-    }
-
-    fn insert_cli_token(
-        &self,
-        id: &str,
-        user: &str,
-        name: &str,
-        token_hash: &str,
-        via: &str,
-    ) -> Result<CliToken, StoreError> {
-        let token = CliToken {
-            id: id.into(),
-            name: name.into(),
-            via: via.into(),
-            created_at: "2026-10-19T00:00:00Z".into(),
-            last_used_at: None,
-        };
-        self.tokens
-            .lock()
-            .unwrap()
-            .push((token_hash.into(), user.into(), token.clone()));
-        Ok(token)
-    }
-
-    fn cli_tokens(&self, user: &str) -> Result<Vec<CliToken>, StoreError> {
-        Ok(self
-            .tokens
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|t| t.1 == user)
-            .map(|t| t.2.clone())
-            .collect())
-    }
-
-    fn delete_cli_token(&self, user: &str, id: &str) -> Result<bool, StoreError> {
-        let mut tokens = self.tokens.lock().unwrap();
-        let before = tokens.len();
-        tokens.retain(|t| !(t.1 == user && t.2.id == id));
-        Ok(tokens.len() < before)
-    }
-
-    fn delete_cli_token_by_hash(&self, token_hash: &str) -> Result<(), StoreError> {
-        self.tokens.lock().unwrap().retain(|t| t.0 != token_hash);
-        Ok(())
-    }
-
-    fn token_user(&self, token_hash: &str) -> Result<Option<User>, StoreError> {
-        let user = self
-            .tokens
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|t| t.0 == token_hash)
-            .map(|t| t.1.clone());
-        match user {
-            Some(id) => self.user(&id),
-            None => Ok(None),
-        }
-    }
-
-    fn insert_device(
-        &self,
-        code_hash: &str,
-        user_code: &str,
-        name: &str,
-        expires_at: u64,
-    ) -> Result<(), StoreError> {
-        self.devices.lock().unwrap().insert(
-            code_hash.into(),
-            Device {
-                user_code: user_code.into(),
-                name: name.into(),
-                status: "pending".into(),
-                user: None,
-                expires_at,
-            },
-        );
-        Ok(())
-    }
-
-    fn device_by_user_code(&self, user_code: &str) -> Result<Option<Device>, StoreError> {
-        Ok(self
-            .devices
-            .lock()
-            .unwrap()
-            .values()
-            .find(|d| d.user_code == user_code)
-            .cloned())
-    }
-
-    fn device_by_code(&self, code_hash: &str) -> Result<Option<Device>, StoreError> {
-        Ok(self.devices.lock().unwrap().get(code_hash).cloned())
-    }
-
-    fn decide_device(
-        &self,
-        user_code: &str,
-        user: &str,
-        approve: bool,
-    ) -> Result<bool, StoreError> {
-        let mut devices = self.devices.lock().unwrap();
-        let Some(device) = devices
-            .values_mut()
-            .find(|d| d.user_code == user_code && d.status == "pending")
-        else {
-            return Ok(false);
-        };
-        device.status = if approve { "approved" } else { "denied" }.into();
-        device.user = Some(user.into());
-        Ok(true)
-    }
-
-    fn delete_device(&self, code_hash: &str) -> Result<(), StoreError> {
-        self.devices.lock().unwrap().remove(code_hash);
-        Ok(())
-    }
-
-    fn insert_share_link(&self, link: &NewShareLink) -> Result<ShareLink, StoreError> {
-        let created = ShareLink {
-            id: link.id.clone(),
-            project: link.project.clone(),
-            role: link.role,
-            label: link.label.clone(),
-            created_by: link.created_by.clone(),
-            created_at: "2026-10-19T00:00:00Z".into(),
-            revoked_at: None,
-            guests: 0,
-        };
-        self.links
-            .lock()
-            .unwrap()
-            .push((link.token_hash.clone(), created.clone()));
-        Ok(created)
-    }
-
-    fn share_links(&self, project: &str) -> Result<Vec<ShareLink>, StoreError> {
-        let guests = self.guests.lock().unwrap();
-        Ok(self
-            .links
-            .lock()
-            .unwrap()
-            .iter()
-            .rev()
-            .filter(|(_, l)| l.project == project)
-            .map(|(_, l)| ShareLink {
-                guests: u32::try_from(guests.iter().filter(|(_, link)| *link == l.id).count())
-                    .unwrap(),
-                ..l.clone()
-            })
-            .collect())
-    }
-
-    fn share_link_by_token(&self, token_hash: &str) -> Result<Option<ShareLink>, StoreError> {
-        Ok(self
-            .links
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(h, _)| h == token_hash)
-            .map(|(_, l)| l.clone()))
-    }
-
-    fn revoke_share_link(&self, project: &str, id: &str) -> Result<bool, StoreError> {
-        let mut links = self.links.lock().unwrap();
-        let Some((_, link)) = links
-            .iter_mut()
-            .find(|(_, l)| l.project == project && l.id == id && l.revoked_at.is_none())
-        else {
-            return Ok(false);
-        };
-        link.revoked_at = Some("2026-10-19T01:00:00Z".into());
-        let gone: Vec<String> = self
-            .guests
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, l)| l == id)
-            .map(|(g, _)| g.id.clone())
-            .collect();
-        self.guest_sessions
-            .lock()
-            .unwrap()
-            .retain(|_, (guest, _)| !gone.contains(guest));
-        Ok(true)
-    }
-
-    fn insert_guest(&self, id: &str, link: &str, name: &str) -> Result<(), StoreError> {
-        self.guests.lock().unwrap().push((
-            Guest {
-                id: id.into(),
-                name: name.into(),
-            },
-            link.into(),
-        ));
-        Ok(())
-    }
-
-    fn insert_guest_session(
-        &self,
-        token_hash: &str,
-        guest: &str,
-        expires_at: u64,
-    ) -> Result<(), StoreError> {
-        self.guest_sessions
-            .lock()
-            .unwrap()
-            .insert(token_hash.into(), (guest.into(), expires_at));
-        Ok(())
-    }
-
-    fn guest_session(
-        &self,
-        token_hash: &str,
-        now: u64,
-    ) -> Result<Option<(Guest, ShareLink)>, StoreError> {
-        let Some((guest_id, _)) = self
-            .guest_sessions
-            .lock()
-            .unwrap()
-            .get(token_hash)
-            .filter(|(_, expires)| *expires > now)
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        let Some((guest, link_id)) = self
-            .guests
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(g, _)| g.id == guest_id)
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        let link = self
-            .links
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(_, l)| l.id == link_id && l.revoked_at.is_none())
-            .map(|(_, l)| l.clone());
-        Ok(link.map(|link| (guest, link)))
-    }
-
-    fn users(&self) -> Result<Vec<User>, StoreError> {
-        Ok(self
-            .users
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|u| u.2.clone())
-            .collect())
-    }
-
-    fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError> {
-        let mut rules = self.rules.lock().unwrap();
-        if let Some(rule) = rules.iter().find(|r| r.kind == kind && r.value == value) {
-            return Ok(rule.clone());
-        }
-        let rule = AllowRule {
-            id: rules.iter().map(|r| r.id).max().unwrap_or(0) + 1,
-            kind: kind.into(),
-            value: value.into(),
-        };
-        rules.push(rule.clone());
-        Ok(rule)
-    }
-}
-
-/// An identity provider that answers what the test told it to.
-#[derive(Default)]
-pub struct FakeIdentity {
-    requests: Mutex<Vec<AuthRequest>>,
-    claims: Mutex<Option<Claims>>,
-}
-
-impl FakeIdentity {
-    /// The `state` of the last sign-in the engine started.
-    pub fn last_state(&self) -> String {
-        self.requests.lock().unwrap().last().unwrap().state.clone()
-    }
-
-    /// The claims the next exchange returns.
-    pub fn next(&self, subject: &str, email: &str, verified: bool) {
-        *self.claims.lock().unwrap() = Some(Claims {
-            subject: subject.into(),
-            email: email.into(),
-            email_verified: verified,
-            name: None,
-            picture: None,
-        });
-    }
-}
-
-impl Identity for FakeIdentity {
-    fn provider(&self) -> &'static str {
-        "fake"
-    }
-
-    fn authorize_url(&self, request: &AuthRequest) -> Result<String, IdpError> {
-        self.requests.lock().unwrap().push(request.clone());
-        Ok(format!("https://idp.test/auth?state={}", request.state))
-    }
-
-    fn exchange(&self, _code: &str, _verifier: &str, _nonce: &str) -> Result<Claims, IdpError> {
-        self.claims
-            .lock()
-            .unwrap()
-            .take()
-            .ok_or_else(|| IdpError::Failed("no claims scripted".into()))
     }
 }
 
@@ -1112,6 +736,13 @@ impl Identity for FakeIdentity {
 #[derive(Default)]
 pub struct MemoryRealtime {
     pub events: Mutex<Vec<(String, String)>>,
+    kicked: Mutex<Vec<crate::Kick>>,
+}
+
+impl MemoryRealtime {
+    pub fn kicks(&self) -> Vec<crate::Kick> {
+        self.kicked.lock().unwrap().clone()
+    }
 }
 
 impl crate::Realtime for MemoryRealtime {
@@ -1141,6 +772,7 @@ impl crate::Realtime for MemoryRealtime {
             .push(("*".into(), format!("notify {}", people.join(","))));
     }
     fn kick(&self, who: crate::Kick) {
+        self.kicked.lock().unwrap().push(who.clone());
         self.events
             .lock()
             .unwrap()
@@ -1301,68 +933,5 @@ impl crate::WebhookSender for MemorySender {
             String::from_utf8_lossy(body).into_owned(),
         ));
         Ok(200)
-    }
-}
-
-/// Invites in memory.
-#[derive(Default)]
-pub struct MemoryInvites(Mutex<Vec<(String, board_model::Invite)>>);
-
-impl crate::Invites for MemoryInvites {
-    fn insert_invite(&self, invite: &crate::NewInvite) -> Result<board_model::Invite, StoreError> {
-        let stored = board_model::Invite {
-            id: invite.id.clone(),
-            role: invite.role,
-            user: invite.user.clone(),
-            label: invite.label.clone(),
-            created_by: invite.created_by.clone(),
-            created_at: String::new(),
-            expires_at: invite.expires_at,
-            used_at: None,
-            used_by: None,
-        };
-        self.0
-            .lock()
-            .unwrap()
-            .push((invite.token_hash.clone(), stored.clone()));
-        Ok(stored)
-    }
-    fn invite_by_token(&self, token_hash: &str) -> Result<Option<board_model::Invite>, StoreError> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(h, _)| h == token_hash)
-            .map(|(_, i)| i.clone()))
-    }
-    fn use_invite(&self, id: &str, user: &str) -> Result<bool, StoreError> {
-        let mut all = self.0.lock().unwrap();
-        let Some((_, invite)) = all
-            .iter_mut()
-            .find(|(_, i)| i.id == id && i.used_at.is_none())
-        else {
-            return Ok(false);
-        };
-        invite.used_at = Some("now".into());
-        invite.used_by = Some(user.to_owned());
-        Ok(true)
-    }
-    fn invites(&self) -> Result<Vec<board_model::Invite>, StoreError> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .rev()
-            .filter(|(_, i)| i.user.is_none())
-            .map(|(_, i)| i.clone())
-            .collect())
-    }
-    fn delete_invite(&self, id: &str) -> Result<bool, StoreError> {
-        let mut all = self.0.lock().unwrap();
-        let before = all.len();
-        all.retain(|(_, i)| i.id != id);
-        Ok(all.len() != before)
     }
 }

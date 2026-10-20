@@ -4,8 +4,8 @@
 
 board runs as three services: **board-server** (API, web tool, previews), **board-workspace**
 (installs and builds project code) and **board-render** (Chromium: captures and checks). In local
-mode there is no sign-in: everyone who can reach the ports acts as the built-in admin, so the ports
-stay on this machine's loopback.
+mode the person at this machine needs no token: everyone who reaches port 5280 acts as the board's
+admin, so the ports stay on this machine's loopback.
 
 ## With Docker (recommended)
 
@@ -60,34 +60,41 @@ printf 'BOARD_DATA_DIR=%s\nBOARD_USER=%s\n' ~/board-data "$(id -u):$(id -g)" >> 
 docker compose up -d
 ```
 
-## Share it from this machine
+## Team and sharing
 
-A local board can be opened to others without restarting it. It has a second port, the **remote
-door** (`127.0.0.1:5284`, `BOARD_REMOTE_BIND`): closed until sharing is on, then everyone who
-comes through it signs in with an invite link.
+**Team** (in the header) lists the members. Add someone with a name and a role (admin, editor,
+commenter, viewer) and hand over their **token**, or the link that carries it
+(`…/?t=<token>`): it signs their browser in once and stays signed in. Tokens are shown and copied
+from the Team page at any time; **New token** stops the old one. When the same token signs in on a
+second browser, the first one is signed out (the CLI is not). People without a token are
+**visitors**: they look at the team's projects under a made-up name, until you set *Visitors* to
+*Token required*.
 
-1. In **Team › Sharing**, pick how others reach it:
-   - **Tailscale network** — people on your tailnet (Tailscale, or Headscale over plain HTTP
-     inside the tailnet). board runs `tailscale serve` and shows the machine's name.
-   - **Tailscale Funnel** — anyone with a link reaches the sign-in page at the machine's `ts.net`
-     name. If Funnel is not enabled for the machine, the page shows the admin-console link.
-   - **ngrok** — the server runs an ngrok tunnel itself (no ngrok program needed). Paste the
-     authtoken from your ngrok dashboard (kept on the server, never shown again) and, if you have
-     one, your ngrok domain so the address stays the same. `BOARD_NGROK_AUTHTOKEN` also works.
-   - **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing
-     at `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
-   - **Local network** — the remote door also listens on this machine's LAN address, over plain
-     HTTP. For trying things out: links show the IP. (In Docker, publish port 5284 instead.)
-2. Enter your name (the first time) and turn sharing on.
-3. Invite people from the same page.
+The same rules hold on every address except this machine's `localhost:5280`, which is the admin
+(the member marked *This machine's admin*; their token works from other machines too).
 
-`board doctor` says whether the shared address answers. The Tailscale choices need the
-`tailscale` CLI where board-server runs (`BOARD_TAILSCALE`, `BOARD_TAILSCALE_SOCKET`). In Docker use **My address** and run
-`tailscale serve --bg http://127.0.0.1:5284` (or `tailscale funnel …`) on the host.
+To let other machines in, board has a second port, the **remote door** (`127.0.0.1:5284`,
+`BOARD_REMOTE_BIND`). In **Team › Sharing**, pick how others reach it:
 
-This machine keeps working without sign-in, as you (the owner account made in step 2). Turning
-sharing off closes the remote door; accounts stay for next time. Previews come through the same
-address, sandboxed. For a server that is only ever used by a team, see [public mode](public.md).
+- **Tailscale network** — people on your tailnet (Tailscale, or Headscale over plain HTTP inside
+  the tailnet). board runs `tailscale serve` and shows the machine's name.
+- **Tailscale Funnel** — anyone with the address, at the machine's `ts.net` name. If Funnel is not
+  enabled for the machine, the page shows the admin-console link.
+- **ngrok** — the server runs an ngrok tunnel itself (no ngrok program needed). Paste the authtoken
+  from your ngrok dashboard (kept on the server, never shown again) and, if you have one, your
+  ngrok domain so the address stays the same. `BOARD_NGROK_AUTHTOKEN` also works.
+- **My address** — a tunnel or reverse proxy you set up (ngrok, cloudflared, nginx…) pointing at
+  `127.0.0.1:5284`. Never point one at 5280, which trusts everyone.
+- **Local network** — the remote door also listens on this machine's LAN address, over plain HTTP.
+  For trying things out: links show the IP, and tokens travel unencrypted. (In Docker, publish
+  port 5284 instead.)
+
+Links (member links, notifications) use the shared address while sharing is on. `board doctor`
+says whether it answers. The Tailscale choices need the `tailscale` CLI where board-server runs
+(`BOARD_TAILSCALE`, `BOARD_TAILSCALE_SOCKET`). In Docker use **My address** and run
+`tailscale serve --bg http://127.0.0.1:5284` (or `tailscale funnel …`) on the host. Previews come
+through the same address, sandboxed. For a server that is only ever used by a team, see
+[public mode](public.md).
 
 ## The CLI
 

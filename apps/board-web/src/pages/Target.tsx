@@ -377,7 +377,7 @@ function Composer({
     if (pick) input.current?.focus();
   }, [pick]);
   if (!canComment)
-    return <p className="border-b p-4 text-sm text-muted-foreground">{t("web.links.viewOnly")}</p>;
+    return <p className="border-b p-4 text-sm text-muted-foreground">{t("web.access.viewOnly")}</p>;
   if (!pick)
     return <p className="border-b p-4 text-sm text-muted-foreground">{t("web.comments.pick")}</p>;
   const submit = () => {
