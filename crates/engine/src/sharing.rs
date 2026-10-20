@@ -1,19 +1,19 @@
-//! Sharing: opening a local board to other machines from the web tool, without a restart.
+//! Sharing: opening a local charet to other machines from the web tool, without a restart.
 //!
-//! A local board has two doors. The local door (loopback) acts as the owner, this machine's
+//! A local charet has two doors. The local door (loopback) acts as the owner, this machine's
 //! admin. The remote door treats everyone the same, by token; tunnels and reverse proxies point
 //! only at it, so a request that came through one can never act as the owner. Sharing only
 //! decides which tunnel runs and which address links use.
 
 use std::sync::Arc;
 
-use board_model::Actor;
+use charet_model::Actor;
 use serde::{Deserialize, Serialize};
 
 use crate::members::admin;
 use crate::{Engine, EngineError};
 
-/// How other machines reach the board.
+/// How other machines reach the charet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ShareMode {
@@ -86,7 +86,7 @@ impl std::fmt::Debug for ShareRequest {
 /// The parts of the engine that change while it runs.
 #[derive(Default)]
 pub(crate) struct Live {
-    /// The address from the server's settings (`http://localhost:5280` on a local board).
+    /// The address from the server's settings (`http://localhost:5280` on a local charet).
     pub home_url: Option<Arc<str>>,
     pub sharing: Option<Sharing>,
     /// Who the local door acts as.
@@ -189,7 +189,7 @@ impl Engine {
             let url = request.url.trim().trim_end_matches('/').to_owned();
             if !(url.starts_with("https://") || url.starts_with("http://")) || url.contains(' ') {
                 return Err(EngineError::Invalid(
-                    "the address is an http(s) URL, e.g. https://board.example.com".into(),
+                    "the address is an http(s) URL, e.g. https://charet.example.com".into(),
                 ));
             }
             if let Some(old) = current.filter(|c| c.mode.tunnel()) {
@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(engine.tool_url().as_deref(), Some("https://b.example.com"));
 
         let eve = engine
-            .add_member(&Actor::Local, "Eve", board_model::Role::Editor)
+            .add_member(&Actor::Local, "Eve", charet_model::Role::Editor)
             .unwrap()
             .user
             .actor();

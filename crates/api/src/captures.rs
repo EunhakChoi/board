@@ -5,7 +5,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use board_engine::{CaptureStatus, Engine, EngineError, Rendered, SheetItem};
+use charet_engine::{CaptureStatus, Engine, EngineError, Rendered, SheetItem};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;

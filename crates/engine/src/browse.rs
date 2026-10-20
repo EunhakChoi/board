@@ -1,7 +1,7 @@
 //! Read-only views of a revision for the web tool: its manifest (pages, screens, connections,
 //! flows, stories) and its source files.
 
-use board_model::{Actor, valid_path};
+use charet_model::{Actor, valid_path};
 
 use crate::policy::Command;
 use crate::{BuildState, Engine, EngineError};
@@ -10,7 +10,7 @@ use crate::{BuildState, Engine, EngineError};
 const MAX_FILE: usize = 2 * 1024 * 1024;
 
 impl Engine {
-    /// The `.board/manifest.json` of `rev`'s build. Starts the build when there is none.
+    /// The `.charet/manifest.json` of `rev`'s build. Starts the build when there is none.
     pub fn manifest(
         &self,
         actor: &Actor,
@@ -33,10 +33,10 @@ impl Engine {
         let file = self
             .ports
             .workspace
-            .file(key, &preview.commit, ".board/manifest.json")?
-            .ok_or_else(|| EngineError::Invalid("the build has no .board/manifest.json".into()))?;
+            .file(key, &preview.commit, ".charet/manifest.json")?
+            .ok_or_else(|| EngineError::Invalid("the build has no .charet/manifest.json".into()))?;
         let manifest = serde_json::from_slice(&file.body)
-            .map_err(|e| EngineError::Invalid(format!("bad .board/manifest.json: {e}")))?;
+            .map_err(|e| EngineError::Invalid(format!("bad .charet/manifest.json: {e}")))?;
         Ok((preview.commit, manifest))
     }
 
@@ -85,13 +85,13 @@ impl Engine {
 mod tests {
     use crate::testing::{engine_with_fakes, file};
     use crate::{BuildState, EngineError};
-    use board_model::Actor;
+    use charet_model::Actor;
 
     #[test]
     fn manifest_and_files() {
         let (engine, fakes) = engine_with_fakes();
         let import = crate::Import {
-            files: vec![file("src/a.tsx", "export {}"), file("board.json", "{}")],
+            files: vec![file("src/a.tsx", "export {}"), file("charet.json", "{}")],
             source: "t".into(),
         };
         engine
@@ -103,14 +103,14 @@ mod tests {
         ));
         fakes.workspace.finish(BuildState::Ready);
         fakes.workspace.serve(
-            ".board/manifest.json",
+            ".charet/manifest.json",
             r#"{"manifestVersion":1,"screens":[]}"#,
         );
         let (_, manifest) = engine.manifest(&Actor::Local, "shop", "main").unwrap();
         assert_eq!(manifest["manifestVersion"], 1);
 
         let (commit, paths) = engine.files(&Actor::Local, "shop", "main").unwrap();
-        assert_eq!(paths, ["board.json", "src/a.tsx"]);
+        assert_eq!(paths, ["charet.json", "src/a.tsx"]);
         let (same, bytes) = engine
             .file(&Actor::Local, "shop", "main", "src/a.tsx")
             .unwrap();

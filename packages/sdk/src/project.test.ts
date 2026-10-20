@@ -64,7 +64,7 @@ test("reports every problem with its id", () => {
       `missing: ${expected}\n${problems.join("\n")}`,
     );
   }
-  assert.throws(() => defineProject(broken), /invalid board project/);
+  assert.throws(() => defineProject(broken), /invalid charet project/);
 });
 
 test("the manifest fills defaults and marks planned steps", () => {

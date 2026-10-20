@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::sync::Mutex;
 
-use board_model::Actor;
+use charet_model::Actor;
 use serde::{Deserialize, Serialize};
 
 use crate::policy::Command;
@@ -17,7 +17,7 @@ use crate::preview::{preview_path, token};
 use crate::{BuildState, Capture, EngineError, ImageKind, RenderJob, Shot};
 use crate::{Engine, PreviewSettings};
 
-/// Renders at once per command; `board-render` has its own limit too.
+/// Renders at once per command; `charet-render` has its own limit too.
 const PARALLEL: usize = 4;
 
 pub const THEMES: [&str; 2] = ["light", "dark"];
@@ -187,7 +187,7 @@ impl Engine {
         let Some(head) = self.ports.store.head(key)? else {
             return Ok(Vec::new());
         };
-        let app = app_dir(self.ports.store.read(key, &head, "board.json")?.as_deref());
+        let app = app_dir(self.ports.store.read(key, &head, "charet.json")?.as_deref());
         let known: BTreeSet<String> = captures
             .iter()
             .flat_map(|c| c.sources.iter().map(|s| join(&app, s)))
@@ -316,18 +316,18 @@ impl Engine {
             .collect())
     }
 
-    /// Screens and stories of a build, from its `.board/manifest.json`.
+    /// Screens and stories of a build, from its `.charet/manifest.json`.
     fn targets(&self, key: &str, commit: &str) -> Result<Vec<Target>, EngineError> {
         let file = self
             .ports
             .workspace
-            .file(key, commit, ".board/manifest.json")?
-            .ok_or_else(|| EngineError::Invalid("the build has no .board/manifest.json".into()))?;
+            .file(key, commit, ".charet/manifest.json")?
+            .ok_or_else(|| EngineError::Invalid("the build has no .charet/manifest.json".into()))?;
         let manifest: Manifest = serde_json::from_slice(&file.body)
-            .map_err(|e| EngineError::Invalid(format!("bad .board/manifest.json: {e}")))?;
+            .map_err(|e| EngineError::Invalid(format!("bad .charet/manifest.json: {e}")))?;
         if manifest.version != 1 {
             return Err(EngineError::Invalid(format!(
-                "manifest version {} needs a newer board",
+                "manifest version {} needs a newer charet",
                 manifest.version
             )));
         }
@@ -358,7 +358,7 @@ impl Engine {
     ) -> Result<Shot, EngineError> {
         let token = token(settings, key, commit);
         let url = format!(
-            "{}{}.board/frame.html?{}={}&theme={theme}",
+            "{}{}.charet/frame.html?{}={}&theme={theme}",
             settings.render_origin,
             preview_path(&token, key, commit),
             target.kind,
@@ -450,9 +450,9 @@ fn sources(elements: &serde_json::Value) -> Vec<String> {
     files.into_iter().collect()
 }
 
-/// The app directory from `board.json` (`app`), `""` for the project root.
-fn app_dir(board_json: Option<&[u8]>) -> String {
-    board_json
+/// The app directory from `charet.json` (`app`), `""` for the project root.
+fn app_dir(charet_json: Option<&[u8]>) -> String {
+    charet_json
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok())
         .and_then(|v| v.get("app")?.as_str().map(str::to_owned))
         .map(|app| app.trim_matches('/').to_owned())
@@ -486,7 +486,7 @@ mod tests {
     use super::*;
     use crate::BuildState;
     use crate::testing::{Fakes, engine_with_fakes, file};
-    use board_model::Actor;
+    use charet_model::Actor;
 
     const MANIFEST: &str = r#"{"manifestVersion":1,"title":"T","pages":[],
         "screens":[{"id":"list","page":"p","title":"L","note":"","route":"/","size":{"w":800,"h":600},"hasSetup":false},
@@ -498,7 +498,7 @@ mod tests {
         let (engine, fakes) = engine_with_fakes();
         let import = crate::Import {
             files: vec![
-                file("board.json", r#"{"app":"web"}"#),
+                file("charet.json", r#"{"app":"web"}"#),
                 file("web/src/list.tsx", "list"),
                 file("web/src/empty.tsx", "empty"),
                 file("web/src/api.ts", "api"),
@@ -512,7 +512,7 @@ mod tests {
             .preview(&Actor::Local, "shop", "main", false)
             .unwrap();
         fakes.workspace.finish(BuildState::Ready);
-        fakes.workspace.serve(".board/manifest.json", MANIFEST);
+        fakes.workspace.serve(".charet/manifest.json", MANIFEST);
         (engine, fakes)
     }
 

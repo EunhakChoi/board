@@ -8,8 +8,8 @@ mod notices;
 use std::path::Path;
 use std::sync::Mutex;
 
-use board_engine::{Records, Settings, StoreError};
-use board_model::{Origin, Project, Version, VersionKind, Visibility};
+use charet_engine::{Records, Settings, StoreError};
+use charet_model::{Origin, Project, Version, VersionKind, Visibility};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use captures::CaptureStore;
@@ -31,7 +31,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0011_member_tokens.sql"),
 ];
 
-/// The board database: one SQLite file in WAL mode.
+/// The charet database: one SQLite file in WAL mode.
 #[derive(Debug)]
 pub struct Db {
     conn: Mutex<Connection>,
@@ -85,7 +85,7 @@ fn migrate(conn: &Connection) -> Result<(), StoreError> {
     let applied = user_version(conn)?;
     if applied > MIGRATIONS.len() {
         return Err(StoreError(format!(
-            "database schema {applied} is newer than this board ({}); upgrade board",
+            "database schema {applied} is newer than this charet ({}); upgrade charet",
             MIGRATIONS.len()
         )));
     }
@@ -339,7 +339,7 @@ mod tests {
             Db::init(conn)
                 .unwrap_err()
                 .0
-                .contains("newer than this board")
+                .contains("newer than this charet")
         );
     }
 
@@ -401,9 +401,9 @@ mod tests {
 
     #[test]
     fn opens_a_file() {
-        let dir = std::env::temp_dir().join(format!("board-db-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("charet-db-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("board.db");
+        let path = dir.join("charet.db");
         Db::open(&path).unwrap().set("k", "v").unwrap();
         assert_eq!(Db::open(&path).unwrap().get("k").unwrap(), Some("v".into()));
         std::fs::remove_dir_all(&dir).unwrap();

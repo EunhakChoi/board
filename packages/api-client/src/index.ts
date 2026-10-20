@@ -6,23 +6,23 @@ export type Schemas = components["schemas"];
 export type ApiError = Schemas["Error"];
 
 export interface ClientOptions {
-  /** Server origin, e.g. `http://127.0.0.1:5280`. Empty means same origin (board-web). */
+  /** Server origin, e.g. `http://127.0.0.1:5280`. Empty means same origin (charet-web). */
   baseUrl?: string;
-  /** CLI token, sent as a Bearer header. board-web relies on the session cookie instead. */
+  /** CLI token, sent as a Bearer header. charet-web relies on the session cookie instead. */
   token?: string;
   fetch?: typeof globalThis.fetch;
 }
 
 /** Header the server requires on changing requests that rely on the session cookie. */
-export const CLIENT_HEADER = "x-board-client";
+export const CLIENT_HEADER = "x-charet-client";
 
-/** Typed client for the board API (`contracts/openapi.yaml`). */
+/** Typed client for the charet API (`contracts/openapi.yaml`). */
 export function createClient({ baseUrl = "", token, fetch }: ClientOptions = {}) {
   return createFetchClient<paths>({
     baseUrl,
     headers: {
       // Changing requests must carry it: cross-site pages cannot send custom headers (CSRF).
-      [CLIENT_HEADER]: "board",
+      [CLIENT_HEADER]: "charet",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     ...(fetch ? { fetch } : {}),

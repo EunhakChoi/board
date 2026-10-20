@@ -19,8 +19,8 @@ use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use board_engine::{Engine, ServiceState};
-use board_model::{Role, VERSION};
+use charet_engine::{Engine, ServiceState};
+use charet_model::{Role, VERSION};
 use serde::Serialize;
 
 pub use auth::{CLIENT_HEADER, Caller, LocalDoor, Remote, SESSION_COOKIE, VISITOR_COOKIE};
@@ -93,7 +93,7 @@ pub const ROUTES: &[(&str, &str)] = &[
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
 const MAX_BODY: usize = 512 * 1024 * 1024;
 
-/// The board API router; anything else is a JSON 404.
+/// The charet API router; anything else is a JSON 404.
 pub fn router(engine: Engine) -> Router {
     routes().fallback(not_found).with_state(engine)
 }
@@ -115,7 +115,7 @@ pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
     app.merge(preview::preview_routes(engine, &origin))
 }
 
-/// The remote door of a local board: what a tunnel or reverse proxy points at. Nobody is the
+/// The remote door of a local charet: what a tunnel or reverse proxy points at. Nobody is the
 /// owner here (members bring their token), and previews are served sandboxed under the same
 /// address.
 pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
@@ -252,7 +252,7 @@ struct Service {
     error: Option<String>,
 }
 
-/// Answers without a token too (the token page and `board login` need `localMode`); only
+/// Answers without a token too (the token page and `charet login` need `localMode`); only
 /// admins see why a service fails.
 async fn system(
     State(engine): State<Engine>,
@@ -275,7 +275,7 @@ async fn system(
         version: VERSION,
         latest: system.latest,
         tool_url: system.tool_url.clone(),
-        // Through the remote door of a local board, previews come from the shared address.
+        // Through the remote door of a local charet, previews come from the shared address.
         preview_url: if !local && system.local_mode {
             system.tool_url.clone()
         } else {

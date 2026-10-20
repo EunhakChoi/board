@@ -8,7 +8,7 @@ setup:
 	$(CARGO) fetch
 
 gen-api:
-	$(PNPM) --filter @board/api-client run gen
+	$(PNPM) --filter @charet/api-client run gen
 
 lint:
 	$(CARGO) xtask layers
@@ -30,16 +30,16 @@ test-rust:
 	$(CARGO) test --workspace
 
 test-ts:
-	$(CARGO) build --quiet -p board-server
+	$(CARGO) build --quiet -p charet-server
 	$(PNPM) -r --if-present run test
 
 check: lint typecheck test
 
-# The web tool against the real stack (needs a Playwright Chromium: `pnpm --filter board-web exec playwright install chromium chromium-headless-shell`).
+# The web tool against the real stack (needs a Playwright Chromium: `pnpm --filter charet-web exec playwright install chromium chromium-headless-shell`).
 e2e:
-	$(CARGO) build --quiet -p board-server -p board-render
-	$(PNPM) --filter board-web run build
-	$(PNPM) --filter board-web run e2e
+	$(CARGO) build --quiet -p charet-server -p charet-render
+	$(PNPM) --filter charet-web run build
+	$(PNPM) --filter charet-web run e2e
 
 # `docker compose` install on spare ports (5380 / 5381), checked end to end, then removed.
 docker-smoke:

@@ -4,8 +4,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use board_engine::{Engine, WEBHOOK_EVENTS};
-use board_model::{Notification, Webhook};
+use charet_engine::{Engine, WEBHOOK_EVENTS};
+use charet_model::{Notification, Webhook};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;
@@ -98,7 +98,7 @@ pub struct WebhookInput {
 #[derive(Serialize)]
 pub struct WithSecret {
     webhook: Webhook,
-    /// Shown once: the key receivers check `X-Board-Signature` with.
+    /// Shown once: the key receivers check `X-Charet-Signature` with.
     secret: String,
 }
 

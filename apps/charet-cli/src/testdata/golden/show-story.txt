@@ -1,0 +1,7 @@
+$ charet show button-default
+story button-default — Default
+  component  <Button>
+  size       480×320
+  capture    light
+  sources    src/components/ui/button.tsx
+[exit 0]

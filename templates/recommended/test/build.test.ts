@@ -9,15 +9,15 @@ import { build } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("a preview build has the app, the frame, the manifest and source locations", async () => {
-  const outDir = mkdtempSync(join(tmpdir(), "board-template-"));
-  process.env.BOARD_PREVIEW = "1";
+  const outDir = mkdtempSync(join(tmpdir(), "charet-template-"));
+  process.env.CHARET_PREVIEW = "1";
   try {
     await build({ root, logLevel: "error", build: { outDir, emptyOutDir: true } });
     assert.ok(existsSync(join(outDir, "index.html")));
-    assert.ok(existsSync(join(outDir, ".board/frame.html")));
+    assert.ok(existsSync(join(outDir, ".charet/frame.html")));
     assert.ok(existsSync(join(outDir, "mockServiceWorker.js")));
 
-    const manifest = JSON.parse(readFileSync(join(outDir, ".board/manifest.json"), "utf8"));
+    const manifest = JSON.parse(readFileSync(join(outDir, ".charet/manifest.json"), "utf8"));
     assert.equal(manifest.manifestVersion, 1);
     assert.deepEqual(
       manifest.screens.map((s: { id: string }) => s.id),
@@ -32,20 +32,20 @@ test("a preview build has the app, the frame, the manifest and source locations"
       .join("\n");
     assert.match(js, /src\/pages\/tasks\.tsx:\d+:\d+/);
     // The frame's own files are not marked, and component names survive for the element map.
-    assert.doesNotMatch(js, /\.board\/frame\.tsx:\d+/);
+    assert.doesNotMatch(js, /\.charet\/frame\.tsx:\d+/);
     assert.match(js, /function Button\(/);
   } finally {
-    delete process.env.BOARD_PREVIEW;
+    delete process.env.CHARET_PREVIEW;
     rmSync(outDir, { recursive: true, force: true });
   }
 });
 
-test("a plain build of the app has no board parts", async () => {
-  const outDir = mkdtempSync(join(tmpdir(), "board-template-"));
+test("a plain build of the app has no charet parts", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "charet-template-"));
   try {
     await build({ root, logLevel: "error", build: { outDir, emptyOutDir: true } });
     assert.ok(existsSync(join(outDir, "index.html")));
-    assert.ok(!existsSync(join(outDir, ".board")));
+    assert.ok(!existsSync(join(outDir, ".charet")));
     assert.ok(!existsSync(join(outDir, "mockServiceWorker.js")));
     const js = readdirSync(join(outDir, "assets"))
       .filter((f) => f.endsWith(".js"))

@@ -1,6 +1,6 @@
 //! Who may run which command. The single place permissions are decided (`docs/design/security.md`).
 
-use board_model::{Actor, Role, Visibility};
+use charet_model::{Actor, Role, Visibility};
 
 /// Every command that needs a permission check. Names match the command registry (`area.verb`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use board_engine::TunnelOptions;
+use charet_engine::TunnelOptions;
 use ngrok::config::ForwarderBuilder;
 use ngrok::forwarder::Forwarder;
 use ngrok::prelude::{EndpointInfo, TunnelCloser};
@@ -47,7 +47,7 @@ impl Ngrok {
         let token = options
             .authtoken
             .clone()
-            .or_else(|| std::env::var("BOARD_NGROK_AUTHTOKEN").ok())
+            .or_else(|| std::env::var("CHARET_NGROK_AUTHTOKEN").ok())
             .filter(|t| !t.trim().is_empty())
             .ok_or("an ngrok authtoken, please (ngrok dashboard › Your Authtoken)")?;
         self.close()?;
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn without_an_authtoken_it_asks_for_one() {
-        if std::env::var("BOARD_NGROK_AUTHTOKEN").is_ok() {
+        if std::env::var("CHARET_NGROK_AUTHTOKEN").is_ok() {
             return;
         }
         let runtime = tokio::runtime::Builder::new_current_thread()

@@ -3,12 +3,12 @@
 #   docker compose -f compose.yaml -f compose.public.yaml up -d
 #
 # Ports stay on this machine's loopback; put a TLS proxy or tunnel with a fixed domain in front
-# (BOARD_PUBLIC_URL; BOARD_PUBLIC_PREVIEW_URL only when previews get their own address, otherwise
+# (CHARET_PUBLIC_URL; CHARET_PUBLIC_PREVIEW_URL only when previews get their own address, otherwise
 # the tool's address serves them sandboxed). See docs/public.md.
 
 services:
   server:
-    command: ["board-server", "--public"]
+    command: ["charet-server", "--public"]
     environment:
-      BOARD_PUBLIC_URL: ${BOARD_PUBLIC_URL:?set BOARD_PUBLIC_URL to the address people open}
-      BOARD_PREVIEW_URL: ${BOARD_PUBLIC_PREVIEW_URL:-}
+      CHARET_PUBLIC_URL: ${CHARET_PUBLIC_URL:?set CHARET_PUBLIC_URL to the address people open}
+      CHARET_PREVIEW_URL: ${CHARET_PUBLIC_PREVIEW_URL:-}

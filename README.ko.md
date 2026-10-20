@@ -1,4 +1,6 @@
-# board (임시 이름)
+# charet
+
+*React 와 AI agent 를 위한 live-code design charrette.*
 
 [English](README.md) | **한국어**
 

@@ -8,12 +8,12 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use board_db::{CaptureStore, CommentStore, Db};
-use board_engine::{
+use charet_db::{CaptureStore, CommentStore, Db};
+use charet_engine::{
     Build, BuildState, BuiltFile, Engine, Ports, PreviewSettings, RenderJob, Renderer, Shot,
     Workspace, WorkspaceError,
 };
-use board_store::GitStore;
+use charet_store::GitStore;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -21,7 +21,7 @@ use tower::ServiceExt;
 fn engine(local_mode: bool) -> Engine {
     static NEXT: AtomicU32 = AtomicU32::new(0);
     let root = std::env::temp_dir().join(format!(
-        "board-api-{}-{}",
+        "charet-api-{}-{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
@@ -39,7 +39,7 @@ fn engine(local_mode: bool) -> Engine {
             accounts: db.clone(),
             notices: db,
             webhooks: Arc::new(TeapotSender),
-            realtime: Arc::new(board_collab::Hub::new()),
+            realtime: Arc::new(charet_collab::Hub::new()),
         },
         local_mode,
     )
@@ -49,7 +49,7 @@ fn engine(local_mode: bool) -> Engine {
 /// Every webhook receiver answers 418, so tests can tell a delivery happened.
 struct TeapotSender;
 
-impl board_engine::WebhookSender for TeapotSender {
+impl charet_engine::WebhookSender for TeapotSender {
     fn post(&self, _: &str, _: &[(&str, String)], _: &[u8]) -> Result<u16, String> {
         Ok(418)
     }
@@ -81,8 +81,8 @@ impl Workspace for ReadyWorkspace {
     }
     fn file(&self, _: &str, _: &str, path: &str) -> Result<Option<BuiltFile>, WorkspaceError> {
         let body: &[u8] = match path {
-            ".board/frame.html" => b"<!doctype html>",
-            ".board/manifest.json" => {
+            ".charet/frame.html" => b"<!doctype html>",
+            ".charet/manifest.json" => {
                 br#"{"manifestVersion":1,"screens":[{"id":"home","size":{"w":800,"h":600}}],"stories":[]}"#
             }
             _ => return Ok(None),
@@ -101,7 +101,7 @@ struct FakeRenderer;
 impl Renderer for FakeRenderer {
     fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError> {
         let issues = if job.url.contains("theme=dark") {
-            vec!["[board] missing mock GET /api/x".to_owned()]
+            vec!["[charet] missing mock GET /api/x".to_owned()]
         } else {
             Vec::new()
         };
@@ -126,11 +126,11 @@ fn preview_settings() -> PreviewSettings {
 }
 
 async fn send(engine: Engine, request: Request<Body>) -> (StatusCode, Vec<u8>, Option<String>) {
-    let response = board_api::router(engine).oneshot(request).await.unwrap();
+    let response = charet_api::router(engine).oneshot(request).await.unwrap();
     let status = response.status();
     let commit = response
         .headers()
-        .get("x-board-commit")
+        .get("x-charet-commit")
         .map(|v| v.to_str().unwrap().to_owned());
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     (status, bytes.to_vec(), commit)
@@ -271,7 +271,7 @@ async fn version_reports_latest_when_known() {
     engine.record_latest_version("9.9.9").unwrap();
     let (_, body) = call(engine, "/api/version").await;
     assert_eq!(body["latest"], "9.9.9");
-    assert_eq!(body["version"], board_model::VERSION);
+    assert_eq!(body["version"], charet_model::VERSION);
 }
 
 #[tokio::test]
@@ -322,7 +322,7 @@ fn routes_match_the_contract() {
             path = None;
         }
     }
-    let routed: BTreeSet<_> = board_api::ROUTES
+    let routed: BTreeSet<_> = charet_api::ROUTES
         .iter()
         .map(|(m, p)| ((*m).to_owned(), (*p).to_owned()))
         .collect();
@@ -344,16 +344,16 @@ async fn preview_builds_and_serves_with_a_scoped_token() {
         format!("http://127.0.0.1:5281/_preview/{token}/web/{commit}/")
     );
 
-    let origin = board_api::PreviewOrigin {
+    let origin = charet_api::PreviewOrigin {
         frame_ancestors: vec!["http://localhost:5280".into()],
         sandbox: false,
     };
     let open = |path: String| {
-        let router = board_api::preview_router(engine.clone(), &origin);
+        let router = charet_api::preview_router(engine.clone(), &origin);
         router.oneshot(Request::get(path).body(Body::empty()).unwrap())
     };
 
-    let page = open(format!("/_preview/{token}/web/{commit}/.board/frame.html"))
+    let page = open(format!("/_preview/{token}/web/{commit}/.charet/frame.html"))
         .await
         .unwrap();
     assert_eq!(page.status(), StatusCode::OK);
@@ -373,12 +373,12 @@ async fn preview_builds_and_serves_with_a_scoped_token() {
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 
     // A bad token, a token for another commit, or the API on the preview origin: refused.
-    let bad = open(format!("/_preview/x.y/web/{commit}/.board/frame.html"))
+    let bad = open(format!("/_preview/x.y/web/{commit}/.charet/frame.html"))
         .await
         .unwrap();
     assert_eq!(bad.status(), StatusCode::FORBIDDEN);
     let other = "0".repeat(40);
-    let wrong = open(format!("/_preview/{token}/web/{other}/.board/frame.html"))
+    let wrong = open(format!("/_preview/{token}/web/{other}/.charet/frame.html"))
         .await
         .unwrap();
     assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
@@ -410,7 +410,7 @@ async fn check_capture_and_read_back() {
     assert_eq!(checked["results"][0]["issues"], json!([]));
     assert_eq!(
         checked["results"][1]["issues"][0],
-        "[board] missing mock GET /api/x"
+        "[charet] missing mock GET /api/x"
     );
 
     let (status, captured) = post(engine.clone(), "/api/projects/web/captures", &json!({})).await;
@@ -569,12 +569,12 @@ async fn manifest_files_and_web() {
     assert_eq!(commit.as_deref(), files["commit"].as_str());
 
     // The app: API paths stay JSON 404s, other paths fall back to the web tool.
-    let web = std::env::temp_dir().join(format!("board-web-{}", std::process::id()));
+    let web = std::env::temp_dir().join(format!("charet-web-{}", std::process::id()));
     std::fs::create_dir_all(web.join("assets")).unwrap();
     std::fs::write(web.join("index.html"), "<!doctype html>app").unwrap();
     std::fs::write(web.join("assets/a.js"), "x").unwrap();
     let app = |path: &str| {
-        board_api::app(engine.clone(), Some(web.clone()))
+        charet_api::app(engine.clone(), Some(web.clone()))
             .oneshot(Request::get(path).body(Body::empty()).unwrap())
     };
     let page = app("/p/web/screens").await.unwrap();
@@ -596,9 +596,9 @@ async fn manifest_files_and_web() {
     std::fs::remove_dir_all(&web).unwrap();
 }
 
-/// A public board (no local door) with its owner signed in; returns the owner's cookie.
+/// A public charet (no local door) with its owner signed in; returns the owner's cookie.
 async fn public_engine() -> (Engine, String) {
-    let engine = engine(false).with_tool_url("https://board.test");
+    let engine = engine(false).with_tool_url("https://charet.test");
     let token = engine.ensure_owner().unwrap().unwrap();
     let cookie = browser_token(&engine, &token).await;
     (engine, cookie)
@@ -606,11 +606,11 @@ async fn public_engine() -> (Engine, String) {
 
 /// Signs a browser in with `token`; returns the session cookie.
 async fn browser_token(engine: &Engine, token: &str) -> String {
-    let response = board_api::router(engine.clone())
+    let response = charet_api::router(engine.clone())
         .oneshot(
             Request::post("/api/auth/token")
                 .header("content-type", "application/json")
-                .header("x-board-client", "test")
+                .header("x-charet-client", "test")
                 .body(Body::from(json!({ "token": token }).to_string()))
                 .unwrap(),
         )
@@ -652,7 +652,7 @@ fn as_member(method: &str, path: &str, cookie: &str, body: Option<Value>) -> Req
         .method(method)
         .uri(path)
         .header("cookie", cookie)
-        .header("x-board-client", "test")
+        .header("x-charet-client", "test")
         .header("content-type", "application/json");
     request
         .body(body.map_or_else(Body::empty, |b| Body::from(b.to_string())))
@@ -678,7 +678,7 @@ async fn token_sign_in_session_csrf_and_logout() {
         let mut request =
             Request::post("/api/auth/token").header("content-type", "application/json");
         if header {
-            request = request.header("x-board-client", "test");
+            request = request.header("x-charet-client", "test");
         }
         request
             .body(Body::from(json!({ "token": token }).to_string()))
@@ -712,7 +712,7 @@ async fn token_sign_in_session_csrf_and_logout() {
             .header("cookie", &boss)
             .header("content-type", "application/json");
         if with_header {
-            request = request.header("x-board-client", "web");
+            request = request.header("x-charet-client", "web");
         }
         request
             .body(Body::from(r#"{"key":"web","title":"Web"}"#))
@@ -758,7 +758,7 @@ async fn visitors_look_with_a_made_up_name_until_turned_off() {
         as_member("POST", "/api/projects", &boss, Some(json!({"key": "web"}))),
     )
     .await;
-    let response = board_api::router(engine.clone())
+    let response = charet_api::router(engine.clone())
         .oneshot(Request::get("/api/auth/me").body(Body::empty()).unwrap())
         .await
         .unwrap();
@@ -770,11 +770,11 @@ async fn visitors_look_with_a_made_up_name_until_turned_off() {
         .next()
         .unwrap()
         .to_owned();
-    assert!(visitor.starts_with("board_visitor="), "{visitor}");
-    let id = visitor.trim_start_matches("board_visitor=");
+    assert!(visitor.starts_with("charet_visitor="), "{visitor}");
+    let id = visitor.trim_start_matches("charet_visitor=");
     let (_, me) = json_of(&engine, as_member("GET", "/api/auth/me", &visitor, None)).await;
     assert_eq!(me["id"], id, "the same visitor next time");
-    assert_eq!(me["name"], board_engine::visitor_name(id));
+    assert_eq!(me["name"], charet_engine::visitor_name(id));
     let (status, _) = json_of(
         &engine,
         as_member("GET", "/api/projects/web", &visitor, None),
@@ -994,11 +994,11 @@ async fn realtime_room_relays_presence_and_events() {
 
     let engine = engine(true);
     engine
-        .create_project(&board_model::Actor::Local, "web", "Web", None)
+        .create_project(&charet_model::Actor::Local, "web", "Web", None)
         .unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(axum::serve(listener, board_api::router(engine.clone())).into_future());
+    tokio::spawn(axum::serve(listener, charet_api::router(engine.clone())).into_future());
     let url = format!("ws://{addr}/api/ws?project=web");
     let (mut ann, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     let (mut bob, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
@@ -1016,7 +1016,7 @@ async fn realtime_room_relays_presence_and_events() {
 
     // A command elsewhere reaches both as an event.
     engine
-        .update_project(&board_model::Actor::Local, "web", Some("Web 2"), None)
+        .update_project(&charet_model::Actor::Local, "web", Some("Web 2"), None)
         .unwrap();
     let event = read(&mut ann).await;
     assert_eq!(
@@ -1144,9 +1144,9 @@ async fn webhooks_are_admin_settings_with_a_secret_shown_once() {
 #[tokio::test]
 async fn one_address_serves_previews_sandboxed_from_the_tool() {
     let mut settings = preview_settings();
-    settings.origin = "https://board.test".into();
+    settings.origin = "https://charet.test".into();
     let engine = engine(true)
-        .with_tool_url("https://board.test")
+        .with_tool_url("https://charet.test")
         .with_preview(settings);
     assert!(engine.previews_on_tool());
     let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
@@ -1156,11 +1156,11 @@ async fn one_address_serves_previews_sandboxed_from_the_tool() {
     let token = preview["token"].as_str().unwrap();
     assert_eq!(
         preview["baseUrl"],
-        format!("https://board.test/_preview/{token}/web/{commit}/")
+        format!("https://charet.test/_preview/{token}/web/{commit}/")
     );
-    let page = board_api::app(engine.clone(), None)
+    let page = charet_api::app(engine.clone(), None)
         .oneshot(
-            Request::get(format!("/_preview/{token}/web/{commit}/.board/frame.html"))
+            Request::get(format!("/_preview/{token}/web/{commit}/.charet/frame.html"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1178,7 +1178,7 @@ async fn one_address_serves_previews_sandboxed_from_the_tool() {
 }
 
 async fn remote(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) {
-    let response = board_api::remote_app(engine.clone(), None)
+    let response = charet_api::remote_app(engine.clone(), None)
         .oneshot(request)
         .await
         .unwrap();
@@ -1192,11 +1192,11 @@ async fn remote(engine: &Engine, request: Request<Body>) -> (StatusCode, Value) 
 
 /// A browser signs in through the remote door; returns its session cookie.
 async fn remote_sign_in(engine: &Engine, token: &str) -> String {
-    let response = board_api::remote_app(engine.clone(), None)
+    let response = charet_api::remote_app(engine.clone(), None)
         .oneshot(
             Request::post("/api/auth/token")
                 .header("content-type", "application/json")
-                .header("x-board-client", "test")
+                .header("x-charet-client", "test")
                 .body(Body::from(json!({ "token": token }).to_string()))
                 .unwrap(),
         )

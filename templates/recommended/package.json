@@ -1,5 +1,5 @@
 {
-  "name": "@board/template-recommended",
+  "name": "@charet/template-recommended",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
-    "@board/sdk": "workspace:*",
+    "@charet/sdk": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

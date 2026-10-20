@@ -38,10 +38,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter board-web exec playwright install --with-deps chromium chromium-headless-shell
+      - run: pnpm --filter charet-web exec playwright install --with-deps chromium chromium-headless-shell
       - run: make e2e
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: e2e-traces
-          path: apps/board-web/test-results
+          path: apps/charet-web/test-results

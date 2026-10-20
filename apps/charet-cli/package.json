@@ -1,0 +1,17 @@
+{
+  "name": "charet-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "charet": "./src/main.ts"
+  },
+  "dependencies": {
+    "@charet/i18n": "workspace:*",
+    "@charet/api-client": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test --test-concurrency=1 'src/**/*.test.ts'"
+  }
+}

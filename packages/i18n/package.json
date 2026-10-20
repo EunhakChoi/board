@@ -1,5 +1,5 @@
 {
-  "name": "@board/i18n",
+  "name": "@charet/i18n",
   "private": true,
   "type": "module",
   "exports": {

@@ -1,4 +1,4 @@
-// Marks every host JSX element (`<div>`, `<button>`, …) with `data-src="path:line:col"` so the board
+// Marks every host JSX element (`<div>`, `<button>`, …) with `data-src="path:line:col"` so the charet
 // can map a clicked element back to the exact place in the source, and points absolute paths to
 // public files (`"/logo.png"`) at the build's base. Only for preview builds; handoff exports come
 // from the project store, never from this output.

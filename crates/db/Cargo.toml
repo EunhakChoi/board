@@ -1,5 +1,5 @@
 [package]
-name = "board-db"
+name = "charet-db"
 description = "SQLite persistence for people, access, branches, comments and jobs."
 version.workspace = true
 edition.workspace = true
@@ -10,8 +10,8 @@ publish.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-board-model = { path = "../model" }
-board-engine = { path = "../engine" }
+charet-model = { path = "../model" }
+charet-engine = { path = "../engine" }
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 //! Project commands: create, import, delete, checkout, push, versions, diff.
 
-use board_model::{Actor, Origin, Project, Version, VersionKind, Visibility, valid_path};
+use charet_model::{Actor, Origin, Project, Version, VersionKind, Visibility, valid_path};
 
 use crate::policy::{Command, Target, can};
 use crate::{Author, Change, Engine, EngineError, FileChange};
@@ -112,7 +112,7 @@ impl Engine {
         self.visible(actor, key, Command::ProjectView)?;
         let commit = self.resolve(key, rev.unwrap_or("main"))?;
         let archive = self.ports.store.archive(key, &commit)?;
-        if actor.role() >= board_model::Role::Editor {
+        if actor.role() >= charet_model::Role::Editor {
             // Shown as "working locally" until they push.
             self.ports.realtime.working(key, &actor.person(), true);
         }
@@ -321,7 +321,7 @@ fn author(actor: &Actor) -> Author {
     match actor {
         Actor::Local => Author {
             name: "Local admin".into(),
-            email: "local@board.invalid".into(),
+            email: "local@charet.invalid".into(),
         },
         Actor::User { id, name, .. } => Author {
             name: name.clone(),
@@ -357,7 +357,7 @@ fn check_files(files: &[FileChange]) -> Result<(), EngineError> {
 mod tests {
     use super::*;
     use crate::testing::engine;
-    use board_model::Role;
+    use charet_model::Role;
 
     fn file(path: &str, content: &str) -> FileChange {
         FileChange {

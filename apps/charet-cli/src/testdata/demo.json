@@ -1,0 +1,342 @@
+{
+  "system": {
+    "version": "0.0.0",
+    "latest": null,
+    "toolUrl": "http://localhost:5280",
+    "previewUrl": "http://127.0.0.1:5281",
+    "localMode": true,
+    "services": {
+      "workspace": {
+        "ok": true
+      },
+      "render": {
+        "ok": true
+      }
+    }
+  },
+  "manifest": {
+    "commit": "2cff597abcdef0123456789abcdef0123456789a",
+    "manifest": {
+      "manifestVersion": 1,
+      "title": "Tasks",
+      "pages": [
+        {
+          "id": "tasks",
+          "route": "/",
+          "title": "Tasks",
+          "note": "The task list and its states"
+        },
+        {
+          "id": "settings",
+          "route": "/settings",
+          "title": "Settings"
+        }
+      ],
+      "screens": [
+        {
+          "id": "tasks-list",
+          "page": "tasks",
+          "title": "Task list",
+          "note": "",
+          "route": "/",
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
+          "hasSetup": false
+        },
+        {
+          "id": "tasks-open",
+          "page": "tasks",
+          "title": "Open tasks only",
+          "note": "",
+          "route": "/",
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
+          "hasSetup": true
+        },
+        {
+          "id": "tasks-error",
+          "page": "tasks",
+          "title": "Load failed",
+          "note": "API answers 500",
+          "route": "/",
+          "size": {
+            "w": 1440,
+            "h": 900
+          },
+          "hasSetup": false
+        },
+        {
+          "id": "settings-main",
+          "page": "settings",
+          "title": "Settings",
+          "note": "",
+          "route": "/settings",
+          "size": {
+            "w": 1280,
+            "h": 800
+          },
+          "hasSetup": false
+        }
+      ],
+      "connections": [
+        {
+          "from": "tasks-list",
+          "to": "tasks-open",
+          "label": "Open",
+          "kind": "click"
+        },
+        {
+          "from": "tasks-open",
+          "to": "settings-main",
+          "label": "Settings",
+          "kind": "click"
+        },
+        {
+          "from": "tasks-list",
+          "to": "tasks-error",
+          "label": "Load fails",
+          "kind": "error"
+        }
+      ],
+      "flows": [
+        {
+          "id": "triage",
+          "title": "Triage tasks",
+          "steps": [
+            {
+              "id": "tasks-list",
+              "title": "Task list",
+              "note": "",
+              "planned": false
+            },
+            {
+              "id": "tasks-open",
+              "title": "Open tasks only",
+              "note": "filter on",
+              "planned": false
+            },
+            {
+              "id": "task-detail",
+              "title": "Task detail",
+              "note": "side panel",
+              "planned": true
+            }
+          ],
+          "note": "Find what is still open"
+        }
+      ],
+      "stories": [
+        {
+          "id": "button-default",
+          "component": "Button",
+          "title": "Default",
+          "size": {
+            "w": 480,
+            "h": 320
+          }
+        },
+        {
+          "id": "button-outline",
+          "component": "Button",
+          "title": "Outline",
+          "size": {
+            "w": 480,
+            "h": 320
+          }
+        }
+      ]
+    }
+  },
+  "captures": {
+    "captures": [
+      {
+        "kind": "screen",
+        "target": "tasks-list",
+        "theme": "light",
+        "commit": "2cff597",
+        "width": 1440,
+        "height": 900,
+        "issues": [],
+        "sources": ["src/pages/tasks.tsx", "src/components/ui/button.tsx"],
+        "capturedAt": "2026-10-18T10:00:00Z",
+        "stale": false
+      },
+      {
+        "kind": "screen",
+        "target": "tasks-list",
+        "theme": "dark",
+        "commit": "2cff597",
+        "width": 1440,
+        "height": 900,
+        "issues": [],
+        "sources": ["src/pages/tasks.tsx"],
+        "capturedAt": "2026-10-18T10:00:00Z",
+        "stale": true
+      },
+      {
+        "kind": "screen",
+        "target": "tasks-error",
+        "theme": "light",
+        "commit": "2cff597",
+        "width": 1440,
+        "height": 900,
+        "issues": ["[charet] missing mock GET /api/me"],
+        "sources": ["src/pages/tasks.tsx"],
+        "capturedAt": "2026-10-18T10:00:00Z",
+        "stale": false
+      },
+      {
+        "kind": "story",
+        "target": "button-default",
+        "theme": "light",
+        "commit": "2cff597",
+        "width": 480,
+        "height": 320,
+        "issues": [],
+        "sources": ["src/components/ui/button.tsx"],
+        "capturedAt": "2026-10-18T10:00:00Z",
+        "stale": false
+      }
+    ]
+  },
+  "comments": [
+    {
+      "id": 1,
+      "kind": "screen",
+      "target": "tasks-list",
+      "theme": "light",
+      "anchor": {
+        "x": 320,
+        "y": 140,
+        "w": 800,
+        "h": 44,
+        "chain": ["App", "TasksPage", "TaskRow"],
+        "sel": "main > ul > li:nth-child(1)",
+        "tag": "li",
+        "text": "Write the release notes",
+        "src": "src/pages/tasks.tsx:42:9",
+        "detached": false
+      },
+      "body": "Rows need more spacing.\nMaybe 12px?",
+      "author": {
+        "id": "local",
+        "name": "Local admin"
+      },
+      "status": "open",
+      "createdCommit": "2cff597",
+      "resolvedCommit": null,
+      "rev": 2,
+      "createdAt": "2026-10-18T10:05:00Z",
+      "updatedAt": "2026-10-18T10:06:00Z",
+      "replies": [
+        {
+          "id": 1,
+          "author": {
+            "id": "local",
+            "name": "Local admin"
+          },
+          "body": "Agreed",
+          "kind": "reply",
+          "createdAt": "2026-10-18T10:06:00Z"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "kind": "story",
+      "target": "button-default",
+      "theme": "dark",
+      "anchor": {
+        "x": 24,
+        "y": 24,
+        "w": 16,
+        "h": 16,
+        "chain": [],
+        "sel": "",
+        "tag": "",
+        "text": "",
+        "detached": true
+      },
+      "body": "Contrast is low in dark mode",
+      "author": {
+        "id": "local",
+        "name": "Local admin"
+      },
+      "status": "resolved",
+      "createdCommit": "2cff597",
+      "resolvedCommit": "2cff597",
+      "rev": 3,
+      "createdAt": "2026-10-18T10:07:00Z",
+      "updatedAt": "2026-10-18T10:08:00Z",
+      "replies": [
+        {
+          "id": 2,
+          "author": {
+            "id": "local",
+            "name": "Local admin"
+          },
+          "body": "",
+          "kind": "resolve",
+          "createdAt": "2026-10-18T10:08:00Z"
+        }
+      ]
+    }
+  ],
+  "check": {
+    "commit": "2cff597",
+    "results": [
+      {
+        "kind": "screen",
+        "target": "tasks-list",
+        "theme": "light",
+        "ready": "true",
+        "issues": [],
+        "captured": false
+      },
+      {
+        "kind": "screen",
+        "target": "tasks-error",
+        "theme": "light",
+        "ready": "true",
+        "issues": ["[charet] missing mock GET /api/me"],
+        "captured": false
+      },
+      {
+        "kind": "story",
+        "target": "button-default",
+        "theme": "light",
+        "issues": ["not ready after 10000 ms"],
+        "captured": false
+      }
+    ]
+  },
+  "capture": {
+    "commit": "2cff597",
+    "results": [
+      {
+        "kind": "screen",
+        "target": "tasks-list",
+        "theme": "light",
+        "ready": "true",
+        "issues": [],
+        "captured": true
+      },
+      {
+        "kind": "screen",
+        "target": "tasks-list",
+        "theme": "dark",
+        "ready": "true",
+        "issues": [],
+        "captured": false
+      }
+    ]
+  },
+  "files": {
+    "charet.json": "{\n  \"app\": \"apps/web\"\n}\n",
+    "apps/web/src/main.tsx": "import { StrictMode } from \"react\";\nimport { createRoot } from \"react-dom/client\";\nimport { App } from \"./App\";\n\ncreateRoot(document.getElementById(\"root\")!).render(<App />);\n"
+  }
+}

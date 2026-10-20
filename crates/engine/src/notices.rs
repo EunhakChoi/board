@@ -1,5 +1,5 @@
 //! Who hears about what: inbox notifications for members and signed webhook POSTs
-//! (story 03 §1: a comment reaches people in the web, through webhooks and `board inbox`).
+//! (story 03 §1: a comment reaches people in the web, through webhooks and `charet inbox`).
 //!
 //! - A new comment: everyone who can see the project.
 //! - A reply, resolve or reopen: the people in that thread.
@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use board_model::{
+use charet_model::{
     Actor, Comment, Notification, Project, ReplyKind, Role, User, Visibility, Webhook,
 };
 use hmac::{Hmac, KeyInit, Mac};
@@ -190,7 +190,7 @@ impl Engine {
             "event": "ping",
             "project": null,
             "actor": actor.name(),
-            "text": format!("board: test delivery from {}", actor.name()),
+            "text": format!("charet: test delivery from {}", actor.name()),
             "url": self.tool_url(),
             "data": {},
         });
@@ -406,7 +406,7 @@ impl Engine {
     }
 }
 
-/// One POST, signed: `X-Board-Signature: sha256=<hex HMAC of "<timestamp>.<body>">`.
+/// One POST, signed: `X-Charet-Signature: sha256=<hex HMAC of "<timestamp>.<body>">`.
 fn send(
     engine: &Engine,
     url: &str,
@@ -426,10 +426,10 @@ fn send(
         url,
         &[
             ("content-type", "application/json".to_owned()),
-            ("x-board-event", kind.to_owned()),
-            ("x-board-delivery", format!("d{}", &random_hex()[..16])),
-            ("x-board-timestamp", timestamp),
-            ("x-board-signature", signature),
+            ("x-charet-event", kind.to_owned()),
+            ("x-charet-delivery", format!("d{}", &random_hex()[..16])),
+            ("x-charet-timestamp", timestamp),
+            ("x-charet-signature", signature),
         ],
         body.as_bytes(),
     )
@@ -466,7 +466,7 @@ fn comment_data(comment: &Comment, body: &str) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use board_model::{ReplyKind, Visibility};
+    use charet_model::{ReplyKind, Visibility};
 
     use super::*;
     use crate::testing::{engine_with_fakes, file};
@@ -626,11 +626,11 @@ mod tests {
                 .map(|(_, v)| v.clone())
                 .unwrap()
         };
-        assert_eq!(header("x-board-event"), "comment.added");
+        assert_eq!(header("x-charet-event"), "comment.added");
         let mut mac = Hmac::<Sha256>::new_from_slice(created.secret.as_bytes()).unwrap();
-        mac.update(format!("{}.{body}", header("x-board-timestamp")).as_bytes());
+        mac.update(format!("{}.{body}", header("x-charet-timestamp")).as_bytes());
         assert_eq!(
-            header("x-board-signature"),
+            header("x-charet-signature"),
             format!("sha256={}", hex(&mac.finalize().into_bytes()))
         );
         let body: serde_json::Value = serde_json::from_str(body).unwrap();

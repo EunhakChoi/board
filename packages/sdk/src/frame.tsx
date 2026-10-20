@@ -1,6 +1,6 @@
-// The frame renders one screen or one story of a board project, with mock APIs, for the board to
-// show and capture. URL: `.board/frame.html?screen=<id>&theme=light|dark` or `?story=<id>`.
-// When the page is settled it sets `<html data-board-ready>`; the renderer waits for that.
+// The frame renders one screen or one story of a charet project, with mock APIs, for the charet to
+// show and capture. URL: `.charet/frame.html?screen=<id>&theme=light|dark` or `?story=<id>`.
+// When the page is settled it sets `<html data-charet-ready>`; the renderer waits for that.
 
 import type { RequestHandler } from "msw";
 import { type ReactNode, StrictMode } from "react";
@@ -17,8 +17,8 @@ export interface FrameOptions {
   rootId?: string;
 }
 
-/** Logged when a screen calls an API with no handler; the board reports it as a missing mock. */
-export const MISSING_MOCK = "[board] missing mock";
+/** Logged when a screen calls an API with no handler; the charet reports it as a missing mock. */
+export const MISSING_MOCK = "[charet] missing mock";
 
 export async function startFrame(options: FrameOptions): Promise<void> {
   const params = new URLSearchParams(location.search);
@@ -61,7 +61,7 @@ export async function startFrame(options: FrameOptions): Promise<void> {
     await screen.setup(setupKit(container));
     await settle();
   }
-  document.documentElement.dataset.boardReady = "true";
+  document.documentElement.dataset.charetReady = "true";
 }
 
 /** Asset requests of the page itself are not API calls; a missing handler for them is fine. */
@@ -89,7 +89,7 @@ async function startInterceptors(handlers: RequestHandler[]): Promise<void> {
     import("msw"),
   ]);
   const interceptor = new BatchInterceptor({
-    name: "board-frame",
+    name: "charet-frame",
     interceptors: [new FetchInterceptor(), new XMLHttpRequestInterceptor()],
   });
   interceptor.apply();
@@ -108,9 +108,9 @@ async function startInterceptors(handlers: RequestHandler[]): Promise<void> {
 }
 
 function fail(container: HTMLElement, message: string): void {
-  container.textContent = `board: ${message}`;
-  console.error(`[board] ${message}`);
-  document.documentElement.dataset.boardReady = "error";
+  container.textContent = `charet: ${message}`;
+  console.error(`[charet] ${message}`);
+  document.documentElement.dataset.charetReady = "error";
 }
 
 /** Waits for two frames and for fonts, so the first paint after data arrives is in. */

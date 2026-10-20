@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/board-server", "apps/board-render", "xtask"]
+members = ["crates/*", "apps/charet-server", "apps/charet-render", "xtask"]
 
 [workspace.package]
 version = "0.0.0"

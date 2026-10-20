@@ -6,14 +6,14 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use board_engine::{ChangeKind, Engine, EngineError, FileChange, Import};
-use board_model::{Project, Version};
+use charet_engine::{ChangeKind, Engine, EngineError, FileChange, Import};
+use charet_model::{Project, Version};
 use serde::{Deserialize, Serialize};
 
 use crate::{ApiError, Caller};
 
 /// Header carrying the commit of a checkout archive.
-pub const COMMIT_HEADER: &str = "x-board-commit";
+pub const COMMIT_HEADER: &str = "x-charet-commit";
 
 /// Runs a blocking engine call (git, SQLite) off the async runtime.
 pub(crate) async fn blocking<T: Send + 'static>(
@@ -22,7 +22,7 @@ pub(crate) async fn blocking<T: Send + 'static>(
     match tokio::task::spawn_blocking(work).await {
         Ok(result) => result.map_err(ApiError::from),
         Err(error) => {
-            eprintln!("board-server: task failed: {error}");
+            eprintln!("charet-server: task failed: {error}");
             Err(ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -259,7 +259,7 @@ pub async fn diff(
 #[serde(deny_unknown_fields)]
 pub struct ProjectChange {
     title: Option<String>,
-    visibility: Option<board_model::Visibility>,
+    visibility: Option<charet_model::Visibility>,
 }
 
 /// `PATCH /api/projects/{key}`: rename, or set who can see it (admins).

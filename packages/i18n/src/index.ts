@@ -8,7 +8,7 @@ const catalogs: Record<Locale, Partial<Record<Key, string>>> = { en, ko };
 
 /** Picks `ko` for Korean system locales, otherwise English (the default). */
 export function detectLocale(env: NodeJS.ProcessEnv = process.env): Locale {
-  const tag = env.BOARD_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? "";
+  const tag = env.CHARET_LANG ?? env.LC_ALL ?? env.LC_MESSAGES ?? env.LANG ?? "";
   return tag.toLowerCase().startsWith("ko") ? "ko" : "en";
 }
 

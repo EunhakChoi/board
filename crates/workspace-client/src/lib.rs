@@ -1,17 +1,17 @@
-//! Talks to `board-workspace` (install, verify, build) over its internal HTTP API.
+//! Talks to `charet-workspace` (install, verify, build) over its internal HTTP API.
 
 use std::fmt::Write as _;
 use std::io::Read;
 use std::time::Duration;
 
-use board_engine::{Build, BuildState, BuildStep, BuiltFile, Workspace, WorkspaceError};
+use charet_engine::{Build, BuildState, BuildStep, BuiltFile, Workspace, WorkspaceError};
 use serde::Deserialize;
 use ureq::Agent;
 
 /// Largest built file the preview proxies (bundles, images, fonts).
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 
-/// A `board-workspace` at `url`, authenticated with `token`.
+/// A `charet-workspace` at `url`, authenticated with `token`.
 #[derive(Clone)]
 pub struct WorkspaceClient {
     url: String,
@@ -87,7 +87,7 @@ impl From<WireBuild> for Build {
 }
 
 fn unavailable(error: &ureq::Error) -> WorkspaceError {
-    WorkspaceError::Unavailable(format!("board-workspace: {error}"))
+    WorkspaceError::Unavailable(format!("charet-workspace: {error}"))
 }
 
 fn unexpected(status: u16, body: &str) -> WorkspaceError {
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn encodes_file_paths() {
-        assert_eq!(encode_path(".board/frame.html"), ".board/frame.html");
+        assert_eq!(encode_path(".charet/frame.html"), ".charet/frame.html");
         assert_eq!(encode_path("a b/ü?.js"), "a%20b/%C3%BC%3F.js");
     }
 

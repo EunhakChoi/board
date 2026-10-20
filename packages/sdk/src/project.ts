@@ -1,4 +1,4 @@
-// The project contract: what a board project declares in `.board/project.ts`.
+// The project contract: what a charet project declares in `.charet/project.ts`.
 // Pure data plus functions that only run inside the frame (render, mocks, setup).
 // `toManifest` turns it into the JSON the server reads.
 
@@ -101,7 +101,7 @@ export interface ProjectDef<Mock = unknown, Node = unknown> {
 export function defineProject<Mock, Node>(project: ProjectDef<Mock, Node>): ProjectDef<Mock, Node> {
   const problems = validate(project);
   if (problems.length > 0) {
-    throw new Error(`invalid board project:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
+    throw new Error(`invalid charet project:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
   }
   return project;
 }
@@ -165,7 +165,7 @@ function validSize(size: Size): boolean {
   return size.w > 0 && size.h > 0 && Number.isFinite(size.w) && Number.isFinite(size.h);
 }
 
-/** JSON the server reads (`.board/manifest.json`). Functions and handlers are left out. */
+/** JSON the server reads (`.charet/manifest.json`). Functions and handlers are left out. */
 export interface Manifest {
   manifestVersion: 1;
   title: string;

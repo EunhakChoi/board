@@ -1,6 +1,6 @@
-//! What the engine needs from storage. Implemented by `board-db` and `board-store`.
+//! What the engine needs from storage. Implemented by `charet-db` and `charet-store`.
 
-use board_model::{Project, Version, VersionKind};
+use charet_model::{Project, Version, VersionKind};
 
 /// A storage failure, with enough text to log. Callers map it to a 500.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub trait Records: Send + Sync {
         &self,
         key: &str,
         title: &str,
-        visibility: board_model::Visibility,
+        visibility: charet_model::Visibility,
     ) -> Result<(), StoreError>;
     /// Members (user ids) of a private project.
     fn members(&self, project: &str) -> Result<Vec<String>, StoreError>;
@@ -135,7 +135,7 @@ pub struct BuildStep {
     pub detail: String,
 }
 
-/// A static build of one commit, as `board-workspace` reports it.
+/// A static build of one commit, as `charet-workspace` reports it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Build {
@@ -155,7 +155,7 @@ pub struct BuiltFile {
     pub body: Vec<u8>,
 }
 
-/// Why `board-workspace` could not answer.
+/// Why `charet-workspace` could not answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceError {
     /// Not running or not reachable.
@@ -164,7 +164,7 @@ pub enum WorkspaceError {
     Failed(String),
 }
 
-/// `board-workspace`: installs, checks and builds commits (`apps/board-workspace`).
+/// `charet-workspace`: installs, checks and builds commits (`apps/charet-workspace`).
 pub trait Workspace: Send + Sync {
     /// The build of `commit`, if one was started.
     fn build(&self, project: &str, commit: &str) -> Result<Option<Build>, WorkspaceError>;
@@ -198,7 +198,7 @@ pub enum ImageKind {
     Png,
 }
 
-/// One page for `board-render` to open.
+/// One page for `charet-render` to open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderJob {
     pub url: String,
@@ -210,10 +210,10 @@ pub struct RenderJob {
     pub map: bool,
 }
 
-/// What `board-render` saw.
+/// What `charet-render` saw.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Shot {
-    /// `data-board-ready` (`true` / `error`), `None` when the page never got ready.
+    /// `data-charet-ready` (`true` / `error`), `None` when the page never got ready.
     pub ready: Option<String>,
     pub issues: Vec<String>,
     pub image: Option<Vec<u8>>,
@@ -221,7 +221,7 @@ pub struct Shot {
     pub elements: Option<serde_json::Value>,
 }
 
-/// `board-render`: Chromium screenshots and checks (`apps/board-render`).
+/// `charet-render`: Chromium screenshots and checks (`apps/charet-render`).
 pub trait Renderer: Send + Sync {
     fn render(&self, job: &RenderJob) -> Result<Shot, WorkspaceError>;
     /// Whether the service answers.
@@ -283,19 +283,19 @@ pub struct NewComment {
     pub kind: String,
     pub target: String,
     pub theme: String,
-    pub anchor: board_model::Anchor,
+    pub anchor: charet_model::Anchor,
     pub body: String,
-    pub author: board_model::Person,
+    pub author: charet_model::Person,
     pub commit: String,
 }
 
 /// A thread entry to store, with the status it sets (resolve, reopen).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewReply {
-    pub author: board_model::Person,
+    pub author: charet_model::Person,
     pub body: String,
-    pub kind: board_model::ReplyKind,
-    pub status: Option<board_model::CommentStatus>,
+    pub kind: charet_model::ReplyKind,
+    pub status: Option<charet_model::CommentStatus>,
     /// Set with a resolve.
     pub resolved_commit: Option<String>,
 }
@@ -307,10 +307,10 @@ pub trait Comments: Send + Sync {
         project: &str,
         comment: &NewComment,
         snapshot: Option<&[u8]>,
-    ) -> Result<board_model::Comment, StoreError>;
+    ) -> Result<charet_model::Comment, StoreError>;
     /// Every comment of `project` with its replies, oldest first.
-    fn list(&self, project: &str) -> Result<Vec<board_model::Comment>, StoreError>;
-    fn get(&self, project: &str, id: u64) -> Result<Option<board_model::Comment>, StoreError>;
+    fn list(&self, project: &str) -> Result<Vec<charet_model::Comment>, StoreError>;
+    fn get(&self, project: &str, id: u64) -> Result<Option<charet_model::Comment>, StoreError>;
     /// Adds `reply` when the comment is still at `rev`; returns `None` when it moved on.
     fn reply(
         &self,
@@ -318,13 +318,13 @@ pub trait Comments: Send + Sync {
         id: u64,
         rev: u32,
         reply: &NewReply,
-    ) -> Result<Option<board_model::Comment>, StoreError>;
+    ) -> Result<Option<charet_model::Comment>, StoreError>;
     /// Moves the anchor after a new capture (does not count as a change by a person).
     fn move_anchor(
         &self,
         project: &str,
         id: u64,
-        anchor: &board_model::Anchor,
+        anchor: &charet_model::Anchor,
     ) -> Result<(), StoreError>;
     fn snapshot(&self, project: &str, id: u64) -> Result<Option<Vec<u8>>, StoreError>;
     /// Deletes every snapshot file of `project` (its rows go with the project).
@@ -336,14 +336,14 @@ pub trait Comments: Send + Sync {
 pub struct NewUser {
     pub id: String,
     pub name: String,
-    pub role: board_model::Role,
+    pub role: charet_model::Role,
     pub token: String,
 }
 
 /// A browser session as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRow {
-    pub user: board_model::User,
+    pub user: charet_model::User,
     /// The same token came in from another browser since: this one is over.
     pub replaced: bool,
 }
@@ -351,16 +351,16 @@ pub struct SessionRow {
 /// Members, their tokens and browser sessions, kept by the database. Session tokens arrive
 /// hashed; member tokens are kept as they are so admins can hand them over again.
 pub trait Accounts: Send + Sync {
-    fn user(&self, id: &str) -> Result<Option<board_model::User>, StoreError>;
+    fn user(&self, id: &str) -> Result<Option<charet_model::User>, StoreError>;
     /// Every member, oldest first.
-    fn users(&self) -> Result<Vec<board_model::User>, StoreError>;
-    fn insert_user(&self, user: &NewUser) -> Result<board_model::User, StoreError>;
+    fn users(&self) -> Result<Vec<charet_model::User>, StoreError>;
+    fn insert_user(&self, user: &NewUser) -> Result<charet_model::User, StoreError>;
     /// False when there is no such member.
     fn update_user(
         &self,
         id: &str,
         name: &str,
-        role: board_model::Role,
+        role: charet_model::Role,
     ) -> Result<bool, StoreError>;
     /// Removes the member with their sessions. False when there was none.
     fn delete_user(&self, id: &str) -> Result<bool, StoreError>;
@@ -368,7 +368,7 @@ pub trait Accounts: Send + Sync {
     /// Replaces the member's token. False when there is no such member.
     fn set_user_token(&self, id: &str, token: &str) -> Result<bool, StoreError>;
     /// The member a token belongs to; records the use.
-    fn user_by_token(&self, token: &str) -> Result<Option<board_model::User>, StoreError>;
+    fn user_by_token(&self, token: &str) -> Result<Option<charet_model::User>, StoreError>;
     fn insert_session(
         &self,
         token_hash: &str,
@@ -395,7 +395,7 @@ pub struct Peer {
     pub name: String,
     /// `local`, `user` or `visitor`.
     pub kind: String,
-    pub role: board_model::Role,
+    pub role: charet_model::Role,
 }
 
 /// What a connection receives.
@@ -425,7 +425,7 @@ pub enum Kick {
     Visitors,
 }
 
-/// The realtime hub (`board-collab`): rooms per project, presence relayed as is, events with a
+/// The realtime hub (`charet-collab`): rooms per project, presence relayed as is, events with a
 /// sequence number so a reconnecting client can catch up.
 pub trait Realtime: Send + Sync {
     fn join(&self, project: &str, peer: Peer, since: Option<u64>) -> Joined;
@@ -440,7 +440,7 @@ pub trait Realtime: Send + Sync {
     fn notify(&self, people: &[String]);
     fn kick(&self, who: Kick);
     /// Marks someone working on the project from their own checkout (until they push).
-    fn working(&self, project: &str, person: &board_model::Person, on: bool);
+    fn working(&self, project: &str, person: &charet_model::Person, on: bool);
 }
 
 /// A notification to store for one member.
@@ -476,13 +476,13 @@ pub trait Notices: Send + Sync {
         user: &str,
         unread_only: bool,
         limit: u32,
-    ) -> Result<Vec<board_model::Notification>, StoreError>;
+    ) -> Result<Vec<charet_model::Notification>, StoreError>;
     fn unread_count(&self, user: &str) -> Result<u32, StoreError>;
     /// Marks these (or, with `None`, all) of the user's notifications read.
     fn mark_read(&self, user: &str, ids: Option<&[u64]>) -> Result<(), StoreError>;
     /// Every webhook with its salt.
-    fn webhooks(&self) -> Result<Vec<(board_model::Webhook, String)>, StoreError>;
-    fn insert_webhook(&self, hook: &NewWebhook) -> Result<board_model::Webhook, StoreError>;
+    fn webhooks(&self) -> Result<Vec<(charet_model::Webhook, String)>, StoreError>;
+    fn insert_webhook(&self, hook: &NewWebhook) -> Result<charet_model::Webhook, StoreError>;
     fn delete_webhook(&self, id: &str) -> Result<bool, StoreError>;
     fn set_webhook_salt(&self, id: &str, salt: &str, last4: &str) -> Result<bool, StoreError>;
     /// The outcome of the latest delivery: an HTTP status, or an error when none came back.
@@ -494,12 +494,12 @@ pub trait Notices: Send + Sync {
     ) -> Result<(), StoreError>;
 }
 
-/// Sends one webhook POST and returns the HTTP status (`board-server` over HTTPS).
+/// Sends one webhook POST and returns the HTTP status (`charet-server` over HTTPS).
 pub trait WebhookSender: Send + Sync {
     fn post(&self, url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String>;
 }
 
-/// Runs the tunnels that bring people to the remote door (`board-tunnel`): Tailscale serve and
+/// Runs the tunnels that bring people to the remote door (`charet-tunnel`): Tailscale serve and
 /// Funnel. Calls may take a few seconds.
 pub trait Tunnels: Send + Sync {
     /// The ways this machine can share right now, for the sharing page.

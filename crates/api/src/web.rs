@@ -1,4 +1,4 @@
-//! Serves the built web tool (`apps/board-web/dist`) next to the API, with the single-page app
+//! Serves the built web tool (`apps/charet-web/dist`) next to the API, with the single-page app
 //! fallback: unknown paths outside `/api` get `index.html`.
 
 use std::path::{Component, Path, PathBuf};
@@ -8,8 +8,8 @@ use axum::response::{Html, IntoResponse, Response};
 
 use crate::ApiError;
 
-const NOT_BUILT: &str = "<!doctype html><title>board</title><p>The board web tool is not built. \
-Run <code>pnpm --filter board-web build</code> or set <code>BOARD_WEB_DIR</code>.</p>";
+const NOT_BUILT: &str = "<!doctype html><title>charet</title><p>The charet web tool is not built. \
+Run <code>pnpm --filter charet-web build</code> or set <code>CHARET_WEB_DIR</code>.</p>";
 
 pub async fn serve(dir: Option<PathBuf>, uri: Uri) -> Response {
     let path = uri.path();

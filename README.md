@@ -1,4 +1,6 @@
-# board (working name)
+# charet
+
+*The live-code design charrette for React and AI agents.*
 
 **English** | [한국어](README.ko.md)
 

@@ -1,5 +1,5 @@
 [package]
-name = "board-engine"
+name = "charet-engine"
 description = "Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits."
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio = { version = "1.53.3", default-features = false, features = ["sync"] }
-board-model = { path = "../model" }
+charet-model = { path = "../model" }
 
 [lints]
 workspace = true

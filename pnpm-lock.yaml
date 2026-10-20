@@ -176,21 +176,21 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
-  apps/board-cli:
+  apps/charet-cli:
     dependencies:
-      '@board/api-client':
+      '@charet/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@board/i18n':
+      '@charet/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
 
-  apps/board-web:
+  apps/charet-web:
     dependencies:
-      '@board/api-client':
+      '@charet/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@board/i18n':
+      '@charet/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
       '@radix-ui/react-slot':
@@ -252,7 +252,7 @@ importers:
         specifier: 8.3.2
         version: 8.3.2(@types/node@24.19.2)(jiti@2.7.0)
 
-  apps/board-workspace:
+  apps/charet-workspace:
     devDependencies:
       '@types/node':
         specifier: 24.19.2
@@ -325,7 +325,7 @@ importers:
         specifier: 3.7.0
         version: 3.7.0
     devDependencies:
-      '@board/sdk':
+      '@charet/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       '@tailwindcss/vite':

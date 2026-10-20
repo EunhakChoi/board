@@ -1,5 +1,5 @@
 {
-  "name": "@board/api-client",
+  "name": "@charet/api-client",
   "private": true,
   "type": "module",
   "exports": {

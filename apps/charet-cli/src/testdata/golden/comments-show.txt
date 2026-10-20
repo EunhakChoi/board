@@ -1,0 +1,15 @@
+$ charet comments show c1 --out notes
+c1  open  screen tasks-list (light)
+Local admin, 2026-10-18T10:05:00Z
+  Rows need more spacing.
+  Maybe 12px?
+
+box         320,140 800×44
+element     <li> "Write the release notes"
+selector    main > ul > li:nth-child(1)
+components  App › TasksPage › TaskRow
+source      src/pages/tasks.tsx:42:9
+snapshot    <out>/notes/c1.jpg
+
+  ↳ Local admin, 2026-10-18T10:06:00Z: Agreed
+[exit 0]

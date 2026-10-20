@@ -1,3 +1,0 @@
-$ board path settings-main tasks-list
-No path from settings-main to tasks-list.
-[exit 1]

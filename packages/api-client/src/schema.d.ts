@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Versions, links and whether the internal services answer (for `board doctor`) */
+        /** Versions, links and whether the internal services answer (for `charet doctor`) */
         get: operations["getSystem"];
         put?: never;
         post?: never;
@@ -84,7 +84,7 @@ export interface paths {
         };
         /**
          * Who is calling
-         * @description Through the local door of a local board, the owner. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401 `token_required`. 401 `replaced`: the token signed in on another browser since.
+         * @description Through the local door of a local charet, the owner. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401 `token_required`. 401 `replaced`: the token signed in on another browser since.
          */
         get: operations["getMe"];
         put?: never;
@@ -217,7 +217,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whether and where this local board is shared (admins) */
+        /** Whether and where this local charet is shared (admins) */
         get: operations["getSharing"];
         /** Turns sharing on or changes its address (admins) */
         put: operations["startSharing"];
@@ -497,7 +497,7 @@ export interface paths {
         };
         /**
          * Static build of a revision, started on first call; poll until ready or failed
-         * @description Once ready, pages are at `baseUrl` on the preview origin, e.g. `{baseUrl}.board/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to this project and commit.
+         * @description Once ready, pages are at `baseUrl` on the preview origin, e.g. `{baseUrl}.charet/frame.html?screen=<id>&t=<token>`. The token is short-lived and bound to this project and commit.
          */
         get: operations["previewProject"];
         put?: never;
@@ -1076,7 +1076,7 @@ export interface components {
         };
         Me: {
             /**
-             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and only looks; `local` is the built-in admin before the board has an owner
+             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and only looks; `local` is the built-in admin before the charet has an owner
              * @enum {string}
              */
             kind: "user" | "visitor" | "local";
@@ -1155,7 +1155,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description A service board needs (board-workspace, board-render) is not running */
+        /** @description A service charet needs (charet-workspace, charet-render) is not running */
         Unavailable: {
             headers: {
                 [name: string]: unknown;
@@ -2035,7 +2035,7 @@ export interface operations {
             200: {
                 headers: {
                     /** @description Commit id of the archive */
-                    "X-Board-Commit"?: string;
+                    "X-Charet-Commit"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2172,7 +2172,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description board-workspace is not running, or previews are not configured */
+            /** @description charet-workspace is not running, or previews are not configured */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2557,7 +2557,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The manifest (`.board/manifest.json`, see @board/sdk `Manifest`) */
+            /** @description The manifest (`.charet/manifest.json`, see @charet/sdk `Manifest`) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2619,7 +2619,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The bytes; `text/plain` when UTF-8. `X-Board-Commit` is the commit read. */
+            /** @description The bytes; `text/plain` when UTF-8. `X-Charet-Commit` is the commit read. */
             200: {
                 headers: {
                     [name: string]: unknown;

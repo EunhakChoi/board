@@ -1,4 +1,4 @@
-//! Realtime hub: presence relay and ordered board events (`docs/design/interfaces.md` §2).
+//! Realtime hub: presence relay and ordered charet events (`docs/design/interfaces.md` §2).
 //!
 //! One room per project. Presence (cursor, selection, viewport, follow, spotlight, chat) is
 //! relayed as it comes and only the latest per connection is kept, for newcomers. Events get a
@@ -8,8 +8,8 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Mutex;
 
-use board_engine::{Joined, Kick, Outgoing, Peer, Realtime};
-use board_model::{Person, Role};
+use charet_engine::{Joined, Kick, Outgoing, Peer, Realtime};
+use charet_model::{Person, Role};
 use serde_json::{Value, json};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 

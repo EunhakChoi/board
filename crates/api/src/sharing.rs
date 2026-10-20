@@ -1,9 +1,9 @@
-//! Sharing a local board from the web tool: the tunnel that runs and the address links use.
+//! Sharing a local charet from the web tool: the tunnel that runs and the address links use.
 
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use board_engine::{Engine, ShareMode, ShareRequest, SharingStatus};
+use charet_engine::{Engine, ShareMode, ShareRequest, SharingStatus};
 use serde::{Deserialize, Serialize};
 
 use crate::projects::blocking;

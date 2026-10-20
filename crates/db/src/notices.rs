@@ -1,7 +1,7 @@
 //! Inbox notifications and webhooks.
 
-use board_engine::{NewNotification, NewWebhook, Notices, StoreError};
-use board_model::{Notification, Webhook};
+use charet_engine::{NewNotification, NewWebhook, Notices, StoreError};
+use charet_model::{Notification, Webhook};
 use rusqlite::{Row, params, params_from_iter};
 
 use crate::{Db, err};
@@ -192,8 +192,8 @@ impl Notices for Db {
 
 #[cfg(test)]
 mod tests {
-    use board_engine::Accounts;
-    use board_model::Role;
+    use charet_engine::Accounts;
+    use charet_model::Role;
 
     use super::*;
 

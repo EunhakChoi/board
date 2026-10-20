@@ -1,5 +1,5 @@
 [package]
-name = "board-api"
+name = "charet-api"
 description = "HTTP and WebSocket routes (`OpenAPI` contract)."
 version.workspace = true
 edition.workspace = true
@@ -12,15 +12,15 @@ base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-board-model = { path = "../model" }
-board-engine = { path = "../engine" }
+charet-model = { path = "../model" }
+charet-engine = { path = "../engine" }
 
 [dev-dependencies]
-board-collab = { path = "../collab" }
+charet-collab = { path = "../collab" }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 tokio-tungstenite = "0.29.0"
-board-db = { path = "../db" }
-board-store = { path = "../store" }
+charet-db = { path = "../db" }
+charet-store = { path = "../store" }
 http-body-util.workspace = true
 tower.workspace = true
 
