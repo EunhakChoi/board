@@ -219,6 +219,107 @@ async fn import_checkout_push_versions_diff() {
 }
 
 #[tokio::test]
+async fn branches_propose_review_merge_restore() {
+    let engine = engine(true);
+    let import = json!({ "key": "web", "import": { "source": "test", "files": [
+        { "path": "a.txt", "content": b64("1\n") }
+    ]}});
+    let (_, created) = post(engine.clone(), "/api/projects", &import).await;
+    let v1 = created["version"]["commit"].as_str().unwrap().to_owned();
+
+    let proposal = json!({ "title": "Two", "from": v1, "files": [
+        { "path": "a.txt", "content": b64("2\n") }
+    ]});
+    let (status, branch) = post(engine.clone(), "/api/projects/web/branches", &proposal).await;
+    assert_eq!(status, StatusCode::CREATED, "{branch}");
+    assert_eq!(
+        (branch["number"].as_u64(), branch["status"].as_str()),
+        (Some(1), Some("open"))
+    );
+
+    let push =
+        json!({ "base": branch["head"], "files": [{ "path": "b.txt", "content": b64("b") }] });
+    let (status, pushed) = post(engine.clone(), "/api/projects/web/branches/1/push", &push).await;
+    assert_eq!(status, StatusCode::OK, "{pushed}");
+    let (status, stale) = post(engine.clone(), "/api/projects/web/branches/1/push", &push).await;
+    assert_eq!(
+        (status, stale["code"].as_str()),
+        (StatusCode::CONFLICT, Some("conflict"))
+    );
+
+    let (status, reviewed) = post(
+        engine.clone(),
+        "/api/projects/web/branches/1/request-review",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(
+        (status, reviewed["status"].as_str()),
+        (StatusCode::OK, Some("in_review"))
+    );
+    let (_, detail) = call(engine.clone(), "/api/projects/web/branches/1").await;
+    assert_eq!(
+        detail["changes"],
+        json!([{ "path": "a.txt", "kind": "modified" }, { "path": "b.txt", "kind": "added" }])
+    );
+    assert_eq!(detail["behind"], false);
+    assert_eq!(detail["events"].as_array().unwrap().len(), 4);
+
+    let (status, v2) = post(
+        engine.clone(),
+        "/api/projects/web/branches/1/merge",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{v2}");
+    assert_eq!(
+        (v2["kind"].as_str(), v2["branch"].as_u64()),
+        (Some("merge"), Some(1))
+    );
+    let (_, list) = call(engine.clone(), "/api/projects/web/branches").await;
+    assert_eq!(list["branches"][0]["status"], "merged");
+
+    let (status, v3) = post(
+        engine.clone(),
+        "/api/projects/web/versions/2/restore",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{v3}");
+    assert_eq!(
+        (v3["kind"].as_str(), v3["restored"].as_u64()),
+        (Some("restore"), Some(2))
+    );
+    let (_, diff) = call(engine.clone(), "/api/projects/web/diff?from=v1").await;
+    assert_eq!(diff, json!({ "changes": [] }));
+
+    // Two drafts touching the same line: the second clashes after the first is merged.
+    for (n, text) in [(2, "x\n"), (3, "y\n")] {
+        let body = json!({ "title": format!("t{n}"), "files": [{ "path": "a.txt", "content": b64(text) }] });
+        let (status, _) = post(engine.clone(), "/api/projects/web/branches", &body).await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let (status, _) = post(
+        engine.clone(),
+        "/api/projects/web/branches/2/merge",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, clash) = post(
+        engine.clone(),
+        "/api/projects/web/branches/3/merge",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(
+        (status, clash["code"].as_str()),
+        (StatusCode::CONFLICT, Some("clash"))
+    );
+    assert_eq!(clash["detail"]["files"], json!(["a.txt"]));
+}
+
+#[tokio::test]
 async fn delete_project() {
     let engine = engine(true);
     let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;

@@ -467,6 +467,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/versions/{number}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a new version that undoes what this version changed */
+        post: operations["restoreVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get: operations["listBranches"];
+        put?: never;
+        /** Start a draft, empty or with changes made on a checkout of `from` */
+        post: operations["createBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get: operations["getBranch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit changed files on top of `base` (the branch head) */
+        post: operations["pushBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/request-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the team to review a draft */
+        post: operations["requestBranchReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the branch into main as a new version */
+        post: operations["mergeBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close the branch without merging */
+        post: operations["archiveBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bring an archived branch back as a draft */
+        post: operations["reopenBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new draft of your own from where this branch is */
+        post: operations["duplicateBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/branches/{number}/catch-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the newest main into the branch (clashes are marked) */
+        post: operations["catchUpBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{key}/diff": {
         parameters: {
             query?: never;
@@ -1104,8 +1302,47 @@ export interface components {
             kind: "initial" | "import" | "push" | "merge" | "restore";
             actor: string;
             note: string;
+            /** @description The branch a merge version took in */
+            branch?: number;
+            /** @description The version a restore version undid */
+            restored?: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        Branch: {
+            number: number;
+            title: string;
+            author: components["schemas"]["Person"];
+            /** @enum {string} */
+            status: "open" | "in_review" | "merged" | "archived";
+            /** @description The main commit it last started from or caught up with */
+            base: string;
+            head: string;
+            /** @description Files that clashed with main; empty when clean */
+            conflicts: string[];
+            mergedVersion?: number;
+            createdAt: string;
+            updatedAt: string;
+        };
+        BranchEvent: {
+            actor: components["schemas"]["Person"];
+            /** @description created, push, review, catch_up, conflict, merge, archive, reopen, duplicate */
+            kind: string;
+            detail: string;
+            at: string;
+        };
+        Change: {
+            path: string;
+            /** @enum {string} */
+            kind: "added" | "modified" | "deleted";
+        };
+        BranchDetail: components["schemas"]["Branch"] & {
+            changes: components["schemas"]["Change"][];
+            /** @description The commit the changes are counted from */
+            since: string;
+            /** @description Main moved on since the branch last caught up */
+            behind: boolean;
+            events: components["schemas"]["BranchEvent"][];
         };
         FileInput: {
             /** @description Relative, `/`-separated, no `..`, not inside `.git` */
@@ -1125,6 +1362,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description Files changed on both sides; `detail.files` lists them */
+        Clash: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The webhook and its signing secret (shown once) */
         WebhookSecret: {
             headers: {
@@ -1225,6 +1471,7 @@ export interface components {
         /** @description Screen or story id */
         CaptureTarget: string;
         Theme: "light" | "dark";
+        BranchNumber: number;
         ProjectKey: string;
     };
     requestBodies: never;
@@ -2110,6 +2357,316 @@ export interface operations {
                     };
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new (restore) version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Clash"];
+        };
+    };
+    listBranches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Branches, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        branches: components["schemas"]["Branch"][];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                    /** @description `main`, `v<n>` or a commit (default `main`) */
+                    from?: string;
+                    files?: components["schemas"]["FileInput"][];
+                };
+            };
+        };
+        responses: {
+            /** @description The new branch */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch, its changes against main and what happened to it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    pushBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    base: string;
+                    message?: string;
+                    files: components["schemas"]["FileInput"][];
+                };
+            };
+        };
+        responses: {
+            /** @description The branch after the push */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The branch moved since `base`; `detail.head` is its head */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    requestBranchReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    mergeBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new (merge) version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Clash"];
+        };
+    };
+    archiveBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reopenBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    duplicateBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new branch */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    catchUpBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: components["parameters"]["BranchNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

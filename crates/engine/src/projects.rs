@@ -3,7 +3,7 @@
 use charet_model::{Actor, Origin, Project, Version, VersionKind, Visibility, valid_path};
 
 use crate::policy::{Command, Target, can};
-use crate::{Author, Change, Engine, EngineError, FileChange};
+use crate::{Author, Change, Engine, EngineError, FileChange, NewVersion};
 
 /// Files brought in from a product repo, with a note on where they came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -300,10 +300,29 @@ impl Engine {
         actor: &Actor,
         note: &str,
     ) -> Result<Version, EngineError> {
-        let version = self
-            .ports
-            .records
-            .add_version(key, commit, kind, actor.name(), note)?;
+        self.record_version(
+            key,
+            actor,
+            &NewVersion {
+                commit: commit.to_owned(),
+                kind,
+                actor: actor.name().to_owned(),
+                note: note.to_owned(),
+                branch: None,
+                restored: None,
+            },
+        )
+    }
+
+    /// Records a version of `main`, tags it and tells everyone.
+    pub(crate) fn record_version(
+        &self,
+        key: &str,
+        actor: &Actor,
+        new: &NewVersion,
+    ) -> Result<Version, EngineError> {
+        let (commit, note) = (new.commit.as_str(), new.note.as_str());
+        let version = self.ports.records.add_version(key, new)?;
         self.ports.store.tag_version(key, version.number, commit)?;
         self.publish(
             key,
@@ -317,7 +336,7 @@ impl Engine {
     }
 }
 
-fn author(actor: &Actor) -> Author {
+pub(crate) fn author(actor: &Actor) -> Author {
     match actor {
         Actor::Local => Author {
             name: "Local admin".into(),
@@ -334,7 +353,7 @@ fn author(actor: &Actor) -> Author {
     }
 }
 
-fn check_files(files: &[FileChange]) -> Result<(), EngineError> {
+pub(crate) fn check_files(files: &[FileChange]) -> Result<(), EngineError> {
     let mut seen = std::collections::HashSet::new();
     for file in files {
         if !valid_path(&file.path) {

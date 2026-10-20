@@ -3,6 +3,7 @@
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
 mod auth;
+mod branches;
 mod browse;
 mod captures;
 mod comments;
@@ -64,6 +65,20 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/projects/{key}/checkout"),
     ("post", "/api/projects/{key}/push"),
     ("get", "/api/projects/{key}/versions"),
+    ("post", "/api/projects/{key}/versions/{number}/restore"),
+    ("get", "/api/projects/{key}/branches"),
+    ("post", "/api/projects/{key}/branches"),
+    ("get", "/api/projects/{key}/branches/{number}"),
+    ("post", "/api/projects/{key}/branches/{number}/push"),
+    (
+        "post",
+        "/api/projects/{key}/branches/{number}/request-review",
+    ),
+    ("post", "/api/projects/{key}/branches/{number}/merge"),
+    ("post", "/api/projects/{key}/branches/{number}/archive"),
+    ("post", "/api/projects/{key}/branches/{number}/reopen"),
+    ("post", "/api/projects/{key}/branches/{number}/duplicate"),
+    ("post", "/api/projects/{key}/branches/{number}/catch-up"),
     ("get", "/api/projects/{key}/diff"),
     ("get", "/api/projects/{key}/preview"),
     ("post", "/api/projects/{key}/check"),
@@ -137,6 +152,7 @@ pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router
 
 fn routes() -> Router<Engine> {
     Router::new()
+        .merge(branches::routes())
         .route("/api/health", get(health))
         .route("/api/version", get(version))
         .route("/api/system", get(system))

@@ -116,14 +116,14 @@ components: `const Viewer = lazy(() => import("@/features/pdf/Viewer"))`.
 ```bash
 charet dev          # installs .charet/ and runs vite with .charet/vite.config.ts
                    # → open /.charet/frame.html?screen=<id> on the printed port
-charet push -m "charet: first screens"
+charet push -m "charet: first screens" --merge
 charet check        # every screen and story; fix each missing mock and console error
 charet capture --theme both
 charet url <id>     # links for the team
 ```
 
-`check` and `capture` run on the pushed version, so push before checking: an unpushed fix is
-invisible to them.
+`check` and `capture` run on what was pushed (and merged, for `capture`), so push before
+checking: an unpushed fix is invisible to them. Later fixes: `charet push -m "…" --merge` again.
 
 ## Common problems
 

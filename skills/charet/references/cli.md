@@ -23,12 +23,19 @@ are in) and `--server <url>` (default: the checkout's server, else `CHARET_URL`,
 | `charet delete <project> [--yes]` | Deletes a project with its versions, captures and comments (no undo; asks for the key). Only when the user asks |
 | `charet init <key> [dir] [--template recommended]` | Creates a project from a template and checks it out |
 | `charet import [path] [--key k] [--include dir]… [--dry-run]` | Imports an existing app (and the workspace packages it uses) |
-| `charet checkout <project> [dir] [--rev vN]` | Downloads a project into a folder |
-| `charet status` | Base version, whether main moved, local changes |
-| `charet push [-m msg]` | Sends local changes as a new version (fails if someone pushed first: `charet pull`, then push) |
-| `charet pull` | Updates the checkout to the latest version (refuses with unpushed changes) |
+| `charet checkout <project> [dir] [--rev vN] [--branch N]` | Downloads main (or a version, or one branch) into a folder |
+| `charet status` | Its branch (if any), base, whether main moved, local changes |
+| `charet push [-m msg] [--merge]` | From a checkout of main: starts a branch (draft) titled `msg` with the changes and the checkout follows it. From a branch checkout: adds to it (fails if someone pushed to it first: `charet pull`, then push). `--merge` merges it at once and brings the checkout back to main |
+| `charet pull` | Updates the checkout to its branch's head or main (refuses with unpushed changes); a merged or archived branch hands the checkout back to main |
 | `charet dev` | Runs the app's vite dev server in the checkout |
-| `charet versions` · `charet diff <from> [to]` | Version list · changed paths |
+| `charet versions` · `charet diff <from> [to]` | Version list (kind push / merge / restore) · changed paths |
+| `charet restore vN` | A new version undoing vN (clashes with later changes are refused) |
+| `charet branches [--all]` | Drafts and branches in review (`--all`: merged, archived): `#n status author title [clash: files]` |
+| `charet branch [n]` | One branch: status, head, clash, link, changed files, history (defaults to the checkout's branch) |
+| `charet branch review [n]` | Asks the team to review a draft (author or admin) |
+| `charet branch merge [n]` | Merges into main as a new version; refused when files clash (named in the message) |
+| `charet branch catch-up [n]` | Takes the newest main into the branch; clashes are marked, then `charet pull` |
+| `charet branch archive\|reopen\|duplicate [n]` | Close without merging · bring back as a draft · copy as your own draft (drafts are their author's) |
 
 ## Structure
 
@@ -48,7 +55,7 @@ are in) and `--server <url>` (default: the checkout's server, else `CHARET_URL`,
 
 ## Check and capture
 
-Both run on the pushed version (`--rev vN` for another) and wait for its preview build.
+`check` runs on the checkout's branch (else main); `capture` only on main, since captures are what everyone sees. `--rev vN` picks another; both wait for the preview build.
 
 | Command | Does |
 |---|---|

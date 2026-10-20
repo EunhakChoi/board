@@ -3,6 +3,7 @@ import { detectLocale, type Locale, t } from "@charet/i18n";
 import pkg from "../package.json" with { type: "json" };
 import * as auth from "./auth.ts";
 import { savedToken } from "./auth.ts";
+import * as branches from "./branches.ts";
 import { findCheckout } from "./checkout.ts";
 import * as commands from "./commands.ts";
 import * as notes from "./comments.ts";
@@ -42,6 +43,7 @@ const VALUE_FLAGS = new Set([
   "--sheet",
   "--on",
   "--token",
+  "--branch",
 ]);
 const LIST_FLAGS = new Set(["--include"]);
 
@@ -130,8 +132,10 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
     const title = str(args, "--title");
     const message = str(args, "-m", "--message");
     const theme = str(args, "--theme");
-    const render = (): RenderOptions => {
-      const rev = str(args, "--rev");
+    const render = (onBranch = false): RenderOptions => {
+      // `check` in a branch checkout looks at that branch; captures follow main.
+      const branch = onBranch ? findCheckout(cwd)?.state.branch : undefined;
+      const rev = str(args, "--rev") ?? (branch ? `b${branch}` : undefined);
       const out = str(args, "--out");
       return {
         targets: rest,
@@ -215,7 +219,7 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         await structure.source(ctx, project(), rest[0], Number(str(args, "--context") ?? "20"));
         break;
       case "check":
-        return await renders.check(ctx, project(), render());
+        return await renders.check(ctx, project(), render(true));
       case "capture":
         return await renders.capture(ctx, project(), render());
       case "comments":
@@ -252,10 +256,24 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         break;
       case "checkout":
         if (!rest[0]) throw new commands.CliError(t("cli.usage.checkout", {}, locale));
-        await commands.checkout(ctx, rest[0], rest[1], str(args, "--rev"));
+        await commands.checkout(
+          ctx,
+          rest[0],
+          rest[1],
+          str(args, "--rev"),
+          branchFlag(str(args, "--branch"), locale),
+        );
         break;
       case "push":
-        await commands.push(ctx, str(args, "-m", "--message"));
+        await commands.push(ctx, str(args, "-m", "--message"), args.flags.has("--merge"));
+        break;
+      case "branches":
+        await branches.list(ctx, project(), args.flags.has("--all"));
+        break;
+      case "branch":
+        return await branches.branchCommand(ctx, project(), rest);
+      case "restore":
+        await branches.restore(ctx, project(), rest[0]);
         break;
       case "pull":
         await commands.pull(ctx);
@@ -283,6 +301,15 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
     }
     throw error;
   }
+}
+
+function branchFlag(value: string | undefined, locale: Locale): number | undefined {
+  if (value === undefined) return undefined;
+  const number = Number(value.replace(/^#/, ""));
+  if (!Number.isInteger(number) || number < 1) {
+    throw new commands.CliError(t("cli.usage.checkout", {}, locale));
+  }
+  return number;
 }
 
 async function commentsCommand(

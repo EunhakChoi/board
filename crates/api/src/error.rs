@@ -84,9 +84,15 @@ impl From<EngineError> for ApiError {
             EngineError::Conflict { head } => Self::new(
                 StatusCode::CONFLICT,
                 "conflict",
-                "main moved since your base; pull and try again",
+                "it moved since your base; pull and try again",
             )
             .with_detail(serde_json::json!({ "head": head })),
+            EngineError::Clash(files) => Self::new(
+                StatusCode::CONFLICT,
+                "clash",
+                format!("changed on both sides: {}", files.join(", ")),
+            )
+            .with_detail(serde_json::json!({ "files": files })),
             EngineError::Pending(message) => Self::new(StatusCode::CONFLICT, "pending", message),
             EngineError::Changed(rev) => Self::new(
                 StatusCode::CONFLICT,

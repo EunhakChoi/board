@@ -1,6 +1,7 @@
 //! SQLite persistence for members, projects, comments and notifications.
 
 mod accounts;
+mod branches;
 mod captures;
 mod comments;
 mod notices;
@@ -8,8 +9,8 @@ mod notices;
 use std::path::Path;
 use std::sync::Mutex;
 
-use charet_engine::{Records, Settings, StoreError};
-use charet_model::{Origin, Project, Version, VersionKind, Visibility};
+use charet_engine::{BranchEvent, NewBranch, NewVersion, Records, Settings, StoreError};
+use charet_model::{Branch, Origin, Project, Version, VersionKind, Visibility};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use captures::CaptureStore;
@@ -29,6 +30,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0009_notices.sql"),
     include_str!("migrations/0010_invites.sql"),
     include_str!("migrations/0011_member_tokens.sql"),
+    include_str!("migrations/0012_branches.sql"),
 ];
 
 /// The charet database: one SQLite file in WAL mode.
@@ -218,27 +220,57 @@ impl Records for Db {
         rows.collect::<Result<_, _>>().map_err(err)
     }
 
-    fn add_version(
-        &self,
-        project: &str,
-        commit: &str,
-        kind: VersionKind,
-        actor: &str,
-        note: &str,
-    ) -> Result<Version, StoreError> {
+    fn add_version(&self, project: &str, version: &NewVersion) -> Result<Version, StoreError> {
         let conn = self.lock()?;
         // One statement picks the next number, so concurrent writers cannot collide.
         conn.query_row(
             &format!(
-                "INSERT INTO versions (project, number, git_commit, kind, actor, note)
+                "INSERT INTO versions (project, number, git_commit, kind, actor, note, branch, restored)
                  VALUES (?1, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE project = ?1),
-                         ?2, ?3, ?4, ?5)
+                         ?2, ?3, ?4, ?5, ?6, ?7)
                  RETURNING {VERSION_FIELDS}"
             ),
-            params![project, commit, text(kind), actor, note],
+            params![
+                project,
+                version.commit,
+                text(version.kind),
+                version.actor,
+                version.note,
+                version.branch,
+                version.restored
+            ],
             version_row,
         )
         .map_err(err)
+    }
+
+    fn insert_branch(&self, project: &str, branch: &NewBranch) -> Result<Branch, StoreError> {
+        self.insert_branch_row(project, branch)
+    }
+
+    fn branch(&self, project: &str, number: u32) -> Result<Option<Branch>, StoreError> {
+        self.branch_row(project, number)
+    }
+
+    fn branches(&self, project: &str) -> Result<Vec<Branch>, StoreError> {
+        self.branch_rows(project)
+    }
+
+    fn update_branch(&self, project: &str, branch: &Branch) -> Result<(), StoreError> {
+        self.update_branch_row(project, branch)
+    }
+
+    fn add_branch_event(
+        &self,
+        project: &str,
+        number: u32,
+        event: &BranchEvent,
+    ) -> Result<(), StoreError> {
+        self.add_branch_event_row(project, number, event)
+    }
+
+    fn branch_events(&self, project: &str, number: u32) -> Result<Vec<BranchEvent>, StoreError> {
+        self.branch_event_rows(project, number)
     }
 
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError> {
@@ -256,7 +288,7 @@ impl Records for Db {
 }
 
 const PROJECT_COLUMNS: &str = "SELECT key, title, visibility, origin, created_at FROM projects";
-const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at";
+const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at, branch, restored";
 
 fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     Ok(Project {
@@ -276,6 +308,8 @@ fn version_row(row: &Row<'_>) -> rusqlite::Result<Version> {
         actor: row.get(3)?,
         note: row.get(4)?,
         created_at: row.get(5)?,
+        branch: row.get(6)?,
+        restored: row.get(7)?,
     })
 }
 
@@ -367,19 +401,94 @@ mod tests {
         assert_eq!(db.project("zzz").unwrap(), None);
     }
 
+    fn nv(commit: &str, kind: VersionKind, note: &str) -> NewVersion {
+        NewVersion {
+            commit: commit.into(),
+            kind,
+            actor: "Me".into(),
+            note: note.into(),
+            branch: None,
+            restored: None,
+        }
+    }
+
+    #[test]
+    fn branches_number_update_and_log() {
+        let db = Db::memory().unwrap();
+        db.insert_project(&project("a")).unwrap();
+        let me = charet_model::Person {
+            id: "u1".into(),
+            name: "Ann".into(),
+        };
+        let new = NewBranch {
+            title: "Bigger buttons".into(),
+            author: me.clone(),
+            base: "c1".into(),
+            head: "c1".into(),
+        };
+        let b1 = db.insert_branch("a", &new).unwrap();
+        let b2 = db.insert_branch("a", &new).unwrap();
+        assert_eq!((b1.number, b2.number), (1, 2));
+        assert_eq!(b1.status, charet_model::BranchStatus::Open);
+        let mut changed = b1.clone();
+        changed.status = charet_model::BranchStatus::Merged;
+        changed.head = "c9".into();
+        changed.conflicts = vec!["x.ts".into()];
+        changed.merged_version = Some(4);
+        db.update_branch("a", &changed).unwrap();
+        let found = db.branch("a", 1).unwrap().unwrap();
+        assert_eq!(
+            (
+                found.status,
+                found.head.as_str(),
+                found.conflicts.len(),
+                found.merged_version
+            ),
+            (charet_model::BranchStatus::Merged, "c9", 1, Some(4))
+        );
+        assert_eq!(
+            db.branches("a")
+                .unwrap()
+                .iter()
+                .map(|b| b.number)
+                .collect::<Vec<_>>(),
+            [2, 1]
+        );
+        let event = BranchEvent {
+            actor: me,
+            kind: "push".into(),
+            detail: "c9".into(),
+            at: String::new(),
+        };
+        db.add_branch_event("a", 1, &event).unwrap();
+        assert_eq!(db.branch_events("a", 1).unwrap()[0].kind, "push");
+        let merged = db
+            .add_version(
+                "a",
+                &NewVersion {
+                    branch: Some(1),
+                    ..nv("c9", VersionKind::Merge, "Bigger buttons")
+                },
+            )
+            .unwrap();
+        assert_eq!(merged.branch, Some(1));
+        assert!(db.delete_project("a").unwrap());
+        assert_eq!(db.branch("a", 1).unwrap(), None);
+    }
+
     #[test]
     fn versions_count_per_project() {
         let db = Db::memory().unwrap();
         db.insert_project(&project("a")).unwrap();
         db.insert_project(&project("b")).unwrap();
         let v1 = db
-            .add_version("a", "c1", VersionKind::Import, "Me", "first")
+            .add_version("a", &nv("c1", VersionKind::Import, "first"))
             .unwrap();
         let v2 = db
-            .add_version("a", "c2", VersionKind::Push, "Me", "second")
+            .add_version("a", &nv("c2", VersionKind::Push, "second"))
             .unwrap();
         let b1 = db
-            .add_version("b", "c3", VersionKind::Initial, "Me", "")
+            .add_version("b", &nv("c3", VersionKind::Initial, ""))
             .unwrap();
         assert_eq!((v1.number, v2.number, b1.number), (1, 2, 1));
         let listed: Vec<_> = db
@@ -390,7 +499,7 @@ mod tests {
             .collect();
         assert_eq!(listed, [(2, VersionKind::Push), (1, VersionKind::Import)]);
         assert!(
-            db.add_version("nope", "c", VersionKind::Push, "Me", "")
+            db.add_version("nope", &nv("c", VersionKind::Push, ""))
                 .is_err()
         );
         assert!(db.delete_project("a").unwrap());

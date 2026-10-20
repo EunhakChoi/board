@@ -487,6 +487,7 @@ export async function status(ctx: Context): Promise<number> {
     return 0;
   }
   ctx.out(`project  ${state.project} (${state.server})`);
+  if (state.branch) ctx.out(`branch   #${state.branch}`);
   ctx.out(`base     ${base ? `v${base.number} ` : ""}${state.base.slice(0, 10)}`);
   ctx.out(
     `main     ${latest ? `v${latest.number} ${latest.commit.slice(0, 10)}` : "?"}${behind ? `  ${t("cli.status.behind", {}, ctx.locale)}` : ""}`,

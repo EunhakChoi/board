@@ -116,6 +116,15 @@ impl Engine {
         force: bool,
     ) -> Result<Rendered, EngineError> {
         self.visible(actor, key, Command::BranchEdit)?;
+        if rev
+            .strip_prefix('b')
+            .is_some_and(|n| n.parse::<u32>().is_ok())
+        {
+            // Stored captures are what everyone sees for main; a branch is checked, not captured.
+            return Err(EngineError::Invalid(
+                "captures follow main: use check for a branch".into(),
+            ));
+        }
         let (commit, settings) = self.ready_build(actor, key, rev)?;
         let jobs = self.jobs(key, &commit, requested, themes)?;
         let stored: HashMap<(String, String, String), Capture> = self

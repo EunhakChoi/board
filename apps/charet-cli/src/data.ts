@@ -54,9 +54,11 @@ export async function whenBuilt<T>(
   return result.data;
 }
 
-export async function manifest(ctx: Context, project: string): Promise<Manifest> {
+export async function manifest(ctx: Context, project: string, rev?: string): Promise<Manifest> {
   const data = await whenBuilt(ctx, project, () =>
-    client(ctx).GET("/api/projects/{key}/manifest", { params: { path: { key: project } } }),
+    client(ctx).GET("/api/projects/{key}/manifest", {
+      params: { path: { key: project }, query: rev ? { rev } : {} },
+    }),
   );
   return data.manifest;
 }

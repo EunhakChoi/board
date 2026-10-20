@@ -3,13 +3,15 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use charet_model::{Comment, CommentStatus, Project, Reply, Role, User, Version, VersionKind};
+use charet_model::{
+    Branch, BranchStatus, Comment, CommentStatus, Project, Reply, Role, User, Version,
+};
 
 use crate::{
-    Accounts, Author, Build, BuildState, BuiltFile, Capture, Captures, Change, ChangeKind,
-    Comments, Engine, FileChange, NewComment, NewReply, NewUser, Ports, PreviewSettings,
-    ProjectStore, Records, RenderJob, Renderer, SessionRow, Settings, Shot, StoreError, Workspace,
-    WorkspaceError,
+    Accounts, Author, BranchEvent, Build, BuildState, BuiltFile, Capture, Captures, Change,
+    ChangeKind, Comments, Engine, FileChange, Merged, NewBranch, NewComment, NewReply, NewUser,
+    NewVersion, Ports, PreviewSettings, ProjectStore, Records, RenderJob, Renderer, SessionRow,
+    Settings, Shot, StoreError, Workspace, WorkspaceError,
 };
 
 /// The fakes behind an engine, for tests that steer or inspect them.
@@ -379,6 +381,8 @@ impl Settings for MemorySettings {
 struct MemoryRecords {
     projects: Mutex<Vec<Project>>,
     versions: Mutex<Vec<(String, Version)>>,
+    branches: Mutex<Vec<(String, Branch)>>,
+    events: Mutex<Vec<(String, u32, BranchEvent)>>,
     members: Mutex<Vec<(String, String)>>,
 }
 
@@ -454,27 +458,96 @@ impl Records for MemoryRecords {
     fn projects(&self) -> Result<Vec<Project>, StoreError> {
         Ok(self.projects.lock().unwrap().clone())
     }
-    fn add_version(
-        &self,
-        project: &str,
-        commit: &str,
-        kind: VersionKind,
-        actor: &str,
-        note: &str,
-    ) -> Result<Version, StoreError> {
+    fn add_version(&self, project: &str, new: &NewVersion) -> Result<Version, StoreError> {
         let mut versions = self.versions.lock().unwrap();
         let number =
             u32::try_from(versions.iter().filter(|(p, _)| p == project).count() + 1).unwrap();
         let version = Version {
             number,
-            commit: commit.into(),
-            kind,
-            actor: actor.into(),
-            note: note.into(),
+            commit: new.commit.clone(),
+            kind: new.kind,
+            actor: new.actor.clone(),
+            note: new.note.clone(),
+            branch: new.branch,
+            restored: new.restored,
             created_at: String::new(),
         };
         versions.push((project.into(), version.clone()));
         Ok(version)
+    }
+    fn insert_branch(&self, project: &str, new: &NewBranch) -> Result<Branch, StoreError> {
+        let mut branches = self.branches.lock().unwrap();
+        let number =
+            u32::try_from(branches.iter().filter(|(p, _)| p == project).count() + 1).unwrap();
+        let branch = Branch {
+            number,
+            title: new.title.clone(),
+            author: new.author.clone(),
+            status: BranchStatus::Open,
+            base: new.base.clone(),
+            head: new.head.clone(),
+            conflicts: Vec::new(),
+            merged_version: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        branches.push((project.into(), branch.clone()));
+        Ok(branch)
+    }
+    fn branch(&self, project: &str, number: u32) -> Result<Option<Branch>, StoreError> {
+        Ok(self
+            .branches
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(p, b)| p == project && b.number == number)
+            .map(|(_, b)| b.clone()))
+    }
+    fn branches(&self, project: &str) -> Result<Vec<Branch>, StoreError> {
+        let mut found: Vec<_> = self
+            .branches
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _)| p == project)
+            .map(|(_, b)| b.clone())
+            .collect();
+        found.reverse();
+        Ok(found)
+    }
+    fn update_branch(&self, project: &str, branch: &Branch) -> Result<(), StoreError> {
+        for (_, b) in self
+            .branches
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|(p, b)| p == project && b.number == branch.number)
+        {
+            *b = branch.clone();
+        }
+        Ok(())
+    }
+    fn add_branch_event(
+        &self,
+        project: &str,
+        number: u32,
+        event: &BranchEvent,
+    ) -> Result<(), StoreError> {
+        self.events
+            .lock()
+            .unwrap()
+            .push((project.into(), number, event.clone()));
+        Ok(())
+    }
+    fn branch_events(&self, project: &str, number: u32) -> Result<Vec<BranchEvent>, StoreError> {
+        Ok(self
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, n, _)| p == project && *n == number)
+            .map(|(_, _, e)| e.clone())
+            .collect())
     }
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError> {
         let mut found: Vec<_> = self
@@ -494,9 +567,85 @@ type Files = BTreeMap<String, Vec<u8>>;
 
 #[derive(Default)]
 struct Repo {
-    commits: HashMap<String, Files>,
-    main: Option<String>,
+    /// Files and parents of each commit.
+    commits: HashMap<String, (Files, Vec<String>)>,
+    lines: HashMap<String, String>,
     tags: HashMap<u32, String>,
+}
+
+impl Repo {
+    fn files(&self, commit: &str) -> &Files {
+        &self.commits[commit].0
+    }
+
+    fn add(&mut self, files: Files, parents: Vec<String>) -> String {
+        let id = format!("c{}", self.commits.len() + 1);
+        self.commits.insert(id.clone(), (files, parents));
+        id
+    }
+
+    /// `commit` and everything it comes from, nearest first.
+    fn ancestry(&self, commit: &str) -> Vec<String> {
+        let mut seen = Vec::new();
+        let mut queue = std::collections::VecDeque::from([commit.to_owned()]);
+        while let Some(next) = queue.pop_front() {
+            if seen.contains(&next) {
+                continue;
+            }
+            queue.extend(self.commits[&next].1.iter().cloned());
+            seen.push(next);
+        }
+        seen
+    }
+
+    /// The common ancestor that no other common ancestor comes after.
+    fn base(&self, a: &str, b: &str) -> Option<String> {
+        let theirs = self.ancestry(b);
+        let common: Vec<String> = self
+            .ancestry(a)
+            .into_iter()
+            .filter(|c| theirs.contains(c))
+            .collect();
+        common
+            .iter()
+            .find(|c| {
+                !common
+                    .iter()
+                    .any(|d| d != *c && self.ancestry(d).contains(c))
+            })
+            .cloned()
+    }
+
+    /// File-level three-way join of `ours` and `theirs` over `base`.
+    fn join(base: &Files, ours: &Files, theirs: &Files) -> Result<Files, Vec<String>> {
+        let mut paths: Vec<&String> = base
+            .keys()
+            .chain(ours.keys())
+            .chain(theirs.keys())
+            .collect();
+        paths.sort();
+        paths.dedup();
+        let (mut out, mut clashes) = (Files::new(), Vec::new());
+        for path in paths {
+            let (b, o, t) = (base.get(path), ours.get(path), theirs.get(path));
+            let pick = if o == t || t == b {
+                o
+            } else if o == b {
+                t
+            } else {
+                clashes.push(path.clone());
+                continue;
+            };
+            if let Some(content) = pick {
+                out.insert(path.clone(), content.clone());
+            }
+        }
+        if clashes.is_empty() {
+            Ok(out)
+        } else {
+            Err(clashes)
+        }
+    }
 }
 
 #[derive(Default)]
@@ -514,12 +663,13 @@ impl ProjectStore for MemoryStore {
             .insert(project.into(), Repo::default());
         Ok(())
     }
-    fn head(&self, project: &str) -> Result<Option<String>, StoreError> {
-        Ok(self.0.lock().unwrap()[project].main.clone())
+    fn line_head(&self, project: &str, line: &str) -> Result<Option<String>, StoreError> {
+        Ok(self.0.lock().unwrap()[project].lines.get(line).cloned())
     }
-    fn commit_main(
+    fn commit_line(
         &self,
         project: &str,
+        line: &str,
         parent: Option<&str>,
         changes: &[FileChange],
         _author: &Author,
@@ -527,20 +677,78 @@ impl ProjectStore for MemoryStore {
     ) -> Result<Option<String>, StoreError> {
         let mut repos = self.0.lock().unwrap();
         let repo = repos.get_mut(project).unwrap();
-        if repo.main.as_deref() != parent {
+        if repo.lines.get(line).map(String::as_str) != parent {
             return Ok(None);
         }
-        let mut files = parent.map(|p| repo.commits[p].clone()).unwrap_or_default();
+        let mut files = parent.map(|p| repo.files(p).clone()).unwrap_or_default();
         for change in changes {
             match &change.content {
                 Some(content) => files.insert(change.path.clone(), content.clone()),
                 None => files.remove(&change.path),
             };
         }
-        let id = format!("c{}", repo.commits.len() + 1);
-        repo.commits.insert(id.clone(), files);
-        repo.main = Some(id.clone());
+        let id = repo.add(files, parent.into_iter().map(str::to_owned).collect());
+        repo.lines.insert(line.into(), id.clone());
         Ok(Some(id))
+    }
+    fn move_line(
+        &self,
+        project: &str,
+        line: &str,
+        new: &str,
+        old: Option<&str>,
+    ) -> Result<bool, StoreError> {
+        let mut repos = self.0.lock().unwrap();
+        let repo = repos.get_mut(project).unwrap();
+        if repo.lines.get(line).map(String::as_str) != old {
+            return Ok(false);
+        }
+        repo.lines.insert(line.into(), new.into());
+        Ok(true)
+    }
+    fn merge(
+        &self,
+        project: &str,
+        ours: &str,
+        theirs: &str,
+        _author: &Author,
+        _message: &str,
+    ) -> Result<Merged, StoreError> {
+        let mut repos = self.0.lock().unwrap();
+        let repo = repos.get_mut(project).unwrap();
+        if repo.ancestry(ours).iter().any(|c| c == theirs) {
+            return Ok(Merged::Clean(ours.into()));
+        }
+        let base = repo
+            .base(ours, theirs)
+            .map(|b| repo.files(&b).clone())
+            .unwrap_or_default();
+        match Repo::join(&base, repo.files(ours), repo.files(theirs)) {
+            Ok(files) => Ok(Merged::Clean(
+                repo.add(files, vec![ours.into(), theirs.into()]),
+            )),
+            Err(clashes) => Ok(Merged::Conflict(clashes)),
+        }
+    }
+    fn revert(
+        &self,
+        project: &str,
+        onto: &str,
+        commit: &str,
+        _author: &Author,
+        _message: &str,
+    ) -> Result<Merged, StoreError> {
+        let mut repos = self.0.lock().unwrap();
+        let repo = repos.get_mut(project).unwrap();
+        let parent = repo.commits[commit].1.first().cloned();
+        let before = parent.map(|p| repo.files(&p).clone()).unwrap_or_default();
+        match Repo::join(repo.files(commit), repo.files(onto), &before) {
+            Ok(files) => Ok(Merged::Clean(repo.add(files, vec![onto.into()]))),
+            Err(clashes) => Ok(Merged::Conflict(clashes)),
+        }
+    }
+    fn merge_base(&self, project: &str, a: &str, b: &str) -> Result<Option<String>, StoreError> {
+        Ok(self.0.lock().unwrap()[project].base(a, b))
     }
     fn tag_version(&self, project: &str, number: u32, commit: &str) -> Result<(), StoreError> {
         self.0
@@ -556,7 +764,10 @@ impl ProjectStore for MemoryStore {
         let repos = self.0.lock().unwrap();
         let repo = &repos[project];
         if rev == "main" {
-            return Ok(repo.main.clone());
+            return Ok(repo.lines.get("main").cloned());
+        }
+        if let Some(number) = rev.strip_prefix('b').filter(|n| n.parse::<u32>().is_ok()) {
+            return Ok(repo.lines.get(&format!("b/{number}")).cloned());
         }
         if let Some(number) = rev.strip_prefix('v').and_then(|n| n.parse().ok()) {
             return Ok(repo.tags.get(&number).cloned());
@@ -565,18 +776,18 @@ impl ProjectStore for MemoryStore {
     }
     fn list(&self, project: &str, commit: &str) -> Result<Vec<String>, StoreError> {
         let repos = self.0.lock().unwrap();
-        Ok(repos[project].commits[commit].keys().cloned().collect())
+        Ok(repos[project].files(commit).keys().cloned().collect())
     }
     fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let repos = self.0.lock().unwrap();
-        Ok(repos[project].commits[commit].get(path).cloned())
+        Ok(repos[project].files(commit).get(path).cloned())
     }
     fn archive(&self, _project: &str, commit: &str) -> Result<Vec<u8>, StoreError> {
         Ok(commit.as_bytes().to_vec())
     }
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError> {
         let repos = self.0.lock().unwrap();
-        let (a, b) = (&repos[project].commits[from], &repos[project].commits[to]);
+        let (a, b) = (repos[project].files(from), repos[project].files(to));
         let mut changes = Vec::new();
         for (path, content) in b {
             match a.get(path) {
