@@ -378,6 +378,8 @@
   "web.branch.event.conflict": "clashed with main",
   "web.branch.event.merge": "merged it",
   "web.branch.event.archive": "archived it",
+  "web.branch.event.idle": "archived it: no changes for",
+  "web.branch.event.approve": "approved its protected files at",
   "web.branch.event.reopen": "reopened it",
   "web.branch.protected": "Changes protected files (installs and build settings); an admin has to approve them. Until then previews use main's:",
   "web.branch.approve": "Approve protected files",

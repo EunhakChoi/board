@@ -114,6 +114,7 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
     if config.update_check {
         update::spawn(engine.clone());
     }
+    archive_idle_drafts(engine.clone());
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", config.bind))?;
@@ -255,4 +256,24 @@ async fn shutdown() {
         _ = tokio::signal::ctrl_c() => {}
         () = term => {}
     }
+}
+
+/// Once an hour, archives drafts nobody touched for two weeks.
+fn archive_idle_drafts(engine: Engine) {
+    tokio::spawn(async move {
+        loop {
+            let run = engine.clone();
+            let done = tokio::task::spawn_blocking(move || {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                run.archive_idle(now)
+            })
+            .await;
+            if let Ok(Err(error)) = done {
+                eprintln!("charet-server: cannot archive idle drafts: {error}");
+            }
+            tokio::time::sleep(std::time::Duration::from_hours(1)).await;
+        }
+    });
 }

@@ -367,6 +367,8 @@
   "web.branch.event.conflict": "main 과 충돌",
   "web.branch.event.merge": "채택함",
   "web.branch.event.archive": "보관함",
+  "web.branch.event.idle": "보관: 변경 없이 경과",
+  "web.branch.event.approve": "보호 파일 승인. 기준 commit",
   "web.branch.event.reopen": "다시 엶",
   "web.branch.protected": "보호 파일 (설치 · build 설정) 변경. 관리자 승인 필요. 승인 전 미리보기는 main 설정 사용:",
   "web.branch.approve": "보호 파일 승인",
