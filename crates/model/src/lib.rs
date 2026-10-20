@@ -358,6 +358,100 @@ pub struct Reply {
     pub created_at: String,
 }
 
+/// Which coding agent runs a web agent run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    /// Claude Agent SDK (Anthropic API key).
+    Claude,
+    /// Codex SDK (an `OpenAI` API key).
+    Codex,
+    /// A scripted stand-in for tests: makes a fixed change, no model and no key.
+    Script,
+}
+
+/// Where a web agent run is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RunState {
+    /// Waiting for an earlier run on the same branch (or a free slot).
+    Queued,
+    Running,
+    Done,
+    Failed,
+    Canceled,
+}
+
+impl RunState {
+    pub fn finished(self) -> bool {
+        matches!(self, Self::Done | Self::Failed | Self::Canceled)
+    }
+}
+
+/// One instruction to the web agent and what came of it. Its changes land on `branch` as pushes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRun {
+    pub id: u64,
+    pub project: String,
+    pub branch: u32,
+    pub actor: Person,
+    pub agent: AgentKind,
+    /// The model asked for; empty is the agent's default.
+    pub model: String,
+    pub prompt: String,
+    /// What the person pointed at when asking (screen, element, source), as given.
+    pub context: serde_json::Value,
+    /// Images attached to the prompt.
+    pub attachments: u32,
+    pub state: RunState,
+    pub error: Option<String>,
+    pub tokens_in: u64,
+    pub tokens_out: u64,
+    /// Estimated cost; `None` when the model's price is not known.
+    pub cost_usd: Option<f64>,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    /// Events the runner has handed over so far (where the server's next poll starts).
+    #[serde(skip)]
+    pub runner_seq: u32,
+}
+
+/// A line of a run's conversation, as people read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMessage {
+    pub run: u64,
+    pub seq: u32,
+    pub kind: MessageKind,
+    pub text: String,
+    /// For `tool`: the tool's name (`Edit`, `Bash` …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageKind {
+    /// What the person asked.
+    User,
+    /// What the agent says.
+    Assistant,
+    /// A tool the agent used, summarised in one line.
+    Tool,
+    /// Progress from charet (saved to the branch, checked, failed …).
+    Status,
+}
+
+/// An image attached to a run's prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attachment {
+    pub media_type: String,
+    pub data: Vec<u8>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

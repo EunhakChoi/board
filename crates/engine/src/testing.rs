@@ -23,6 +23,8 @@ pub struct Fakes {
     pub realtime: Arc<MemoryRealtime>,
     pub notices: Arc<MemoryNotices>,
     pub sender: Arc<MemorySender>,
+    pub agents: Arc<MemoryAgents>,
+    pub runner: Arc<FakeRunner>,
 }
 
 pub fn engine() -> Engine {
@@ -46,6 +48,21 @@ pub fn engine_with_fakes() -> (Engine, Fakes) {
     (engine, fakes)
 }
 
+/// An engine with the web agent on: a fake runner, a Claude key from the environment and the
+/// script agent.
+pub fn engine_with_agents() -> (Engine, Fakes) {
+    let fakes = fakes();
+    let engine = engine_with(&fakes).with_agents(
+        fakes.runner.clone(),
+        crate::AgentConfig {
+            env_keys: HashMap::from([("claude".to_owned(), "sk-test-abcd".to_owned())]),
+            script: true,
+            max_running: 2,
+        },
+    );
+    (engine, fakes)
+}
+
 pub fn file(path: &str, content: &str) -> FileChange {
     FileChange {
         path: path.into(),
@@ -61,6 +78,8 @@ fn fakes() -> Fakes {
         realtime: Arc::new(MemoryRealtime::default()),
         notices: Arc::new(MemoryNotices::default()),
         sender: Arc::new(MemorySender::default()),
+        agents: Arc::new(MemoryAgents::default()),
+        runner: Arc::new(FakeRunner::default()),
     }
 }
 
@@ -78,6 +97,7 @@ fn engine_with(fakes: &Fakes) -> Engine {
             realtime: fakes.realtime.clone(),
             notices: fakes.notices.clone(),
             webhooks: fakes.sender.clone(),
+            agents: fakes.agents.clone(),
         },
         true,
     )
@@ -1288,5 +1308,282 @@ impl Engine {
         )?;
         self.ports.realtime.working(key, &actor.person(), false);
         Ok(version)
+    }
+}
+
+/// Agent runs in memory.
+#[derive(Default)]
+pub struct MemoryAgents {
+    runs: Mutex<Vec<(charet_model::AgentRun, Option<String>)>>,
+    messages: Mutex<Vec<charet_model::AgentMessage>>,
+    attachments: Mutex<HashMap<u64, Vec<charet_model::Attachment>>>,
+}
+
+impl crate::AgentRecords for MemoryAgents {
+    fn insert_run(&self, new: &crate::NewRun) -> Result<charet_model::AgentRun, StoreError> {
+        let mut runs = self.runs.lock().unwrap();
+        let run = charet_model::AgentRun {
+            id: runs.len() as u64 + 1,
+            project: new.project.clone(),
+            branch: new.branch,
+            actor: new.actor.clone(),
+            agent: new.agent,
+            model: new.model.clone(),
+            prompt: new.prompt.clone(),
+            context: new.context.clone(),
+            attachments: u32::try_from(new.attachments.len()).unwrap_or(u32::MAX),
+            state: charet_model::RunState::Queued,
+            error: None,
+            tokens_in: 0,
+            tokens_out: 0,
+            cost_usd: None,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            started_at: None,
+            ended_at: None,
+            runner_seq: 0,
+        };
+        runs.push((run.clone(), None));
+        drop(runs);
+        self.attachments
+            .lock()
+            .unwrap()
+            .insert(run.id, new.attachments.clone());
+        self.add_message(run.id, charet_model::MessageKind::User, &new.prompt, None)?;
+        Ok(run)
+    }
+
+    fn run(&self, id: u64) -> Result<Option<charet_model::AgentRun>, StoreError> {
+        Ok(self
+            .runs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(r, _)| r.id == id)
+            .map(|(r, _)| r.clone()))
+    }
+
+    fn runs(
+        &self,
+        project: &str,
+        branch: Option<u32>,
+    ) -> Result<Vec<charet_model::AgentRun>, StoreError> {
+        Ok(self
+            .runs
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(r, _)| r.project == project && branch.is_none_or(|b| b == r.branch))
+            .map(|(r, _)| r.clone())
+            .collect())
+    }
+
+    fn open_runs(&self) -> Result<Vec<charet_model::AgentRun>, StoreError> {
+        Ok(self
+            .runs
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(r, _)| !r.state.finished())
+            .map(|(r, _)| r.clone())
+            .collect())
+    }
+
+    fn all_runs(&self) -> Result<Vec<charet_model::AgentRun>, StoreError> {
+        let mut runs: Vec<_> = self
+            .runs
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect();
+        runs.reverse();
+        Ok(runs)
+    }
+
+    fn update_run(&self, id: u64, update: &crate::RunUpdate) -> Result<(), StoreError> {
+        let mut runs = self.runs.lock().unwrap();
+        let Some((run, token)) = runs.iter_mut().find(|(r, _)| r.id == id) else {
+            return Err(StoreError("no such run".into()));
+        };
+        if let Some(state) = update.state {
+            run.state = state;
+        }
+        if update.error.is_some() {
+            run.error.clone_from(&update.error);
+        }
+        if let Some(n) = update.tokens_in {
+            run.tokens_in = n;
+        }
+        if let Some(n) = update.tokens_out {
+            run.tokens_out = n;
+        }
+        if update.cost_usd.is_some() {
+            run.cost_usd = update.cost_usd;
+        }
+        if let Some(hash) = &update.token_hash {
+            token.clone_from(hash);
+        }
+        if let Some(seq) = update.runner_seq {
+            run.runner_seq = seq;
+        }
+        if update.started {
+            run.started_at = Some("2026-01-01T00:00:01Z".into());
+        }
+        if update.ended {
+            run.ended_at = Some("2026-01-01T00:00:02Z".into());
+        }
+        Ok(())
+    }
+
+    fn run_by_token(&self, hash: &str) -> Result<Option<charet_model::AgentRun>, StoreError> {
+        Ok(self
+            .runs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(r, t)| t.as_deref() == Some(hash) && !r.state.finished())
+            .map(|(r, _)| r.clone()))
+    }
+
+    fn add_message(
+        &self,
+        run: u64,
+        kind: charet_model::MessageKind,
+        text: &str,
+        tool: Option<&str>,
+    ) -> Result<charet_model::AgentMessage, StoreError> {
+        let mut messages = self.messages.lock().unwrap();
+        let seq = u32::try_from(messages.iter().filter(|m| m.run == run).count()).unwrap() + 1;
+        let message = charet_model::AgentMessage {
+            run,
+            seq,
+            kind,
+            text: text.into(),
+            tool: tool.map(Into::into),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        };
+        messages.push(message.clone());
+        Ok(message)
+    }
+
+    fn messages(
+        &self,
+        run: u64,
+        after: u32,
+    ) -> Result<Vec<charet_model::AgentMessage>, StoreError> {
+        Ok(self
+            .messages
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.run == run && m.seq > after)
+            .cloned()
+            .collect())
+    }
+
+    fn attachments(&self, run: u64) -> Result<Vec<charet_model::Attachment>, StoreError> {
+        Ok(self
+            .attachments
+            .lock()
+            .unwrap()
+            .get(&run)
+            .cloned()
+            .unwrap_or_default())
+    }
+}
+
+/// How a fake run ends: state, error, cost.
+type Ending = (charet_model::RunState, Option<String>, Option<f64>);
+
+/// A runner the test drives: it records starts and cancels and hands out queued progress.
+#[derive(Default)]
+pub struct FakeRunner {
+    pub started: Mutex<Vec<crate::RunnerStart>>,
+    pub canceled: Mutex<Vec<u64>>,
+    events: Mutex<HashMap<u64, Vec<crate::RunnerEvent>>>,
+    finished: Mutex<HashMap<u64, Ending>>,
+    pub down: Mutex<bool>,
+}
+
+impl FakeRunner {
+    pub fn say(&self, id: u64, kind: charet_model::MessageKind, text: &str) {
+        self.events
+            .lock()
+            .unwrap()
+            .entry(id)
+            .or_default()
+            .push(crate::RunnerEvent {
+                kind,
+                text: text.into(),
+                tool: None,
+            });
+    }
+
+    pub fn finish(
+        &self,
+        id: u64,
+        state: charet_model::RunState,
+        error: Option<&str>,
+        cost: Option<f64>,
+    ) {
+        self.finished
+            .lock()
+            .unwrap()
+            .insert(id, (state, error.map(Into::into), cost));
+    }
+
+    pub fn last_start(&self) -> crate::RunnerStart {
+        self.started
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .expect("a run started")
+    }
+}
+
+impl crate::AgentRunner for FakeRunner {
+    fn start(&self, run: &crate::RunnerStart) -> Result<(), WorkspaceError> {
+        if *self.down.lock().unwrap() {
+            return Err(WorkspaceError::Unavailable("down".into()));
+        }
+        self.started.lock().unwrap().push(run.clone());
+        Ok(())
+    }
+
+    fn poll(&self, id: u64, after: u32) -> Result<Option<crate::RunnerProgress>, WorkspaceError> {
+        if !self.started.lock().unwrap().iter().any(|s| s.id == id) {
+            return Ok(None);
+        }
+        let events = self
+            .events
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        let finished = self.finished.lock().unwrap().get(&id).cloned();
+        let next = u32::try_from(events.len()).unwrap();
+        Ok(Some(crate::RunnerProgress {
+            events: events.into_iter().skip(after as usize).collect(),
+            next,
+            finished: finished.as_ref().map(|f| f.0),
+            error: finished.as_ref().and_then(|f| f.1.clone()),
+            tokens_in: 100,
+            tokens_out: 20,
+            cost_usd: finished.and_then(|f| f.2),
+        }))
+    }
+
+    fn cancel(&self, id: u64) -> Result<(), WorkspaceError> {
+        self.canceled.lock().unwrap().push(id);
+        Ok(())
+    }
+
+    fn health(&self) -> Result<(), WorkspaceError> {
+        if *self.down.lock().unwrap() {
+            return Err(WorkspaceError::Unavailable("down".into()));
+        }
+        Ok(())
     }
 }

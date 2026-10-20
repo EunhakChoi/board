@@ -21,6 +21,7 @@ tags:
   - name: handoff
   - name: inbox
   - name: settings
+  - name: agent
 paths:
   /api/health:
     get:
@@ -1695,8 +1696,198 @@ paths:
           $ref: "#/components/responses/Invalid"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/agent:
+    get:
+      tags: [agent]
+      operationId: getAgent
+      summary: Whether the web agent is on and which agents it offers (members)
+      responses:
+        "200":
+          description: The web agent as the server offers it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStatus"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/agent:
+    get:
+      tags: [agent]
+      operationId: getAgentSettings
+      summary: The web agent's settings (same as `/api/agent`, for the admins' page)
+      responses:
+        "200":
+          description: The web agent as the server offers it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStatus"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [agent]
+      operationId: setAgentSettings
+      summary: Default agent, models and API keys (admins). Keys are stored encrypted and never returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentSettingsChange"
+      responses:
+        "200":
+          description: The web agent now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStatus"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/costs:
+    get:
+      tags: [agent]
+      operationId: getAgentCosts
+      summary: Every web agent run and what each person spent (admins)
+      responses:
+        "200":
+          description: Costs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCosts"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/projects/{key}/agent-runs:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [agent]
+      operationId: listAgentRuns
+      summary: The project's web agent runs, oldest first
+      parameters:
+        - name: branch
+          in: query
+          description: Only this branch's runs
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRun"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [agent]
+      operationId: startAgentRun
+      summary: Ask the web agent (editors). Without `branch` it starts a new draft; it waits while another run works on the same branch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAgentRun"
+      responses:
+        "201":
+          description: The run (queued or running)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/projects/{key}/agent-runs/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [agent]
+      operationId: listAgentMessages
+      summary: A run's conversation
+      parameters:
+        - name: after
+          in: query
+          description: Only messages after this `seq`
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Messages, in order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentMessage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/agent-runs/{id}/attachments/{seq}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/RunId"
+      - name: seq
+        in: path
+        required: true
+        description: 0-based, in the order attached
+        schema:
+          type: integer
+          minimum: 0
+    get:
+      tags: [agent]
+      operationId: getAgentAttachment
+      summary: An image attached to a run's prompt
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/agent-runs/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/RunId"
+    post:
+      tags: [agent]
+      operationId: cancelAgentRun
+      summary: Stop a run (its asker or an admin). What it already saved stays on the branch.
+      responses:
+        "200":
+          description: The run now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    RunId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     MemberId:
       name: user
       in: path
@@ -2675,3 +2866,180 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FileInput"
+    AgentKind:
+      type: string
+      enum: [claude, codex, script]
+      description: "`script` is a scripted stand-in for tests, offered only when the server enables it"
+    RunState:
+      type: string
+      enum: [queued, running, done, failed, canceled]
+    AgentChoice:
+      type: object
+      required: [agent, ready, key, model]
+      properties:
+        agent:
+          $ref: "#/components/schemas/AgentKind"
+        ready:
+          type: boolean
+          description: A key is set (or none is needed)
+        key:
+          type: string
+          enum: [env, settings, none]
+          description: Where its API key comes from
+        keyLast4:
+          type: string
+        model:
+          type: string
+          description: The model runs use unless they ask for another; empty is the agent's default
+    AgentStatus:
+      type: object
+      required: [enabled, default, agents]
+      properties:
+        enabled:
+          type: boolean
+        reason:
+          type: string
+          description: Why it is off
+        default:
+          oneOf:
+            - $ref: "#/components/schemas/AgentKind"
+            - type: "null"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentChoice"
+    AgentSettingsChange:
+      type: object
+      additionalProperties: false
+      properties:
+        default:
+          $ref: "#/components/schemas/AgentKind"
+        models:
+          type: object
+          description: Model per agent; an empty string goes back to the agent's default
+          additionalProperties:
+            type: string
+        keys:
+          type: object
+          description: API key per agent; an empty string removes the saved one
+          additionalProperties:
+            type: string
+    StartAgentRun:
+      type: object
+      required: [prompt]
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          maxLength: 8000
+        context:
+          description: What the person pointed at (screen, element, source), passed to the agent as given
+        branch:
+          type: integer
+          minimum: 1
+          description: Your draft or a branch in review to continue; absent starts a new draft
+        agent:
+          $ref: "#/components/schemas/AgentKind"
+        model:
+          type: string
+        images:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            required: [mediaType, data]
+            additionalProperties: false
+            properties:
+              mediaType:
+                type: string
+                enum: [image/png, image/jpeg, image/gif, image/webp]
+              data:
+                type: string
+                description: base64, up to 5 MB decoded
+    AgentRun:
+      type: object
+      required: [id, project, branch, actor, agent, model, prompt, context, attachments, state, error, tokensIn, tokensOut, costUsd, createdAt, startedAt, endedAt]
+      properties:
+        id:
+          type: integer
+        project:
+          type: string
+        branch:
+          type: integer
+        actor:
+          $ref: "#/components/schemas/Person"
+        agent:
+          $ref: "#/components/schemas/AgentKind"
+        model:
+          type: string
+        prompt:
+          type: string
+        context: {}
+        attachments:
+          type: integer
+          description: Images attached to the prompt
+        state:
+          $ref: "#/components/schemas/RunState"
+        error:
+          type: [string, "null"]
+        tokensIn:
+          type: integer
+        tokensOut:
+          type: integer
+        costUsd:
+          type: [number, "null"]
+          description: "`null` when the model's price is not known"
+        createdAt:
+          type: string
+        startedAt:
+          type: [string, "null"]
+        endedAt:
+          type: [string, "null"]
+    AgentMessage:
+      type: object
+      required: [run, seq, kind, text, createdAt]
+      properties:
+        run:
+          type: integer
+        seq:
+          type: integer
+        kind:
+          type: string
+          enum: [user, assistant, tool, status]
+        text:
+          type: string
+        tool:
+          type: string
+          description: "For `tool`: the tool's name"
+        createdAt:
+          type: string
+    AgentCosts:
+      type: object
+      required: [people, runs]
+      properties:
+        people:
+          type: array
+          items:
+            type: object
+            required: [id, name, runs, tokensIn, tokensOut, costUsd, unpriced]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              runs:
+                type: integer
+              tokensIn:
+                type: integer
+              tokensOut:
+                type: integer
+              costUsd:
+                type: number
+              unpriced:
+                type: integer
+                description: Runs whose model has no known price (not in `costUsd`)
+        runs:
+          type: array
+          description: Newest first
+          items:
+            $ref: "#/components/schemas/AgentRun"

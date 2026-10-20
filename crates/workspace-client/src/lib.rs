@@ -1,4 +1,5 @@
-//! Talks to `charet-workspace` (install, verify, build) over its internal HTTP API.
+//! Talks to `charet-workspace` (install, verify, build) and `charet-agent` (web agent runs) over
+//! their internal HTTP APIs.
 
 use std::fmt::Write as _;
 use std::io::Read;
@@ -7,6 +8,9 @@ use std::time::Duration;
 use charet_engine::{Build, BuildState, BuildStep, BuiltFile, Workspace, WorkspaceError};
 use serde::Deserialize;
 use ureq::Agent;
+
+mod agent;
+pub use agent::AgentClient;
 
 /// Largest built file the preview proxies (bundles, images, fonts).
 const MAX_FILE: u64 = 64 * 1024 * 1024;

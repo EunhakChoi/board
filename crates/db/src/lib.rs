@@ -1,6 +1,7 @@
 //! SQLite persistence for members, projects, comments and notifications.
 
 mod accounts;
+mod agents;
 mod branches;
 mod captures;
 mod comments;
@@ -35,6 +36,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0014_merge_guards.sql"),
     include_str!("migrations/0015_handoff.sql"),
     include_str!("migrations/0016_visitor_access.sql"),
+    include_str!("migrations/0017_agent_runs.sql"),
 ];
 
 /// The charet database: one SQLite file in WAL mode.
@@ -402,7 +404,7 @@ fn err(error: impl std::fmt::Display) -> StoreError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -434,7 +436,7 @@ mod tests {
         );
     }
 
-    fn project(key: &str) -> Project {
+    pub(crate) fn project(key: &str) -> Project {
         Project {
             key: key.into(),
             title: key.to_uppercase(),

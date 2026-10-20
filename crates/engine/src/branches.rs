@@ -552,7 +552,7 @@ impl Engine {
     }
 
     /// Drafts belong to their author; branches in review to every editor.
-    fn may_change(actor: &Actor, branch: &Branch) -> Result<(), EngineError> {
+    pub(crate) fn may_change(actor: &Actor, branch: &Branch) -> Result<(), EngineError> {
         match branch.status {
             BranchStatus::Open if owns(actor, branch) => Ok(()),
             BranchStatus::Open => Err(EngineError::Forbidden),

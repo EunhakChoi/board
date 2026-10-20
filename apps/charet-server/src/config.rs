@@ -11,6 +11,7 @@ const DEFAULT_PREVIEW_BIND: &str = "127.0.0.1:5281";
 /// Default remote door of a local charet: what tunnels and reverse proxies point at once sharing
 /// is on. Nobody is the owner there: members bring their token.
 const DEFAULT_REMOTE_BIND: &str = "127.0.0.1:5284";
+const DEFAULT_AGENT_BIND: &str = "127.0.0.1:5285";
 const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
 const DEFAULT_RENDER_URL: &str = "http://127.0.0.1:5283";
 
@@ -51,6 +52,34 @@ pub struct Config {
     /// Build and check what a merge gives before `main` moves (`CHARET_MERGE_CHECK=false` turns it
     /// off, for a server without the build service).
     pub merge_check: bool,
+    /// The web agent, when `CHARET_AGENT_URL` names a `charet-agent`.
+    pub agent: Option<AgentSetup>,
+}
+
+/// How the server reaches `charet-agent` and where run containers reach the server.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AgentSetup {
+    /// `CHARET_AGENT_URL`, and the token it expects (`CHARET_AGENT_TOKEN` or `_FILE`).
+    pub url: String,
+    pub token: Option<String>,
+    /// The agent door (`CHARET_AGENT_BIND`, default `127.0.0.1:5285`): only run tokens get in.
+    pub bind: SocketAddr,
+    /// `CHARET_ANTHROPIC_API_KEY`, `CHARET_OPENAI_API_KEY` (or `_FILE`), by agent name.
+    pub keys: std::collections::HashMap<String, String>,
+    /// `CHARET_AGENT_SCRIPT=true`: offer the scripted test agent.
+    pub script: bool,
+    /// `CHARET_AGENT_MAX_RUNNING` (default 3): runs at once.
+    pub max_running: usize,
+}
+
+impl std::fmt::Debug for AgentSetup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentSetup")
+            .field("url", &self.url)
+            .field("bind", &self.bind)
+            .field("script", &self.script)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Config {
@@ -135,6 +164,12 @@ impl Config {
         if public {
             check_public(public_url.as_deref())?;
         }
+        let agent = agent_setup(&env)?;
+        if let Some(agent) = &agent
+            && [Some(bind), Some(preview_bind), remote_bind].contains(&Some(agent.bind))
+        {
+            return Err("CHARET_AGENT_BIND must differ from the other addresses".to_owned());
+        }
         Ok(Self {
             home,
             bind,
@@ -152,6 +187,7 @@ impl Config {
             public_url,
             update_check,
             merge_check,
+            agent,
         })
     }
 
@@ -238,6 +274,43 @@ fn remote_bind(
         return Err("CHARET_REMOTE_BIND must differ from the other addresses".to_owned());
     }
     Ok(Some(addr))
+}
+
+/// The web agent's settings; none without `CHARET_AGENT_URL`.
+fn agent_setup(env: &impl Fn(&str) -> Option<String>) -> Result<Option<AgentSetup>, String> {
+    let Some(url) = env("CHARET_AGENT_URL").filter(|u| !u.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let text = env("CHARET_AGENT_BIND").unwrap_or_else(|| DEFAULT_AGENT_BIND.to_owned());
+    let bind: SocketAddr = text
+        .parse()
+        .map_err(|_| format!("CHARET_AGENT_BIND {text:?} is not an address like 127.0.0.1:5285"))?;
+    let mut keys = std::collections::HashMap::new();
+    for (agent, name) in [
+        ("claude", "CHARET_ANTHROPIC_API_KEY"),
+        ("codex", "CHARET_OPENAI_API_KEY"),
+    ] {
+        if let Some(key) = secret(env, name)? {
+            keys.insert(agent.to_owned(), key);
+        }
+    }
+    let max_running = match env("CHARET_AGENT_MAX_RUNNING") {
+        Some(text) => text
+            .trim()
+            .parse()
+            .ok()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| format!("CHARET_AGENT_MAX_RUNNING {text:?} is not a count"))?,
+        None => 3,
+    };
+    Ok(Some(AgentSetup {
+        url: url.trim_end_matches('/').to_owned(),
+        token: secret(env, "CHARET_AGENT_TOKEN")?,
+        bind,
+        keys,
+        script: flag(env("CHARET_AGENT_SCRIPT").as_deref()),
+        max_running,
+    }))
 }
 
 /// A public server needs the address people open: links point there.
@@ -424,5 +497,39 @@ mod tests {
         assert!(config(&["--nope"], &[("HOME", "/h")]).is_err());
         assert!(config(&[], &[("HOME", "/h"), ("CHARET_BIND", "nowhere")]).is_err());
         assert!(config(&[], &[]).is_err());
+    }
+
+    #[test]
+    fn the_web_agent_is_on_with_a_runner_url() {
+        assert_eq!(config(&[], &[("HOME", "/h")]).unwrap().agent, None);
+        let agent = config(
+            &[],
+            &[
+                ("HOME", "/h"),
+                ("CHARET_AGENT_URL", "http://charet-agent:5290/"),
+                ("CHARET_ANTHROPIC_API_KEY", "sk-a"),
+                ("CHARET_AGENT_SCRIPT", "true"),
+            ],
+        )
+        .unwrap()
+        .agent
+        .unwrap();
+        assert_eq!(agent.url, "http://charet-agent:5290");
+        assert_eq!(agent.bind, DEFAULT_AGENT_BIND.parse().unwrap());
+        assert_eq!(agent.keys.get("claude").map(String::as_str), Some("sk-a"));
+        assert!(agent.script && agent.max_running == 3);
+        assert!(
+            !format!("{agent:?}").contains("sk-a"),
+            "keys stay out of logs"
+        );
+        let clash = config(
+            &[],
+            &[
+                ("HOME", "/h"),
+                ("CHARET_AGENT_URL", "http://a"),
+                ("CHARET_AGENT_BIND", "127.0.0.1:5284"),
+            ],
+        );
+        assert!(clash.is_err());
     }
 }

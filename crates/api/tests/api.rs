@@ -37,6 +37,7 @@ fn engine(local_mode: bool) -> Engine {
             captures: Arc::new(CaptureStore::new(db.clone(), root.join("captures"))),
             comments: Arc::new(CommentStore::new(db.clone(), root.join("comments"))),
             accounts: db.clone(),
+            agents: db.clone(),
             notices: db,
             webhooks: Arc::new(TeapotSender),
             realtime: Arc::new(charet_collab::Hub::new()),
@@ -1539,4 +1540,140 @@ async fn handoff_export_mark_and_import_again() {
     )
     .await;
     assert_eq!(&kept[..], b"m2\n");
+}
+
+/// Takes every run and remembers its token, for the agent door.
+#[derive(Default)]
+struct TokenRunner(std::sync::Mutex<Vec<String>>);
+
+impl charet_engine::AgentRunner for TokenRunner {
+    fn start(&self, run: &charet_engine::RunnerStart) -> Result<(), WorkspaceError> {
+        self.0.lock().unwrap().push(run.token.clone());
+        Ok(())
+    }
+    fn poll(
+        &self,
+        _: u64,
+        _: u32,
+    ) -> Result<Option<charet_engine::RunnerProgress>, WorkspaceError> {
+        Ok(Some(charet_engine::RunnerProgress::default()))
+    }
+    fn cancel(&self, _: u64) -> Result<(), WorkspaceError> {
+        Ok(())
+    }
+}
+
+async fn door(
+    engine: &Engine,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(body.map_or_else(Body::empty, |b| Body::from(b.to_string())))
+        .unwrap();
+    let response = charet_api::agent_app(engine.clone())
+        .oneshot(request)
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn a_run_s_container_works_on_its_branch_through_the_agent_door_only() {
+    let runner = Arc::new(TokenRunner::default());
+    let engine = engine(true).with_agents(
+        runner.clone(),
+        charet_engine::AgentConfig {
+            script: true,
+            max_running: 2,
+            ..charet_engine::AgentConfig::default()
+        },
+    );
+    let (status, _) = post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, run) = post(
+        engine.clone(),
+        "/api/projects/web/agent-runs",
+        &json!({ "prompt": "Make it blue", "agent": "script", "context": { "screen": "home" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{run}");
+    assert_eq!(run["state"], "running");
+    let number = run["branch"].as_u64().unwrap();
+    let token = runner.0.lock().unwrap()[0].clone();
+
+    let (status, branch) = door(
+        &engine,
+        "GET",
+        &format!("/api/projects/web/branches/{number}"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{branch}");
+    let head = branch["head"].as_str().unwrap().to_owned();
+    let push = json!({ "base": head, "message": "blue", "files": [{ "path": "a.css", "content": b64("a{color:blue}") }] });
+    let (status, pushed) = door(
+        &engine,
+        "POST",
+        &format!("/api/projects/web/branches/{number}/push"),
+        &token,
+        Some(push.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{pushed}");
+    let (status, _) = door(
+        &engine,
+        "POST",
+        "/api/projects/web/branches/99/push",
+        &token,
+        Some(push),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = door(&engine, "GET", "/api/admin/users", &token, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = door(&engine, "GET", "/api/projects/web", "not-a-run", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, messages) = call(
+        engine.clone(),
+        &format!("/api/projects/web/agent-runs/{}/messages", run["id"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(messages[0]["text"], "Make it blue");
+    let (status, run) = post(
+        engine.clone(),
+        &format!("/api/projects/web/agent-runs/{}/cancel", run["id"]),
+        &json!({}),
+    )
+    .await;
+    assert_eq!(
+        (status, run["state"].as_str()),
+        (StatusCode::OK, Some("canceled"))
+    );
+    let (status, _) = door(&engine, "GET", "/api/projects/web", &token, None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the token ends with the run"
+    );
+    let (_, branch) = call(
+        engine.clone(),
+        &format!("/api/projects/web/branches/{number}"),
+    )
+    .await;
+    assert_eq!(branch["status"], "open", "what it saved stays");
 }

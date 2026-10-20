@@ -2,6 +2,7 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
+mod agents;
 mod auth;
 mod branches;
 mod browse;
@@ -25,6 +26,7 @@ use charet_engine::{Engine, ServiceState};
 use charet_model::{Role, VERSION};
 use serde::Serialize;
 
+pub use agents::AgentCaller;
 pub use auth::{CLIENT_HEADER, Caller, LocalDoor, Remote, SESSION_COOKIE, VISITOR_COOKIE};
 pub use error::ApiError;
 pub use preview::{PreviewOrigin, preview_router};
@@ -109,6 +111,18 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/projects/{key}/manifest"),
     ("get", "/api/projects/{key}/files"),
     ("get", "/api/projects/{key}/file"),
+    ("get", "/api/agent"),
+    ("get", "/api/admin/agent"),
+    ("put", "/api/admin/agent"),
+    ("get", "/api/admin/costs"),
+    ("get", "/api/projects/{key}/agent-runs"),
+    ("post", "/api/projects/{key}/agent-runs"),
+    ("get", "/api/projects/{key}/agent-runs/{id}/messages"),
+    (
+        "get",
+        "/api/projects/{key}/agent-runs/{id}/attachments/{seq}",
+    ),
+    ("post", "/api/projects/{key}/agent-runs/{id}/cancel"),
 ];
 
 /// Largest request body: imports and pushes carry whole files (base64 in JSON).
@@ -156,8 +170,21 @@ pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router
         ))
 }
 
+/// The agent door: where the web agent's containers reach the server. Only a running run's
+/// token gets in, and only to the calls the charet CLI needs on that run's branch.
+pub fn agent_app(engine: Engine) -> Router {
+    routes()
+        .fallback(not_found)
+        .layer(axum::middleware::from_fn_with_state(
+            engine.clone(),
+            agents::agent_door,
+        ))
+        .with_state(engine)
+}
+
 fn routes() -> Router<Engine> {
     Router::new()
+        .merge(agents::routes())
         .merge(branches::routes())
         .merge(handoff::routes())
         .route("/api/health", get(health))
