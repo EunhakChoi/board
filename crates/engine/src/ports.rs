@@ -1,6 +1,6 @@
 //! What the engine needs from storage. Implemented by `charet-db` and `charet-store`.
 
-use charet_model::{Project, Version, VersionKind};
+use charet_model::{Branch, Person, Project, Version, VersionKind};
 
 /// A storage failure, with enough text to log. Callers map it to a 500.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,14 +27,22 @@ pub trait Records: Send + Sync {
     fn project(&self, key: &str) -> Result<Option<Project>, StoreError>;
     fn projects(&self) -> Result<Vec<Project>, StoreError>;
     /// Records the next version of `project` (numbers start at 1) and returns it.
-    fn add_version(
+    fn add_version(&self, project: &str, version: &NewVersion) -> Result<Version, StoreError>;
+    /// Records the next branch of `project` (numbers start at 1) and returns it.
+    fn insert_branch(&self, project: &str, branch: &NewBranch) -> Result<Branch, StoreError>;
+    fn branch(&self, project: &str, number: u32) -> Result<Option<Branch>, StoreError>;
+    /// Newest first.
+    fn branches(&self, project: &str) -> Result<Vec<Branch>, StoreError>;
+    /// Saves title, status, base, head, conflicts and merged version; stamps `updated_at`.
+    fn update_branch(&self, project: &str, branch: &Branch) -> Result<(), StoreError>;
+    fn add_branch_event(
         &self,
         project: &str,
-        commit: &str,
-        kind: VersionKind,
-        actor: &str,
-        note: &str,
-    ) -> Result<Version, StoreError>;
+        number: u32,
+        event: &BranchEvent,
+    ) -> Result<(), StoreError>;
+    /// Oldest first.
+    fn branch_events(&self, project: &str, number: u32) -> Result<Vec<BranchEvent>, StoreError>;
     /// Newest first.
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError>;
     /// Removes a project with its versions, captures and comments. False when there was none.
@@ -53,6 +61,37 @@ pub trait Records: Send + Sync {
     fn set_member(&self, project: &str, user: &str, member: bool) -> Result<(), StoreError>;
 }
 
+/// A version to record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewVersion {
+    pub commit: String,
+    pub kind: VersionKind,
+    pub actor: String,
+    pub note: String,
+    pub branch: Option<u32>,
+    pub restored: Option<u32>,
+}
+
+/// A branch to record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewBranch {
+    pub title: String,
+    pub author: Person,
+    pub base: String,
+    pub head: String,
+}
+
+/// One thing that happened on a branch.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchEvent {
+    pub actor: Person,
+    /// `created`, `push`, `review`, `catch_up`, `conflict`, `merge`, `archive`, `reopen`, `duplicate`.
+    pub kind: String,
+    pub detail: String,
+    pub at: String,
+}
+
 /// Who a commit is attributed to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Author {
@@ -69,13 +108,14 @@ pub struct FileChange {
 }
 
 /// A changed path between two commits.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Change {
     pub path: String,
     pub kind: ChangeKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ChangeKind {
     Added,
     Modified,
@@ -89,7 +129,11 @@ pub trait ProjectStore: Send + Sync {
     /// Deletes the project's history; nothing to delete is fine.
     fn remove(&self, project: &str) -> Result<(), StoreError>;
     /// The commit `main` points at, or `None` before the first commit.
-    fn head(&self, project: &str) -> Result<Option<String>, StoreError>;
+    fn head(&self, project: &str) -> Result<Option<String>, StoreError> {
+        self.line_head(project, "main")
+    }
+    /// The commit a line (`main` or `b/<number>`) points at, or `None` when there is none.
+    fn line_head(&self, project: &str, line: &str) -> Result<Option<String>, StoreError>;
     /// Commits `changes` on top of `parent` (`None` = first commit) and moves `main` there, but only
     /// if `main` is still at `parent`. Returns the new commit, or `None` when `main` had moved.
     fn commit_main(
@@ -99,7 +143,50 @@ pub trait ProjectStore: Send + Sync {
         changes: &[FileChange],
         author: &Author,
         message: &str,
+    ) -> Result<Option<String>, StoreError> {
+        self.commit_line(project, "main", parent, changes, author, message)
+    }
+    /// [`ProjectStore::commit_main`] for any line: `parent: None` creates the line from nothing.
+    fn commit_line(
+        &self,
+        project: &str,
+        line: &str,
+        parent: Option<&str>,
+        changes: &[FileChange],
+        author: &Author,
+        message: &str,
     ) -> Result<Option<String>, StoreError>;
+    /// Points `line` at `new` if it is still at `old` (`None` = the line must not exist yet).
+    /// False when it had moved.
+    fn move_line(
+        &self,
+        project: &str,
+        line: &str,
+        new: &str,
+        old: Option<&str>,
+    ) -> Result<bool, StoreError>;
+    /// A commit joining `theirs` into `ours` (parents: ours, theirs), or the files that clashed.
+    /// Moves no line. `Clean(ours)` when `theirs` is already in `ours`.
+    fn merge(
+        &self,
+        project: &str,
+        ours: &str,
+        theirs: &str,
+        author: &Author,
+        message: &str,
+    ) -> Result<Merged, StoreError>;
+    /// A commit on `onto` that undoes what `commit` changed against its first parent, or the files
+    /// that clashed. Moves no line.
+    fn revert(
+        &self,
+        project: &str,
+        onto: &str,
+        commit: &str,
+        author: &Author,
+        message: &str,
+    ) -> Result<Merged, StoreError>;
+    /// The newest commit both `a` and `b` come from.
+    fn merge_base(&self, project: &str, a: &str, b: &str) -> Result<Option<String>, StoreError>;
     /// Marks `commit` as version `number` (tag `v/<number>`).
     fn tag_version(&self, project: &str, number: u32, commit: &str) -> Result<(), StoreError>;
     /// Resolves `main`, `v<number>` or a commit id to a commit id.
@@ -112,6 +199,15 @@ pub trait ProjectStore: Send + Sync {
     fn archive(&self, project: &str, commit: &str) -> Result<Vec<u8>, StoreError>;
     /// Paths that differ from `from` to `to`.
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError>;
+}
+
+/// What joining two lines of work gave.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Merged {
+    /// The new commit (or the unchanged one, when there was nothing to join).
+    Clean(String),
+    /// Files changed on both sides in ways that cannot be joined automatically.
+    Conflict(Vec<String>),
 }
 
 /// Where a static build of one commit is.

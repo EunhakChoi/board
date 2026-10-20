@@ -8,9 +8,23 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use charet_engine::{Author, Change, ChangeKind, FileChange, ProjectStore, StoreError};
+use charet_engine::{Author, Change, ChangeKind, FileChange, Merged, ProjectStore, StoreError};
 
 const MAIN: &str = "refs/heads/main";
+const ZERO: &str = "0000000000000000000000000000000000000000";
+
+/// The git ref of a line: `main` or `b/<number>`.
+fn line_ref(line: &str) -> Result<String, StoreError> {
+    let ok = line == "main"
+        || line.strip_prefix("b/").is_some_and(|n| {
+            !n.is_empty() && n.len() <= 9 && n.bytes().all(|b| b.is_ascii_digit())
+        });
+    if ok {
+        Ok(format!("refs/heads/{line}"))
+    } else {
+        Err(StoreError(format!("bad line {line:?}")))
+    }
+}
 
 /// Git repositories on the local disk.
 #[derive(Debug, Clone)]
@@ -64,18 +78,20 @@ impl ProjectStore for GitStore {
         Ok(())
     }
 
-    fn head(&self, project: &str) -> Result<Option<String>, StoreError> {
-        Ok(self.git(project).rev_parse(MAIN))
+    fn line_head(&self, project: &str, line: &str) -> Result<Option<String>, StoreError> {
+        Ok(self.git(project).rev_parse(&line_ref(line)?))
     }
 
-    fn commit_main(
+    fn commit_line(
         &self,
         project: &str,
+        line: &str,
         parent: Option<&str>,
         changes: &[FileChange],
         author: &Author,
         message: &str,
     ) -> Result<Option<String>, StoreError> {
+        let name = line_ref(line)?;
         let git = self.git(project);
         let scratch = format!("refs/charet/scratch/{}", unique());
         let stream = fast_import_stream(&scratch, parent, changes, author, message)?;
@@ -83,11 +99,81 @@ impl ProjectStore for GitStore {
         let commit = git
             .rev_parse(&scratch)
             .ok_or_else(|| StoreError("fast-import wrote no commit".into()))?;
-        // Compare-and-swap: an all-zero old value means "main must not exist yet".
-        let old = parent.map_or_else(|| "0".repeat(40), str::to_owned);
-        let moved = git.run(&["update-ref", MAIN, &commit, &old], None).is_ok();
+        // Compare-and-swap: an all-zero old value means "the line must not exist yet".
+        let moved = git
+            .run(
+                &["update-ref", &name, &commit, parent.unwrap_or(ZERO)],
+                None,
+            )
+            .is_ok();
         git.run(&["update-ref", "-d", &scratch], None)?;
         Ok(moved.then_some(commit))
+    }
+
+    fn move_line(
+        &self,
+        project: &str,
+        line: &str,
+        new: &str,
+        old: Option<&str>,
+    ) -> Result<bool, StoreError> {
+        let name = line_ref(line)?;
+        Ok(self
+            .git(project)
+            .run(&["update-ref", &name, new, old.unwrap_or(ZERO)], None)
+            .is_ok())
+    }
+
+    fn merge(
+        &self,
+        project: &str,
+        ours: &str,
+        theirs: &str,
+        author: &Author,
+        message: &str,
+    ) -> Result<Merged, StoreError> {
+        let git = self.git(project);
+        if git.is_ancestor(theirs, ours) {
+            return Ok(Merged::Clean(ours.to_owned()));
+        }
+        let tree = Worktree::add(&git, ours)?;
+        let joined = tree.run(
+            &["merge", "--no-ff", "--no-edit", "-m", message, theirs],
+            author,
+        );
+        tree.finish(joined, &["merge", "--abort"])
+    }
+
+    fn revert(
+        &self,
+        project: &str,
+        onto: &str,
+        commit: &str,
+        author: &Author,
+        message: &str,
+    ) -> Result<Merged, StoreError> {
+        let git = self.git(project);
+        let parents = git.run(&["rev-list", "--parents", "-n", "1", commit], None)?;
+        let merge = String::from_utf8_lossy(&parents).split_whitespace().count() > 2;
+        let tree = Worktree::add(&git, onto)?;
+        let mut args = vec!["revert", "--no-commit"];
+        if merge {
+            args.extend(["-m", "1"]);
+        }
+        args.push(commit);
+        let undone = tree
+            .run(&args, author)
+            .and_then(|_| tree.run(&["commit", "--allow-empty", "-m", message], author));
+        tree.finish(undone, &["revert", "--abort"])
+    }
+
+    fn merge_base(&self, project: &str, a: &str, b: &str) -> Result<Option<String>, StoreError> {
+        Ok(self
+            .git(project)
+            .run(&["merge-base", a, b], None)
+            .ok()
+            .map(|out| String::from_utf8_lossy(&out).trim().to_owned())
+            .filter(|c| !c.is_empty()))
     }
 
     fn tag_version(&self, project: &str, number: u32, commit: &str) -> Result<(), StoreError> {
@@ -101,6 +187,8 @@ impl ProjectStore for GitStore {
     fn resolve(&self, project: &str, rev: &str) -> Result<Option<String>, StoreError> {
         let name = if rev == "main" {
             MAIN.to_owned()
+        } else if let Some(number) = rev.strip_prefix('b').filter(|n| n.parse::<u32>().is_ok()) {
+            format!("refs/heads/b/{number}")
         } else if let Some(number) = rev.strip_prefix('v').filter(|n| n.parse::<u32>().is_ok()) {
             format!("refs/tags/v/{number}")
         } else if !rev.is_empty() && rev.len() <= 64 && rev.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -284,6 +372,97 @@ impl Git {
     }
 }
 
+impl Git {
+    fn is_ancestor(&self, ancestor: &str, of: &str) -> bool {
+        self.run(&["merge-base", "--is-ancestor", ancestor, of], None)
+            .is_ok()
+    }
+}
+
+/// A scratch checkout of one commit, for merges and reverts that need a working tree. Removed
+/// when done; nothing it does moves a line.
+struct Worktree<'a> {
+    git: &'a Git,
+    dir: PathBuf,
+}
+
+impl<'a> Worktree<'a> {
+    fn add(git: &'a Git, commit: &str) -> Result<Self, StoreError> {
+        let dir = std::env::temp_dir().join(format!("charet-tree-{}", unique()));
+        let path = dir.to_string_lossy().into_owned();
+        git.run(
+            &["worktree", "add", "--quiet", "--detach", &path, commit],
+            None,
+        )?;
+        Ok(Self { git, dir })
+    }
+
+    /// Runs git in the tree, committing as `author`.
+    fn run(&self, args: &[&str], author: &Author) -> Result<Vec<u8>, StoreError> {
+        let (name, email) = (clean(&author.name), clean(&author.email));
+        let output = Command::new("git")
+            .current_dir(&self.dir)
+            .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", null_device())
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_AUTHOR_NAME", &name)
+            .env("GIT_AUTHOR_EMAIL", &email)
+            .env("GIT_COMMITTER_NAME", &name)
+            .env("GIT_COMMITTER_EMAIL", &email)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| StoreError(format!("cannot run git: {e}")))?;
+        if output.status.success() {
+            Ok(output.stdout)
+        } else {
+            Err(StoreError(format!(
+                "git {} failed: {}",
+                args.first().copied().unwrap_or_default(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )))
+        }
+    }
+
+    /// The new commit when `outcome` succeeded, else the clashing files (after `abort`), or the
+    /// failure itself when nothing clashed. Removes the tree.
+    fn finish(
+        self,
+        outcome: Result<Vec<u8>, StoreError>,
+        abort: &[&str],
+    ) -> Result<Merged, StoreError> {
+        let nobody = Author {
+            name: "charet".into(),
+            email: "charet@localhost".into(),
+        };
+        let result = if outcome.is_ok() {
+            self.run(&["rev-parse", "HEAD"], &nobody)
+                .map(|out| Merged::Clean(String::from_utf8_lossy(&out).trim().to_owned()))
+        } else {
+            let out = self.run(&["diff", "--name-only", "--diff-filter=U", "-z"], &nobody);
+            let _ = self.run(abort, &nobody);
+            out.and_then(|out| {
+                let files: Vec<String> = out
+                    .split(|b| *b == 0)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| String::from_utf8_lossy(p).into_owned())
+                    .collect();
+                match outcome {
+                    Err(error) if files.is_empty() => Err(error),
+                    _ => Ok(Merged::Conflict(files)),
+                }
+            })
+        };
+        let path = self.dir.to_string_lossy().into_owned();
+        let _ = self
+            .git
+            .run(&["worktree", "remove", "--force", &path], None);
+        let _ = std::fs::remove_dir_all(&self.dir);
+        let _ = self.git.run(&["worktree", "prune"], None);
+        result
+    }
+}
+
 fn null_device() -> &'static Path {
     Path::new("/dev/null")
 }
@@ -409,6 +588,182 @@ mod tests {
         assert!(store.remove("../x").is_err());
         store.create("web").unwrap();
         assert_eq!(store.head("web").unwrap(), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn branches_merge_clash_and_revert() {
+        let (store, root) = store("lines");
+        store.create("web").unwrap();
+        let c1 = store
+            .commit_main(
+                "web",
+                None,
+                &[write("a.txt", "one\n"), write("b.txt", "b\n")],
+                &author(),
+                "first",
+            )
+            .unwrap()
+            .unwrap();
+        assert!(store.move_line("web", "b/1", &c1, None).unwrap());
+        assert!(
+            !store.move_line("web", "b/1", &c1, None).unwrap(),
+            "exists already"
+        );
+        assert!(store.move_line("web", "../x", &c1, None).is_err());
+        let b1 = store
+            .commit_line(
+                "web",
+                "b/1",
+                Some(&c1),
+                &[write("a.txt", "two\n")],
+                &author(),
+                "edit a",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.resolve("web", "b1").unwrap().as_deref(),
+            Some(b1.as_str())
+        );
+        let m1 = store
+            .commit_main(
+                "web",
+                Some(&c1),
+                &[write("b.txt", "bb\n")],
+                &author(),
+                "edit b",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.merge_base("web", &b1, &m1).unwrap().as_deref(),
+            Some(c1.as_str())
+        );
+
+        // Different files join cleanly into a commit with both parents.
+        let Merged::Clean(joined) = store.merge("web", &m1, &b1, &author(), "Merge b1").unwrap()
+        else {
+            panic!("clean merge expected");
+        };
+        assert_eq!(
+            store.read("web", &joined, "a.txt").unwrap().as_deref(),
+            Some(&b"two\n"[..])
+        );
+        assert_eq!(
+            store.read("web", &joined, "b.txt").unwrap().as_deref(),
+            Some(&b"bb\n"[..])
+        );
+        assert_eq!(
+            store.head("web").unwrap().as_deref(),
+            Some(m1.as_str()),
+            "no line moved"
+        );
+        assert_eq!(
+            store
+                .merge("web", &joined, &b1, &author(), "again")
+                .unwrap(),
+            Merged::Clean(joined.clone()),
+            "already in"
+        );
+
+        // The same line changed on both sides clashes.
+        let b2 = store
+            .commit_line(
+                "web",
+                "b/1",
+                Some(&b1),
+                &[write("b.txt", "mine\n")],
+                &author(),
+                "b too",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.merge("web", &m1, &b2, &author(), "clash").unwrap(),
+            Merged::Conflict(vec!["b.txt".into()])
+        );
+
+        let worktrees = store
+            .git("web")
+            .run(&["worktree", "list", "--porcelain"], None)
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&worktrees)
+                .matches("worktree ")
+                .count(),
+            1,
+            "cleaned up"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revert_undoes_a_merge() {
+        let (store, root) = store("revert");
+        store.create("web").unwrap();
+        let c1 = store
+            .commit_main(
+                "web",
+                None,
+                &[write("a.txt", "one\n"), write("b.txt", "b\n")],
+                &author(),
+                "first",
+            )
+            .unwrap()
+            .unwrap();
+        let m1 = store
+            .commit_main(
+                "web",
+                Some(&c1),
+                &[write("b.txt", "bb\n")],
+                &author(),
+                "edit b",
+            )
+            .unwrap()
+            .unwrap();
+        assert!(store.move_line("web", "b/1", &c1, None).unwrap());
+        let b1 = store
+            .commit_line(
+                "web",
+                "b/1",
+                Some(&c1),
+                &[write("a.txt", "two\n")],
+                &author(),
+                "edit a",
+            )
+            .unwrap()
+            .unwrap();
+        let Merged::Clean(joined) = store.merge("web", &m1, &b1, &author(), "Merge b1").unwrap()
+        else {
+            panic!("clean merge expected");
+        };
+        // Undoing the merge brings back what main had before it.
+        let Merged::Clean(undone) = store
+            .revert("web", &joined, &joined, &author(), "Restore")
+            .unwrap()
+        else {
+            panic!("clean revert expected");
+        };
+        assert_eq!(
+            store.read("web", &undone, "a.txt").unwrap().as_deref(),
+            Some(&b"one\n"[..])
+        );
+        assert_eq!(
+            store.read("web", &undone, "b.txt").unwrap().as_deref(),
+            Some(&b"bb\n"[..])
+        );
+        let worktrees = store
+            .git("web")
+            .run(&["worktree", "list", "--porcelain"], None)
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&worktrees)
+                .matches("worktree ")
+                .count(),
+            1,
+            "cleaned up"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

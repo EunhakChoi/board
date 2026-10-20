@@ -14,16 +14,18 @@ the `charet` CLI is how you see what the team sees.
 | Who | Does |
 |---|---|
 | Team (web tool) | browse screens, flows and stories; click an element to comment |
-| You (code) | edit the app and `.charet/` in a checkout, `charet push` |
+| You (code) | edit the app and `.charet/` in a checkout, `charet push` to a branch |
 | You (CLI) | read structure and comments, check and capture, reply and resolve |
 
-The server keeps its own copy of the project with a version per push. The product repository is
-not touched by charet; a checkout is a working copy of charet's copy, not of the product repo.
+The server keeps its own copy of the project. Changes travel as branches: a push from a checkout of
+main starts a branch (a draft) and the checkout follows it; the team reviews it in the web tool,
+and merging it makes a new version of main. The product repository is not touched by charet; a
+checkout is a working copy of charet's copy, not of the product repo.
 
 ## Start here
 
 ```bash
-charet status            # inside a checkout: base version, newer versions, local changes
+charet status            # inside a checkout: its branch (if any), newer versions, local changes
 charet comments          # open comments (exit 1 while some are open)
 charet ls                # screens, stories, flows and whether their captures are current
 ```
@@ -51,8 +53,8 @@ charet ls                # screens, stories, flows and whether their captures ar
 4. If you cannot tell what is wanted, ask on the comment instead of guessing:
    `charet comments reply c12 -m "…"`. The team reads replies where they left the comment.
 5. Fix the code, push, verify (Workflow 3).
-6. `charet comments resolve c12 -m "what changed (vN)"` — after you have looked at the new capture.
-   The note is what the reviewer reads to decide whether to reopen.
+6. `charet comments resolve c12 -m "what changed (branch #n or vN)"` — after you have looked at
+   the result. The note is what the reviewer reads to decide whether to reopen.
 
 If a reply or resolve fails with "changed meanwhile", someone touched the comment. Re-read it and
 act on the latest content.
@@ -75,28 +77,35 @@ A flow written before the code is the plan the team can review; planned steps ar
 ## Workflow 3 · Verify a UI change
 
 ```bash
-charet push -m "…"                  # check and capture run on the pushed version
-charet check <id…>                  # page errors, console errors, missing mocks (exit 1 on problems)
-charet capture <id…> --out /tmp/cv  # update what the team sees, and save the pictures for you
+charet push -m "what and why"       # from main: a new branch #n; in a branch checkout: adds to it
+charet check <id…>                  # renders this checkout's branch: errors, console, missing mocks
+charet branch review                # ask the team to look (the push printed the branch link)
+charet branch merge                 # once agreed (or `charet push -m … --merge` when working alone)
+charet capture <id…> --out /tmp/cv  # after merging: update what the team sees on main
 charet ls --stale                   # screens whose capture is older than the code
 ```
 
-- Push first: `check` and `capture` build and render the latest pushed version, so an unpushed
-  fix is invisible to them.
+- Push first: `check` builds and renders what was pushed (the checkout's branch), so an unpushed
+  fix is invisible to it. `capture` stores what everyone sees, so it only runs on main.
+- Merge only when the user (or the team, in review) agreed; a draft is the safe default. When the
+  user asked for the change outright and works alone, `charet push -m "…" --merge` does both.
+- Merge refused with a clash: someone changed the same lines on main. `charet branch catch-up`,
+  `charet pull`, settle the files named in the message, push, then merge again.
 - `[charet] missing mock GET /api/…` means the screen calls an API no handler answers. Add the
   handler; a silent failure there would show the team a broken screen.
 - Open the saved pictures and look at them before saying it works. A page can pass `check` and
   still be wrong (empty table, clipped dialog, wrong state).
 - A shared component change makes many screens stale: `charet capture $(charet ls --stale)`.
 - Add `--theme both` when the change can look different in dark mode.
-- Push refused because someone pushed first: a checkout is a git work tree, so
-  `git stash && charet pull && git stash pop`, then push again. Their version stays; yours lands on
+- Push refused because someone pushed to the same branch first: a checkout is a git work tree, so
+  `git stash && charet pull && git stash pop`, then push again. Their commit stays; yours lands on
   top.
+- A version that broke something: `charet restore vN` makes a new version undoing it.
 
 ## Workflow 4 · Put an existing app on charet
 
 `charet import <app>` copies the app into charet; then you add `.charet/` (charet-only dependencies,
-vite config, frame, project, mocks) in the checkout, push and check. The app's own `package.json`
+vite config, frame, project, mocks) in the checkout, push (with `--merge`) and check. The app's own `package.json`
 and lockfile stay exactly as in its repository. Follow `references/import.md` step by step — it
 covers getting the SDK, the files to write and the usual failures.
 
@@ -114,8 +123,8 @@ charet url <id>                   # link to give the team
 Connections and flows are written by hand and can lag behind the UI. When one looks wrong, check
 the app code (router, buttons, links) and answer from the code. If you are already changing the
 project, fix `.charet/project.tsx` too. If you were only asked a question, say what is wrong and
-offer the fix (or leave a charet comment) instead of pushing a change nobody asked for — a push
-creates a version the whole team sees.
+offer the fix (or leave a charet comment) instead of pushing a change nobody asked for — even a
+draft branch shows up for the whole team.
 
 ## Ground rules
 
@@ -128,7 +137,8 @@ creates a version the whole team sees.
   stale captures, connections that disagree with the code. Changes to how the app looks or behaves
   are design decisions: list them, or leave them as comments on the screens, and let the user
   choose before you change the app.
-- Report back with what changed, the version, and `charet url <id>` links for the screens.
+- Report back with what changed, the branch link (or version, once merged), and `charet url <id>`
+  links for the screens.
 
 ## References
 

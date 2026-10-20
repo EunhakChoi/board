@@ -15,6 +15,7 @@ tags:
   - name: system
   - name: auth
   - name: projects
+  - name: branches
   - name: captures
   - name: comments
   - name: inbox
@@ -775,6 +776,277 @@ paths:
                       $ref: "#/components/schemas/Version"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/versions/{number}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - name: number
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      tags: [projects]
+      operationId: restoreVersion
+      summary: Record a new version that undoes what this version changed
+      responses:
+        "201":
+          description: The new (restore) version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Clash"
+  /api/projects/{key}/branches:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [branches]
+      operationId: listBranches
+      responses:
+        "200":
+          description: Branches, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches]
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Branch"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [branches]
+      operationId: createBranch
+      summary: Start a draft, empty or with changes made on a checkout of `from`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                from:
+                  type: string
+                  description: "`main`, `v<n>` or a commit (default `main`)"
+                files:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FileInput"
+      responses:
+        "201":
+          description: The new branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    get:
+      tags: [branches]
+      operationId: getBranch
+      responses:
+        "200":
+          description: The branch, its changes against main and what happened to it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}/push:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: pushBranch
+      summary: Commit changed files on top of `base` (the branch head)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base, files]
+              additionalProperties: false
+              properties:
+                base:
+                  type: string
+                message:
+                  type: string
+                files:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FileInput"
+      responses:
+        "200":
+          description: The branch after the push
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "The branch moved since `base`; `detail.head` is its head"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/projects/{key}/branches/{number}/request-review:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: requestBranchReview
+      summary: Ask the team to review a draft
+      responses:
+        "200":
+          description: The branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}/merge:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: mergeBranch
+      summary: Join the branch into main as a new version
+      responses:
+        "201":
+          description: The new (merge) version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Clash"
+  /api/projects/{key}/branches/{number}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: archiveBranch
+      summary: Close the branch without merging
+      responses:
+        "200":
+          description: The branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}/reopen:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: reopenBranch
+      summary: Bring an archived branch back as a draft
+      responses:
+        "200":
+          description: The branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: duplicateBranch
+      summary: A new draft of your own from where this branch is
+      responses:
+        "201":
+          description: The new branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/branches/{number}/catch-up:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/BranchNumber"
+    post:
+      tags: [branches]
+      operationId: catchUpBranch
+      summary: Join the newest main into the branch (clashes are marked)
+      responses:
+        "200":
+          description: The branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{key}/diff:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -1328,6 +1600,13 @@ components:
       schema:
         type: string
         enum: [light, dark]
+    BranchNumber:
+      name: number
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     ProjectKey:
       name: key
       in: path
@@ -1336,6 +1615,12 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
   responses:
+    Clash:
+      description: "Files changed on both sides; `detail.files` lists them"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     WebhookSecret:
       description: The webhook and its signing secret (shown once)
       content:
@@ -1995,9 +2280,87 @@ components:
           type: string
         note:
           type: string
+        branch:
+          type: integer
+          description: The branch a merge version took in
+        restored:
+          type: integer
+          description: The version a restore version undid
         createdAt:
           type: string
           format: date-time
+    Branch:
+      type: object
+      required: [number, title, author, status, base, head, conflicts, createdAt, updatedAt]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        author:
+          $ref: "#/components/schemas/Person"
+        status:
+          type: string
+          enum: [open, in_review, merged, archived]
+        base:
+          type: string
+          description: The main commit it last started from or caught up with
+        head:
+          type: string
+        conflicts:
+          type: array
+          items:
+            type: string
+          description: Files that clashed with main; empty when clean
+        mergedVersion:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    BranchEvent:
+      type: object
+      required: [actor, kind, detail, at]
+      properties:
+        actor:
+          $ref: "#/components/schemas/Person"
+        kind:
+          type: string
+          description: created, push, review, catch_up, conflict, merge, archive, reopen, duplicate
+        detail:
+          type: string
+        at:
+          type: string
+    Change:
+      type: object
+      required: [path, kind]
+      properties:
+        path:
+          type: string
+        kind:
+          type: string
+          enum: [added, modified, deleted]
+    BranchDetail:
+      allOf:
+        - $ref: "#/components/schemas/Branch"
+        - type: object
+          required: [changes, since, behind, events]
+          properties:
+            changes:
+              type: array
+              items:
+                $ref: "#/components/schemas/Change"
+            since:
+              type: string
+              description: The commit the changes are counted from
+            behind:
+              type: boolean
+              description: Main moved on since the branch last caught up
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/BranchEvent"
     FileInput:
       type: object
       required: [path]

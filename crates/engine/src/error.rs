@@ -11,10 +11,12 @@ pub enum EngineError {
     Invalid(String),
     /// Something already exists under that name.
     Exists(&'static str),
-    /// `main` moved since the caller's base. `head` is where it is now.
+    /// The line (`main` or a branch) moved since the caller's base. `head` is where it is now.
     Conflict {
         head: String,
     },
+    /// Joining two lines of work clashed in these files; someone has to settle them by hand.
+    Clash(Vec<String>),
     /// A service the command needs is down or not configured.
     Unavailable(String),
     /// Not possible yet (a build still running); try again later.
@@ -48,7 +50,8 @@ impl std::fmt::Display for EngineError {
             Self::NotFound(what) => write!(f, "{what} not found"),
             Self::Invalid(message) | Self::Pending(message) => f.write_str(message),
             Self::Exists(what) => write!(f, "{what} already exists"),
-            Self::Conflict { head } => write!(f, "main moved to {head}; pull and try again"),
+            Self::Conflict { head } => write!(f, "it moved to {head}; pull and try again"),
+            Self::Clash(files) => write!(f, "changed on both sides: {}", files.join(", ")),
             Self::Unavailable(message) => write!(f, "unavailable: {message}"),
             Self::Changed(rev) => write!(
                 f,

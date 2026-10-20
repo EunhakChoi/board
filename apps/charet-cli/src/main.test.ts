@@ -157,53 +157,97 @@ test("import, checkout, push, pull, versions and diff", async () => {
   assert.equal(listed.code, 0, listed.err);
   assert.match(listed.out, /v1/);
 
-  // Ignored output never travels.
+  // Ignored output never travels. A push from main starts a branch; --merge takes it in at once.
   write(a, {
     ".gitignore": "node_modules/\n",
     "node_modules/x/index.js": "",
     "apps/web/src/page.tsx": "export const title = 'two';\n",
   });
-  const pushed = await charet(["push", "-m", "retitle"], a);
+  const pushed = await charet(["push", "-m", "retitle", "--merge"], a);
   assert.equal(pushed.code, 0, pushed.err);
-  assert.match(pushed.out, /Pushed 2 changed files as version 2/);
+  assert.match(pushed.out, /Merged branch #1 as version 2/);
+  assert.match((await charet(["status"], a)).out, /main {5}v2 \w+\nchanges {2}0$/);
 
+  // A stale checkout still pushes (to a new branch), but merging it clashes.
   const b = join(work, "b");
   await charet(["checkout", "demo", b, "--rev", "v1"]);
   write(b, { "apps/web/src/page.tsx": "stale\n" });
+  const drafted = await charet(["push", "-m", "stale title"], b);
+  assert.equal(drafted.code, 0, drafted.err);
+  assert.match(drafted.out, /to branch #2 .*\/p\/demo\/branches\/2/);
+  assert.match((await charet(["status"], b)).out, /^branch {3}#2$/m);
+  const clash = await charet(["branch", "merge"], b);
+  assert.equal(clash.code, 1);
+  assert.match(clash.err, /Branch #2 clashes with main in apps\/web\/src\/page\.tsx/);
+  assert.match(
+    (await charet(["branches", "-p", "demo"])).out,
+    /^#2\topen\tAdmin\tstale title\tclash: apps\/web\/src\/page\.tsx$/m,
+  );
+  const shown = (await charet(["branch", "2", "-p", "demo"])).out;
+  assert.match(shown, /^#2 stale title\nstatus {3}open\n/);
+  assert.match(shown, /changes {2}1\n {2}M apps\/web\/src\/page\.tsx/);
+
+  // Two checkouts of one branch: the second push from the old head is refused.
+  const e = join(work, "e");
+  assert.equal((await charet(["checkout", "demo", e, "--branch", "2"])).code, 0);
+  write(e, { "extra.txt": "e\n" });
+  assert.equal((await charet(["push"], e)).code, 0);
+  write(b, { "other.txt": "b\n" });
   const conflict = await charet(["push"], b);
   assert.equal(conflict.code, 1);
   assert.match(conflict.err, /Someone pushed first/);
   assert.match((await charet(["pull"], b)).err, /unpushed changes/);
+  rmSync(join(b, "other.txt"));
+  assert.match((await charet(["pull"], b)).out, /Updated to/);
+  assert.ok(existsSync(join(b, "extra.txt")));
+
+  // Archived: the branch checkout goes back to main on pull.
+  assert.match((await charet(["branch", "archive"], b)).out, /Archived branch #2/);
+  assert.match(
+    (await charet(["pull"], b)).out,
+    /Branch #2 is archived; this checkout is back on main/,
+  );
+  assert.equal(
+    readFileSync(join(b, "apps/web/src/page.tsx"), "utf8"),
+    "export const title = 'two';\n",
+  );
+  assert.match((await charet(["branches", "-p", "demo"])).out, /No open branches/);
 
   const c = join(work, "c");
   await charet(["checkout", "demo", c, "--rev", "v1"]);
+  write(c, { "apps/web/src/page.tsx": "local\n" });
+  const behind = (await charet(["status"], c)).out;
+  assert.match(behind, /^project {2}demo /);
+  assert.match(behind, /base {5}v1 /);
+  assert.match(behind, /main {5}v2 \w+ {2}newer than this checkout/);
+  assert.match(behind, /changes {2}1\n {2}M apps\/web\/src\/page\.tsx$/);
+  write(c, { "apps/web/src/page.tsx": "export const title = 'one';\n" });
   assert.match((await charet(["pull"], c)).out, /Updated to/);
   assert.equal(
     readFileSync(join(c, "apps/web/src/page.tsx"), "utf8"),
     "export const title = 'two';\n",
   );
 
-  assert.match((await charet(["versions"], a)).out, /^v2\tpush\t\w+\tAdmin\tretitle/);
+  assert.match((await charet(["versions"], a)).out, /^v2\tmerge\t\w+\tAdmin\tretitle/);
   assert.equal(
     (await charet(["diff", "v1", "-p", "demo"])).out,
     "A\t.gitignore\nM\tapps/web/src/page.tsx",
   );
   assert.match((await charet(["versions"])).err, /Which project/);
 
-  const behind = (await charet(["status"], b)).out;
-  assert.match(behind, /^project {2}demo /);
-  assert.match(behind, /base {5}v1 /);
-  assert.match(behind, /main {5}v2 \w+ {2}newer than this checkout/);
-  assert.match(behind, /changes {2}1\n {2}M apps\/web\/src\/page\.tsx$/);
-  assert.match((await charet(["status"], a)).out, /main {5}v2 \w+\nchanges {2}0$/);
-
   // A pull replaces the files of the base and leaves ignored ones (node_modules) alone.
   write(c, { "node_modules/kept.js": "" });
   rmSync(join(a, "apps/web/src/page.tsx"));
-  assert.equal((await charet(["push", "-m", "drop page"], a)).code, 0);
+  assert.equal((await charet(["push", "-m", "drop page", "--merge"], a)).code, 0);
   assert.match((await charet(["pull"], c)).out, /Updated to/);
   assert.ok(existsSync(join(c, "node_modules/kept.js")));
   assert.ok(!existsSync(join(c, "apps/web/src/page.tsx")));
+
+  // Restore: a new version that undoes v3 brings the page back.
+  assert.match((await charet(["restore", "v3", "-p", "demo"])).out, /Version 4 undoes v3/);
+  assert.match((await charet(["pull"], c)).out, /Updated to/);
+  assert.ok(existsSync(join(c, "apps/web/src/page.tsx")));
+  assert.equal((await charet(["restore", "v1", "-p", "demo"])).code, 1);
 });
 
 test("init creates a project from a template and checks it out", async () => {

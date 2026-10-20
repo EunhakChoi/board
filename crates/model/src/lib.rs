@@ -105,6 +105,12 @@ pub struct Version {
     /// Display name of whoever made it.
     pub actor: String,
     pub note: String,
+    /// The branch a `merge` version took in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<u32>,
+    /// The version a `restore` version undid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restored: Option<u32>,
     pub created_at: String,
 }
 
@@ -119,6 +125,52 @@ pub enum VersionKind {
     Push,
     Merge,
     Restore,
+}
+
+/// A line of work on top of `main`: a draft while its author works (`open`), then a change the team
+/// reviews (`in_review`), until it is merged into a version or archived.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Branch {
+    /// 1, 2, 3, ... per project (git ref `b/<number>`).
+    pub number: u32,
+    pub title: String,
+    pub author: Person,
+    pub status: BranchStatus,
+    /// The `main` commit it last started from or caught up with.
+    pub base: String,
+    /// Its newest commit.
+    pub head: String,
+    /// Files that clashed when catching up with `main` or merging; empty when clean.
+    pub conflicts: Vec<String>,
+    /// The version it became, once merged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_version: Option<u32>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchStatus {
+    Open,
+    InReview,
+    Merged,
+    Archived,
+}
+
+impl BranchStatus {
+    /// Still being worked on (open or in review).
+    pub fn active(self) -> bool {
+        matches!(self, Self::Open | Self::InReview)
+    }
+}
+
+impl Branch {
+    /// The store line of branch `number`.
+    pub fn line(number: u32) -> String {
+        format!("b/{number}")
+    }
 }
 
 /// A file path inside a project store. Always relative, `/`-separated, no `..`, never inside `.git`.

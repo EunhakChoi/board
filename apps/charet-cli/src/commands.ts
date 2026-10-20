@@ -44,15 +44,15 @@ export function client(ctx: Context, server = ctx.server): Client {
   });
 }
 
-function say(ctx: Context, key: Key, params: Record<string, string> = {}): void {
+export function say(ctx: Context, key: Key, params: Record<string, string> = {}): void {
   ctx.out(t(key, params, ctx.locale));
 }
 
-function fail(error: ApiError | undefined, fallback: string): never {
+export function fail(error: ApiError | undefined, fallback: string): never {
   throw new CliError(error ? `${error.message} (${error.code})` : fallback);
 }
 
-function emit(ctx: Context, value: unknown, human: () => void): void {
+export function emit(ctx: Context, value: unknown, human: () => void): void {
   if (ctx.json) ctx.out(JSON.stringify(value, null, 2));
   else human();
 }
@@ -150,7 +150,7 @@ export function defaultKey(path: string): string {
   return key || "project";
 }
 
-async function fetchArchive(
+export async function fetchArchive(
   ctx: Context,
   server: string,
   project: string,
@@ -171,66 +171,180 @@ export async function checkout(
   project: string,
   dir: string | undefined,
   rev: string | undefined,
+  branch?: number,
 ): Promise<void> {
   const target = resolve(ctx.cwd, dir ?? project);
   if (existsSync(target) && readdirSync(target).length > 0) {
     throw new CliError(t("cli.error.notEmpty", { dir: target }, ctx.locale));
   }
-  const { commit, archive } = await fetchArchive(ctx, ctx.server, project, rev);
+  const { commit, archive } = await fetchArchive(
+    ctx,
+    ctx.server,
+    project,
+    branch ? `b${branch}` : rev,
+  );
   unpack(target, archive);
-  writeState(target, { server: ctx.server, project, base: commit });
+  writeState(target, { server: ctx.server, project, base: commit, ...(branch ? { branch } : {}) });
   initBase(target, commit);
-  emit(ctx, { dir: target, project, base: commit }, () =>
-    say(ctx, "cli.checkout.done", { project, dir: target, commit: commit.slice(0, 10) }),
+  emit(ctx, { dir: target, project, base: commit, ...(branch ? { branch } : {}) }, () =>
+    say(ctx, branch ? "cli.checkout.branch" : "cli.checkout.done", {
+      project,
+      dir: target,
+      commit: commit.slice(0, 10),
+      number: String(branch ?? ""),
+    }),
   );
 }
 
-function requireCheckout(ctx: Context): { dir: string; state: CheckoutState } {
+export function requireCheckout(ctx: Context): { dir: string; state: CheckoutState } {
   const found = findCheckout(ctx.cwd);
   if (!found) throw new CliError(t("cli.error.noCheckout", {}, ctx.locale));
   return found;
 }
 
-export async function push(ctx: Context, message: string | undefined): Promise<void> {
+/**
+ * Sends local changes. A checkout of main starts a new branch (a draft) with them and moves over to
+ * it; a branch checkout adds them to its branch. `merge` merges the branch right after, and the
+ * checkout returns to main.
+ */
+export async function push(
+  ctx: Context,
+  message: string | undefined,
+  merge = false,
+): Promise<void> {
   const { dir, state } = requireCheckout(ctx);
   const changes = localChanges(dir);
-  if (changes.length === 0) {
+  if (changes.length === 0 && !(merge && state.branch)) {
     say(ctx, "cli.push.nothing");
     return;
   }
-  const files = changes.map((c) =>
-    c.content
-      ? { path: c.path, content: c.content.toString("base64"), executable: c.executable }
-      : { path: c.path },
-  );
-  const { data, error } = await client(ctx, state.server).POST("/api/projects/{key}/push", {
-    params: { path: { key: state.project } },
-    body: { base: state.base, files, ...(message ? { message } : {}) },
-  });
-  if (!data) {
-    if (error?.code === "conflict") throw new CliError(t("cli.push.conflict", {}, ctx.locale));
-    fail(error, "push failed");
+  const api = client(ctx, state.server);
+  let branch: Schemas["Branch"] | undefined;
+  if (changes.length > 0) {
+    const files = changes.map((c) =>
+      c.content
+        ? { path: c.path, content: c.content.toString("base64"), executable: c.executable }
+        : { path: c.path },
+    );
+    const sent = state.branch
+      ? await api.POST("/api/projects/{key}/branches/{number}/push", {
+          params: { path: { key: state.project, number: state.branch } },
+          body: { base: state.base, files, ...(message ? { message } : {}) },
+        })
+      : await api.POST("/api/projects/{key}/branches", {
+          params: { path: { key: state.project } },
+          body: { title: message ?? "", from: state.base, files },
+        });
+    if (!sent.data) {
+      if (sent.error?.code === "conflict") {
+        throw new CliError(t("cli.push.conflict", {}, ctx.locale));
+      }
+      fail(sent.error, "push failed");
+    }
+    branch = sent.data;
+    writeState(dir, { ...state, branch: branch.number, base: branch.head });
+    commitBase(dir, branch.head);
   }
-  writeState(dir, { ...state, base: data.commit });
-  commitBase(dir, data.commit);
-  emit(ctx, data, () =>
-    say(ctx, "cli.push.done", { count: String(changes.length), version: String(data.number) }),
+  const number = branch?.number ?? (state.branch as number);
+  if (!merge) {
+    const done = branch as Schemas["Branch"];
+    emit(ctx, done, () =>
+      say(ctx, "cli.push.branch", {
+        count: String(changes.length),
+        number: String(done.number),
+        url: branchUrl(state.server, state.project, done.number),
+      }),
+    );
+    return;
+  }
+  const version = await mergeBranch(ctx, state.server, state.project, number);
+  await switchToMain(ctx, dir);
+  emit(ctx, version, () =>
+    say(ctx, "cli.merge.done", { number: String(number), version: String(version.number) }),
   );
 }
 
-export async function pull(ctx: Context): Promise<void> {
-  const { dir, state } = requireCheckout(ctx);
-  if (localChanges(dir).length > 0) throw new CliError(t("cli.pull.dirty", {}, ctx.locale));
-  const { commit, archive } = await fetchArchive(ctx, state.server, state.project);
-  if (commit === state.base) {
-    say(ctx, "cli.pull.upToDate");
-    return;
+/** Where a branch is shown in the web tool. */
+export function branchUrl(server: string, project: string, number: number): string {
+  return `${server}/p/${encodeURIComponent(project)}/branches/${number}`;
+}
+
+/** Merges branch `number` into main; a clash names the files. */
+export async function mergeBranch(
+  ctx: Context,
+  server: string,
+  project: string,
+  number: number,
+): Promise<Schemas["Version"]> {
+  const { data, error } = await client(ctx, server).POST(
+    "/api/projects/{key}/branches/{number}/merge",
+    { params: { path: { key: project, number } } },
+  );
+  if (!data) {
+    if (error?.code === "clash") {
+      const files = ((error.detail as { files?: string[] } | undefined)?.files ?? []).join(", ");
+      throw new CliError(t("cli.merge.clash", { number: String(number), files }, ctx.locale));
+    }
+    fail(error, "merge failed");
   }
-  // Replace the base's files with the new main. Ignored files (node_modules, build output) stay.
+  return data;
+}
+
+/** Replaces the checkout's files with main's (no local changes may be pending). */
+async function switchToMain(ctx: Context, dir: string): Promise<string> {
+  const found = findCheckout(dir);
+  if (!found) throw new CliError(t("cli.error.noCheckout", {}, ctx.locale));
+  const { state } = found;
+  const { commit, archive } = await fetchArchive(ctx, state.server, state.project);
+  replaceFiles(dir, archive);
+  const { branch: _left, ...rest } = state;
+  writeState(dir, { ...rest, base: commit });
+  commitBase(dir, commit);
+  return commit;
+}
+
+/** Swaps the base's files for an archive's. Ignored files (node_modules, build output) stay. */
+function replaceFiles(dir: string, archive: Buffer): void {
   for (const path of git(dir, ["ls-files", "-z"]).toString().split("\0").filter(Boolean)) {
     rmSync(join(dir, path), { force: true });
   }
   unpack(dir, archive);
+}
+
+/** Updates the checkout to its branch's head, or to main. A branch that was merged or archived
+ * hands the checkout back to main. */
+export async function pull(ctx: Context): Promise<void> {
+  const { dir, state } = requireCheckout(ctx);
+  if (localChanges(dir).length > 0) throw new CliError(t("cli.pull.dirty", {}, ctx.locale));
+  if (state.branch) {
+    const { data, error } = await client(ctx, state.server).GET(
+      "/api/projects/{key}/branches/{number}",
+      { params: { path: { key: state.project, number: state.branch } } },
+    );
+    if (!data) fail(error, "request failed");
+    if (data.status === "merged" || data.status === "archived") {
+      const commit = await switchToMain(ctx, dir);
+      emit(ctx, { base: commit }, () =>
+        say(ctx, "cli.pull.closed", {
+          number: String(state.branch),
+          status: data.status,
+          commit: commit.slice(0, 10),
+        }),
+      );
+      return;
+    }
+  }
+  const { commit, archive } = await fetchArchive(
+    ctx,
+    state.server,
+    state.project,
+    state.branch ? `b${state.branch}` : undefined,
+  );
+  if (commit === state.base) {
+    say(ctx, "cli.pull.upToDate");
+    return;
+  }
+  replaceFiles(dir, archive);
   writeState(dir, { ...state, base: commit });
   commitBase(dir, commit);
   emit(ctx, { base: commit }, () => say(ctx, "cli.pull.done", { commit: commit.slice(0, 10) }));

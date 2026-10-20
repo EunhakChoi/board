@@ -42,7 +42,7 @@ pub struct FileInput {
     executable: bool,
 }
 
-fn decode(files: Vec<FileInput>) -> Result<Vec<FileChange>, ApiError> {
+pub(crate) fn decode(files: Vec<FileInput>) -> Result<Vec<FileChange>, ApiError> {
     files
         .into_iter()
         .map(|file| {

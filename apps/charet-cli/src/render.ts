@@ -45,7 +45,7 @@ function summary(ctx: Context, failed: number, total: number): number {
 
 /** The named targets (checked against the manifest), or every screen and story. */
 async function targets(ctx: Context, project: string, options: RenderOptions): Promise<string[]> {
-  const m = await manifest(ctx, project);
+  const m = await manifest(ctx, project, options.rev);
   if (options.targets.length === 0) return [...m.screens, ...m.stories].map((x) => x.id);
   for (const id of options.targets) targetOf(ctx, m, id);
   return options.targets;

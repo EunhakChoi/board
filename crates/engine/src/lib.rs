@@ -1,5 +1,6 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
+mod branches;
 mod browse;
 mod captures;
 mod comments;
@@ -18,6 +19,7 @@ use std::sync::{Arc, RwLock};
 
 use sharing::Live;
 
+pub use branches::BranchDetail;
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
@@ -26,11 +28,11 @@ pub use members::{
 };
 pub use notices::{Inbox, WEBHOOK_EVENTS, WebhookSecret};
 pub use ports::{
-    Accounts, Author, Build, BuildState, BuildStep, BuiltFile, Capture, Captures, Change,
-    ChangeKind, Comments, FileChange, ImageKind, Joined, Kick, NewComment, NewNotification,
-    NewReply, NewUser, NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records,
-    RenderJob, Renderer, SessionRow, Settings, Shot, StoreError, TunnelMode, TunnelOptions,
-    Tunnels, WebhookSender, Workspace, WorkspaceError,
+    Accounts, Author, BranchEvent, Build, BuildState, BuildStep, BuiltFile, Capture, Captures,
+    Change, ChangeKind, Comments, FileChange, ImageKind, Joined, Kick, Merged, NewBranch,
+    NewComment, NewNotification, NewReply, NewUser, NewVersion, NewWebhook, Notices, Outgoing,
+    Peer, ProjectStore, Realtime, Records, RenderJob, Renderer, SessionRow, Settings, Shot,
+    StoreError, TunnelMode, TunnelOptions, Tunnels, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};

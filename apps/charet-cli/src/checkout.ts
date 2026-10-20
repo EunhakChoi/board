@@ -9,8 +9,10 @@ import { dirname, join, resolve } from "node:path";
 export interface CheckoutState {
   server: string;
   project: string;
-  /** Commit of main the files are based on. */
+  /** Commit the files are based on: of main, or of `branch` when set. */
   base: string;
+  /** The branch this checkout pushes to; absent = a checkout of main (push starts a branch). */
+  branch?: number;
 }
 
 const STATE = ".charet/checkout.json";
