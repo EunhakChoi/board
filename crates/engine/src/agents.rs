@@ -514,7 +514,7 @@ impl Engine {
                         .unwrap_or_else(|| "unknown error".into())
                 ),
             };
-            if let Some(cost) = progress.cost_usd {
+            if let Some(cost) = progress.cost_usd.filter(|c| *c > 0.0) {
                 summary = format!("{summary} · ${cost:.4}");
             }
             self.ports

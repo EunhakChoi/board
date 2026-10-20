@@ -1,7 +1,9 @@
 import { Check, Copy, Link2, RefreshCw, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { AgentCosts, AgentSettings } from "@/components/AgentAdmin";
 import { AppHeader } from "@/components/AppHeader";
 import { CopyOnce, copyText } from "@/components/CopyOnce";
+import { Section } from "@/components/Section";
 import { SharingPanel } from "@/components/SharingPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ import {
 
 const ROLES: Role[] = ["admin", "editor", "commenter", "viewer"];
 
-/** `/team`: members and their tokens, visitors, sharing and webhooks (admins). */
+/** `/team`: members and their tokens, visitors, sharing, webhooks and the web agent (admins). */
 export function Team() {
   const t = useT();
   const me = useMe();
@@ -38,35 +40,14 @@ export function Team() {
             <Visitors />
             <SharingPanel />
             <Webhooks />
+            <AgentSettings />
+            <AgentCosts />
           </>
         ) : (
           <p className="text-sm text-muted-foreground">{t("web.team.adminsOnly")}</p>
         )}
       </main>
     </div>
-  );
-}
-
-function Section({
-  title,
-  count,
-  lead,
-  children,
-}: {
-  title: string;
-  count?: number;
-  lead?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section aria-label={title}>
-      <h2 className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-        {title}
-        {count !== undefined && <Badge variant="secondary">{count}</Badge>}
-      </h2>
-      {lead && <p className="mb-2 text-sm text-muted-foreground">{lead}</p>}
-      <div className="divide-y rounded-xl border">{children}</div>
-    </section>
   );
 }
 

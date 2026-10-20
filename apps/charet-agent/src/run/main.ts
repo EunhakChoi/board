@@ -47,7 +47,7 @@ async function save(): Promise<void> {
 
 let checkedOut = false;
 try {
-  tool("charet", `charet checkout ${spec.project} --branch ${spec.branch}`);
+  tool("charet", `checkout ${spec.project} --branch ${spec.branch}`);
   const out = await cli(["checkout", spec.project, work, "--branch", String(spec.branch)]);
   if (out.code !== 0) throw new Error(`checkout failed: ${(out.stderr || out.stdout).trim()}`);
   checkedOut = true;

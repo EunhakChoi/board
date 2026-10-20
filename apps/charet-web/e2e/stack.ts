@@ -63,7 +63,9 @@ export default async function setup() {
     await freePort(),
     await freePort(),
   ];
-  const [remote, shareApi, sharePreview, shareRemote] = [
+  const [remote, shareApi, sharePreview, shareRemote, agent, agentDoor] = [
+    await freePort(),
+    await freePort(),
     await freePort(),
     await freePort(),
     await freePort(),
@@ -100,8 +102,20 @@ export default async function setup() {
       CHARET_WORKSPACE_BIND: `127.0.0.1:${workspace}`,
       CHARET_WORKSPACE_TOKEN: token,
     }),
+    // The web agent for the main server: runs as plain processes with the scripted agent.
+    start(process.execPath, [join(root, "apps/charet-agent/src/main.ts")], {
+      CHARET_AGENT_BIND: `127.0.0.1:${agent}`,
+      CHARET_AGENT_TOKEN: token,
+      CHARET_AGENT_SANDBOX: "none",
+      CHARET_AGENT_DOOR_URL: `http://127.0.0.1:${agentDoor}`,
+      CHARET_CLI: join(root, "apps/charet-cli/src/main.ts"),
+    }),
     start(join(root, "target/debug/charet-server"), [], {
       CHARET_HOME: join(home, "server"),
+      CHARET_AGENT_URL: `http://127.0.0.1:${agent}`,
+      CHARET_AGENT_TOKEN: token,
+      CHARET_AGENT_BIND: `127.0.0.1:${agentDoor}`,
+      CHARET_AGENT_SCRIPT: "true",
       CHARET_BIND: `127.0.0.1:${api}`,
       CHARET_PREVIEW_BIND: `127.0.0.1:${preview}`,
       CHARET_REMOTE_BIND: `127.0.0.1:${remote}`,
@@ -141,6 +155,7 @@ export default async function setup() {
     await waitFor(`http://127.0.0.1:${shareApi}/api/health`, () => true, 60);
     await waitFor(`http://127.0.0.1:${workspace}/health`, () => true, 60);
     await waitFor(`http://127.0.0.1:${render}/health`, () => true, 60);
+    await waitFor(`http://127.0.0.1:${agent}/health`, () => true, 60);
     execFileSync(
       process.execPath,
       [join(root, "apps/charet-cli/src/main.ts"), "import", "--key", "demo"],
