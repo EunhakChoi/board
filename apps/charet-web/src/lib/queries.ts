@@ -495,6 +495,15 @@ export function useBranchActions(key: string) {
     merge: useMutation({
       mutationFn: (number: number) =>
         unwrap(api.POST("/api/projects/{key}/branches/{number}/merge", on(number))),
+      // The merge check builds the merged result first; ask again until it is done.
+      retry: (count, error) =>
+        error instanceof HttpError && error.code === "pending" && count < 200,
+      retryDelay: 3000,
+      onSettled: settled,
+    }),
+    approve: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/approve", on(number))),
       onSettled: settled,
     }),
     archive: useMutation({

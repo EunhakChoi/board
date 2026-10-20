@@ -1,5 +1,5 @@
 // Branches from the terminal: `charet branches`, `charet branch [n]` and its actions (review,
-// merge, archive, reopen, duplicate, catch-up), and `charet restore vN`. The branch defaults to the
+// approve, merge, archive, reopen, duplicate, catch-up), and `charet restore vN`. The branch defaults to the
 // one the checkout pushes to.
 
 import type { Schemas } from "@charet/api-client";
@@ -18,7 +18,15 @@ import {
 
 type Branch = Schemas["Branch"];
 
-const ACTIONS = ["review", "merge", "archive", "reopen", "duplicate", "catch-up"] as const;
+const ACTIONS = [
+  "review",
+  "approve",
+  "merge",
+  "archive",
+  "reopen",
+  "duplicate",
+  "catch-up",
+] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Lists active branches (all with `all`), newest first. */
@@ -80,6 +88,11 @@ async function show(ctx: Context, project: string, number: number): Promise<void
     ctx.out(`author   ${data.author.name}`);
     ctx.out(`head     ${data.head.slice(0, 10)}${data.behind ? "  (main moved on)" : ""}`);
     if (data.conflicts.length > 0) ctx.out(`clash    ${data.conflicts.join(", ")}`);
+    if (data.unapproved.length > 0) ctx.out(`approval ${data.unapproved.join(", ")}`);
+    if (data.check && data.check.head === data.head) {
+      ctx.out(`check    ${data.check.state}`);
+      for (const issue of data.check.issues) ctx.out(`  ${issue}`);
+    }
     ctx.out(`url      ${branchUrl(ctx.server, project, data.number)}`);
     ctx.out(`changes  ${data.changes.length}`);
     const mark = { added: "A", modified: "M", deleted: "D" } as const;
@@ -100,6 +113,7 @@ async function act(ctx: Context, project: string, action: Action, number: number
   }
   const path = {
     review: "/api/projects/{key}/branches/{number}/request-review",
+    approve: "/api/projects/{key}/branches/{number}/approve",
     archive: "/api/projects/{key}/branches/{number}/archive",
     reopen: "/api/projects/{key}/branches/{number}/reopen",
     duplicate: "/api/projects/{key}/branches/{number}/duplicate",

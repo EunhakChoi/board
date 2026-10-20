@@ -7,7 +7,7 @@ use rusqlite::{OptionalExtension, Row, params};
 use crate::{Db, err, parse, text};
 
 const BRANCH_FIELDS: &str = "number, title, author_id, author_name, status, base_commit, \
-     head_commit, conflicts, merged_version, created_at, updated_at";
+     head_commit, conflicts, merged_version, created_at, updated_at, approved, merge_check";
 
 fn branch_row(row: &Row<'_>) -> rusqlite::Result<Branch> {
     let conflicts: String = row.get(7)?;
@@ -23,6 +23,10 @@ fn branch_row(row: &Row<'_>) -> rusqlite::Result<Branch> {
         head: row.get(6)?,
         conflicts: serde_json::from_str(&conflicts).unwrap_or_default(),
         merged_version: row.get(8)?,
+        approved: row.get(11)?,
+        check: row
+            .get::<_, Option<String>>(12)?
+            .and_then(|c| serde_json::from_str(&c).ok()),
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
     })
@@ -93,10 +97,16 @@ impl Db {
         branch: &Branch,
     ) -> Result<(), StoreError> {
         let conflicts = serde_json::to_string(&branch.conflicts).map_err(err)?;
+        let check = branch
+            .check
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(err)?;
         self.lock()?
             .execute(
                 "UPDATE branches SET title = ?3, status = ?4, base_commit = ?5, head_commit = ?6,
-                   conflicts = ?7, merged_version = ?8,
+                   conflicts = ?7, merged_version = ?8, approved = ?9, merge_check = ?10,
                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  WHERE project = ?1 AND number = ?2",
                 params![
@@ -107,7 +117,9 @@ impl Db {
                     branch.base,
                     branch.head,
                     conflicts,
-                    branch.merged_version
+                    branch.merged_version,
+                    branch.approved,
+                    check
                 ],
             )
             .map_err(err)?;

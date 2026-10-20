@@ -276,14 +276,27 @@ export async function mergeBranch(
   project: string,
   number: number,
 ): Promise<Schemas["Version"]> {
-  const { data, error } = await client(ctx, server).POST(
-    "/api/projects/{key}/branches/{number}/merge",
-    { params: { path: { key: project, number } } },
-  );
+  const merge = () =>
+    client(ctx, server).POST("/api/projects/{key}/branches/{number}/merge", {
+      params: { path: { key: project, number } },
+    });
+  let { data, error } = await merge();
+  // The server first builds and checks what merging gives; it answers `pending` meanwhile.
+  for (let i = 0; !data && error?.code === "pending" && i < 600; i++) {
+    if (i === 0) ctx.err(t("cli.merge.checking", {}, ctx.locale));
+    await new Promise((done) => setTimeout(done, ctx.pollMs ?? 1000));
+    ({ data, error } = await merge());
+  }
   if (!data) {
-    if (error?.code === "clash") {
-      const files = ((error.detail as { files?: string[] } | undefined)?.files ?? []).join(", ");
-      throw new CliError(t("cli.merge.clash", { number: String(number), files }, ctx.locale));
+    const detail = error?.detail as { files?: string[]; issues?: string[] } | undefined;
+    const vars = { number: String(number), files: (detail?.files ?? []).join(", ") };
+    if (error?.code === "clash") throw new CliError(t("cli.merge.clash", vars, ctx.locale));
+    if (error?.code === "approval_required") {
+      throw new CliError(t("cli.merge.approval", vars, ctx.locale));
+    }
+    if (error?.code === "check_failed") {
+      const issues = (detail?.issues ?? []).map((i) => `\n  ${i}`).join("");
+      throw new CliError(t("cli.merge.checkFailed", { ...vars, issues }, ctx.locale));
     }
     fail(error, "merge failed");
   }

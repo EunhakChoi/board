@@ -75,6 +75,7 @@ pub const ROUTES: &[(&str, &str)] = &[
         "/api/projects/{key}/branches/{number}/request-review",
     ),
     ("post", "/api/projects/{key}/branches/{number}/merge"),
+    ("post", "/api/projects/{key}/branches/{number}/approve"),
     ("post", "/api/projects/{key}/branches/{number}/archive"),
     ("post", "/api/projects/{key}/branches/{number}/reopen"),
     ("post", "/api/projects/{key}/branches/{number}/duplicate"),

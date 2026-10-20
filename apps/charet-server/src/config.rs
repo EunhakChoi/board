@@ -14,6 +14,8 @@ const DEFAULT_REMOTE_BIND: &str = "127.0.0.1:5284";
 const DEFAULT_WORKSPACE_URL: &str = "http://127.0.0.1:5282";
 const DEFAULT_RENDER_URL: &str = "http://127.0.0.1:5283";
 
+/// Settings are independent on/off switches, not a state machine.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Where charet keeps its data (`CHARET_HOME`, default `~/.charet`).
@@ -46,6 +48,9 @@ pub struct Config {
     pub public_url: Option<String>,
     /// Daily check for a new release (`CHARET_UPDATE_CHECK=false` turns it off).
     pub update_check: bool,
+    /// Build and check what a merge gives before `main` moves (`CHARET_MERGE_CHECK=false` turns it
+    /// off, for a server without the build service).
+    pub merge_check: bool,
 }
 
 impl Config {
@@ -123,6 +128,10 @@ impl Config {
             env("CHARET_UPDATE_CHECK").as_deref().map(str::trim),
             Some("false" | "0" | "off" | "no")
         );
+        let merge_check = !matches!(
+            env("CHARET_MERGE_CHECK").as_deref().map(str::trim),
+            Some("false" | "0" | "off" | "no")
+        );
         if public {
             check_public(public_url.as_deref())?;
         }
@@ -142,6 +151,7 @@ impl Config {
             web_dir,
             public_url,
             update_check,
+            merge_check,
         })
     }
 

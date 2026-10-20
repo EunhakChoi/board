@@ -57,9 +57,20 @@ impl Engine {
         rev: &str,
         retry: bool,
     ) -> Result<Preview, EngineError> {
-        let settings = self.preview_settings()?;
+        self.preview_settings()?;
         self.visible(actor, key, Command::ProjectView)?;
-        let commit = self.resolve(key, rev)?;
+        let commit = self.build_commit(key, &self.resolve(key, rev)?)?;
+        self.preview_of(key, commit, retry)
+    }
+
+    /// The preview of exactly `commit`, started when needed (callers decide what may be built).
+    pub(crate) fn preview_of(
+        &self,
+        key: &str,
+        commit: String,
+        retry: bool,
+    ) -> Result<Preview, EngineError> {
+        let settings = self.preview_settings()?;
         let workspace = &self.ports.workspace;
         let build = match workspace.build(key, &commit)? {
             // A build made for another base (an older charet) is made again.

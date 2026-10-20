@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn branches_tell_the_team_then_their_author() {
-        let (engine, _) = engine_with_fakes();
+        let (engine, fakes) = engine_with_fakes();
         let boss = join(&engine, "boss");
         let ann = join(&engine, "ann");
         let bob = join(&engine, "bob");
@@ -689,6 +689,16 @@ mod tests {
             1
         );
 
+        // The merge waits for the check of what it gives.
+        assert!(matches!(
+            engine.merge_branch(&bob.actor(), "web", 1),
+            Err(crate::EngineError::Pending(_))
+        ));
+        fakes.workspace.finish(crate::BuildState::Ready);
+        fakes.workspace.serve(
+            ".charet/manifest.json",
+            r#"{"manifestVersion":1,"screens":[]}"#,
+        );
         engine.merge_branch(&bob.actor(), "web", 1).unwrap();
         assert_eq!(kinds(&engine, &ann)[0], "branch.merged");
         assert_eq!(
@@ -707,6 +717,11 @@ mod tests {
         engine
             .propose(&bob.actor(), "web", &main, "two", &[file("a.txt", "2")])
             .unwrap();
+        assert!(
+            engine.merge_branch(&ann.actor(), "web", 2).is_err(),
+            "checking"
+        );
+        fakes.workspace.finish(crate::BuildState::Ready);
         engine.merge_branch(&ann.actor(), "web", 2).unwrap();
         assert_eq!(kinds(&engine, &bob)[0], "branch.clash");
     }
