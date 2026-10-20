@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { readConfig } from "./config.ts";
+
+test("defaults to docker runs on loopback", () => {
+  const config = readConfig({});
+  assert.deepEqual(config.bind, { host: "127.0.0.1", port: 5290 });
+  assert.equal(config.sandbox, "docker");
+  assert.equal(config.doorUrl, "http://127.0.0.1:5285");
+  assert.deepEqual(config.allowHosts, ["api.anthropic.com", "api.openai.com"]);
+  assert.equal(config.docker.image, "charet-agent-run:local");
+  assert.equal(config.timeoutMs, 30 * 60_000);
+  assert.deepEqual(config.prices, {});
+});
+
+test("needs a token off loopback and checks its input", () => {
+  assert.throws(() => readConfig({ CHARET_AGENT_BIND: "0.0.0.0:5290" }), /CHARET_AGENT_TOKEN/);
+  assert.equal(
+    readConfig({ CHARET_AGENT_BIND: "0.0.0.0:5290", CHARET_AGENT_TOKEN: "t" }).token,
+    "t",
+  );
+  assert.throws(() => readConfig({ CHARET_AGENT_SANDBOX: "vm" }), /docker or none/);
+  assert.throws(() => readConfig({ CHARET_AGENT_PRICES: "{" }), /not JSON/);
+  assert.throws(
+    () => readConfig({ CHARET_AGENT_PRICES: '{"m":{"input":1}}' }),
+    /CHARET_AGENT_PRICES/,
+  );
+  const prices = readConfig({ CHARET_AGENT_PRICES: '{"m":{"input":1,"output":4}}' }).prices;
+  assert.deepEqual(prices, { m: { input: 1, output: 4 } });
+});

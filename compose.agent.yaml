@@ -1,0 +1,64 @@
+# The web agent: members ask for changes in the web tool and a coding agent makes them on a branch.
+# Use on top of compose.yaml (and compose.public.yaml, if used):
+#
+#   docker compose -f compose.yaml -f compose.agent.yaml up -d --build
+#
+# Each run gets its own container (image charet-agent-run) on an internal network: it reaches only
+# the charet server's agent door (for its own branch) and the model APIs, through the agent service.
+# The agent service uses this machine's Docker socket to start those containers.
+# API keys: CHARET_ANTHROPIC_API_KEY / CHARET_OPENAI_API_KEY here, or in Settings › Web agent.
+
+services:
+  server:
+    depends_on:
+      agent:
+        condition: service_started
+    environment:
+      CHARET_AGENT_URL: http://agent:5290
+      CHARET_AGENT_TOKEN_FILE: /secrets/internal-token
+      # The agent door: reached only by the agent service (not published on this machine).
+      CHARET_AGENT_BIND: 0.0.0.0:5285
+      CHARET_ANTHROPIC_API_KEY: ${CHARET_ANTHROPIC_API_KEY:-}
+      CHARET_OPENAI_API_KEY: ${CHARET_OPENAI_API_KEY:-}
+      CHARET_AGENT_MAX_RUNNING: ${CHARET_AGENT_MAX_RUNNING:-3}
+      # Offers the scripted test agent (no model); for checks only.
+      CHARET_AGENT_SCRIPT: ${CHARET_AGENT_SCRIPT:-false}
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: charet-agent:local
+    restart: unless-stopped
+    depends_on:
+      tokens:
+        condition: service_completed_successfully
+      agent-run:
+        condition: service_completed_successfully
+    environment:
+      CHARET_AGENT_TOKEN_FILE: /secrets/internal-token
+      CHARET_AGENT_DOOR_URL: http://server:5285
+      CHARET_AGENT_IMAGE: charet-agent-run:local
+      CHARET_AGENT_NETWORK: ${CHARET_AGENT_NETWORK:-charet-agent-runs}
+      CHARET_AGENT_RUN_HOST: agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - secrets:/secrets:ro
+    networks:
+      - default
+      - agent-runs
+
+  # Builds the run image with the others (`up --build`); exits at once.
+  agent-run:
+    build:
+      context: .
+      dockerfile: docker/agent-run.Dockerfile
+    image: charet-agent-run:local
+    command: ["true"]
+    restart: "no"
+    network_mode: none
+
+networks:
+  agent-runs:
+    name: ${CHARET_AGENT_NETWORK:-charet-agent-runs}
+    internal: true
