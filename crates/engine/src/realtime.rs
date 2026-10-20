@@ -16,13 +16,10 @@ impl Engine {
     ) -> Result<Joined, EngineError> {
         self.visible(actor, project, Command::ProjectView)?;
         let person = actor.person();
-        let (kind, avatar_url) = match actor {
-            Actor::Local => ("local", None),
-            Actor::User { id, .. } => (
-                "user",
-                self.ports.accounts.user(id)?.and_then(|u| u.avatar_url),
-            ),
-            Actor::Guest { .. } => ("guest", None),
+        let kind = match actor {
+            Actor::Local => "local",
+            Actor::User { .. } => "user",
+            Actor::Visitor { .. } => "visitor",
         };
         let peer = Peer {
             id: String::new(),
@@ -30,7 +27,6 @@ impl Engine {
             name: person.name,
             kind: kind.to_owned(),
             role: actor.role(),
-            avatar_url,
         };
         Ok(self.ports.realtime.join(project, peer, since))
     }

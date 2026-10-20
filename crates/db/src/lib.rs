@@ -1,9 +1,8 @@
-//! SQLite persistence for people, access, branches, comments and jobs.
+//! SQLite persistence for members, projects, comments and notifications.
 
 mod accounts;
 mod captures;
 mod comments;
-mod invites;
 mod notices;
 
 use std::path::Path;
@@ -29,6 +28,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0008_project_members.sql"),
     include_str!("migrations/0009_notices.sql"),
     include_str!("migrations/0010_invites.sql"),
+    include_str!("migrations/0011_member_tokens.sql"),
 ];
 
 /// The board database: one SQLite file in WAL mode.

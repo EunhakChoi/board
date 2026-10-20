@@ -5,19 +5,18 @@
 //! - A reply, resolve or reopen: the people in that thread.
 //! - An access request: the admins.
 //!
-//! The one who acted is never told about their own action. Guests have no inbox. Webhooks get
+//! The one who acted is never told about their own action. Visitors have no inbox. Webhooks get
 //! the events they chose; a private project's events only reach webhooks set to that project.
 
 use std::time::Duration;
 
 use board_model::{
-    Actor, Comment, Notification, Project, ReplyKind, Role, User, UserStatus, Visibility, Webhook,
+    Actor, Comment, Notification, Project, ReplyKind, Role, User, Visibility, Webhook,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
-use crate::access::admin;
-use crate::auth::{hex, random_hex};
+use crate::members::{admin, hex, random_hex};
 use crate::{Engine, EngineError, NewNotification, NewWebhook};
 
 /// Events a webhook can choose.
@@ -27,7 +26,6 @@ pub const WEBHOOK_EVENTS: &[&str] = &[
     "comment.resolved",
     "comment.reopened",
     "version.created",
-    "access.requested",
 ];
 
 /// Waits between delivery attempts; three attempts in all.
@@ -63,7 +61,7 @@ struct Event<'a> {
 }
 
 impl Engine {
-    /// The caller's notifications, newest first. Empty for local mode and guests.
+    /// The caller's notifications, newest first. Empty for local mode and visitors.
     pub fn inbox(
         &self,
         actor: &Actor,
@@ -286,24 +284,6 @@ impl Engine {
         });
     }
 
-    pub(crate) fn access_requested(&self, user: &User) {
-        let admins = self.ports.accounts.users().unwrap_or_default();
-        let people = admins
-            .into_iter()
-            .filter(|u| u.role == Role::Admin && u.status == UserStatus::Active)
-            .map(|u| u.id)
-            .collect();
-        self.announce(&Event {
-            kind: "access.requested",
-            project: None,
-            actor: &user.actor(),
-            text: format!("{} ({}) asked to join", user.name, user.email),
-            link: "/team".into(),
-            data: serde_json::json!({ "user": user.id, "email": user.email, "name": user.name }),
-            people,
-        });
-    }
-
     /// Stores the notifications, nudges the people connected, and starts webhook deliveries.
     /// The command that caused it has already happened: failures here do not undo it.
     fn announce(&self, event: &Event<'_>) {
@@ -417,7 +397,6 @@ impl Engine {
         };
         users
             .into_iter()
-            .filter(|u| u.status == UserStatus::Active)
             .filter(|u| {
                 project.visibility != Visibility::Private
                     || u.role == Role::Admin
@@ -436,7 +415,7 @@ fn send(
     body: &serde_json::Value,
 ) -> Result<u16, String> {
     let body = body.to_string();
-    let timestamp = crate::auth::now().to_string();
+    let timestamp = crate::members::now().to_string();
     let mut mac =
         Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC takes keys of any size");
     mac.update(timestamp.as_bytes());
@@ -490,16 +469,17 @@ mod tests {
     use board_model::{ReplyKind, Visibility};
 
     use super::*;
-    use crate::testing::{FakeIdentity, allow, file, signed_in_with_fakes};
-    use crate::{At, Import, SignIn};
+    use crate::testing::{engine_with_fakes, file};
+    use crate::{At, Import};
 
-    fn join(engine: &Engine, idp: &FakeIdentity, who: &str) -> User {
-        engine.begin_sign_in(None, None).unwrap();
-        idp.next(who, &format!("{who}@example.com"), true);
-        match engine.finish_sign_in(&idp.last_state(), "c").unwrap() {
-            SignIn::Session { user, .. } => user,
-            SignIn::Refused(r) => panic!("{r:?}"),
-        }
+    /// A new member; `boss` is an admin, everyone else an editor.
+    fn join(engine: &Engine, who: &str) -> User {
+        let role = if who == "boss" {
+            Role::Admin
+        } else {
+            Role::Editor
+        };
+        engine.add_member(&Actor::Local, who, role).unwrap().user
     }
 
     fn project(engine: &Engine, admin: &Actor) {
@@ -528,11 +508,10 @@ mod tests {
 
     #[test]
     fn comments_reach_the_team_and_answers_reach_the_thread() {
-        let (engine, idp, _) = signed_in_with_fakes(&["boss@example.com"]);
-        allow(&engine, "domain", "example.com");
-        let boss = join(&engine, &idp, "boss");
-        let ann = join(&engine, &idp, "ann");
-        let bob = join(&engine, &idp, "bob");
+        let (engine, _) = engine_with_fakes();
+        let boss = join(&engine, "boss");
+        let ann = join(&engine, "ann");
+        let bob = join(&engine, "bob");
         project(&engine, &boss.actor());
 
         let at = At::Point { x: 5, y: 5 };
@@ -577,11 +556,10 @@ mod tests {
     }
 
     #[test]
-    fn private_projects_tell_only_their_members_and_requests_go_to_admins() {
-        let (engine, idp, fakes) = signed_in_with_fakes(&["boss@example.com"]);
-        allow(&engine, "email", "ann@example.com");
-        let boss = join(&engine, &idp, "boss");
-        let ann = join(&engine, &idp, "ann");
+    fn private_projects_tell_only_their_members() {
+        let (engine, fakes) = engine_with_fakes();
+        let boss = join(&engine, "boss");
+        let ann = join(&engine, "ann");
         project(&engine, &boss.actor());
         engine
             .update_project(&boss.actor(), "web", None, Some(Visibility::Private))
@@ -591,24 +569,27 @@ mod tests {
             .add_comment(&boss.actor(), "web", "screen", "home", "light", &at, "x")
             .unwrap();
         assert_eq!(kinds(&engine, &ann), Vec::<String>::new());
-
-        let eve = join(&engine, &idp, "eve");
-        assert_eq!(kinds(&engine, &boss), ["access.requested"]);
-        assert_eq!(kinds(&engine, &eve), Vec::<String>::new());
+        engine
+            .set_member(&boss.actor(), "web", &ann.id, true)
+            .unwrap();
+        engine
+            .add_comment(&boss.actor(), "web", "screen", "home", "light", &at, "y")
+            .unwrap();
+        assert_eq!(kinds(&engine, &ann), ["comment.added"]);
         assert!(
             fakes
                 .realtime
                 .events
                 .lock()
                 .unwrap()
-                .contains(&("*".into(), format!("notify {}", boss.id)))
+                .contains(&("*".into(), format!("notify {}", ann.id)))
         );
     }
 
     #[test]
     fn webhooks_get_signed_posts_for_the_events_they_chose() {
-        let (engine, idp, fakes) = signed_in_with_fakes(&["boss@example.com"]);
-        let boss = join(&engine, &idp, "boss");
+        let (engine, fakes) = engine_with_fakes();
+        let boss = join(&engine, "boss");
         let admin = boss.actor();
         project(&engine, &admin);
         assert!(matches!(
@@ -675,11 +656,9 @@ mod tests {
         engine.delete_webhook(&admin, &created.webhook.id).unwrap();
         assert_eq!(engine.webhooks(&admin).unwrap(), vec![]);
         assert_eq!(
-            engine.webhooks(&Actor::Guest {
+            engine.webhooks(&Actor::Visitor {
                 id: "g".into(),
                 name: "G".into(),
-                role: Role::Editor,
-                project: "web".into()
             }),
             Err(EngineError::Forbidden)
         );

@@ -331,203 +331,57 @@ pub trait Comments: Send + Sync {
     fn remove_project(&self, project: &str) -> Result<(), StoreError>;
 }
 
-/// A new account, as the first sign-in creates it.
+/// A member to store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewUser {
     pub id: String,
-    pub provider: String,
-    pub subject: String,
-    pub email: String,
     pub name: String,
-    pub avatar_url: Option<String>,
     pub role: board_model::Role,
-    pub status: board_model::UserStatus,
+    pub token: String,
 }
 
-/// Domains and addresses that are let in on their first sign-in.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AllowRule {
-    pub id: i64,
-    /// `domain` (`example.com`) or `email` (`someone@example.com`).
-    pub kind: String,
-    pub value: String,
+/// A browser session as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionRow {
+    pub user: board_model::User,
+    /// The same token came in from another browser since: this one is over.
+    pub replaced: bool,
 }
 
-/// Accounts, sessions and admission rules kept by the database. Tokens arrive hashed.
+/// Members, their tokens and browser sessions, kept by the database. Session tokens arrive
+/// hashed; member tokens are kept as they are so admins can hand them over again.
 pub trait Accounts: Send + Sync {
     fn user(&self, id: &str) -> Result<Option<board_model::User>, StoreError>;
-    /// The account the provider knows as `subject`.
-    fn user_by_subject(
-        &self,
-        provider: &str,
-        subject: &str,
-    ) -> Result<Option<board_model::User>, StoreError>;
+    /// Every member, oldest first.
+    fn users(&self) -> Result<Vec<board_model::User>, StoreError>;
     fn insert_user(&self, user: &NewUser) -> Result<board_model::User, StoreError>;
-    /// Refreshes what the provider says about the person (name, picture, address).
-    fn update_profile(
+    /// False when there is no such member.
+    fn update_user(
         &self,
         id: &str,
-        email: &str,
         name: &str,
-        avatar_url: Option<&str>,
-    ) -> Result<(), StoreError>;
-    fn set_access(
-        &self,
-        id: &str,
         role: board_model::Role,
-        status: board_model::UserStatus,
-    ) -> Result<(), StoreError>;
-    /// Whether any active admin exists (until one does, the setup link is the way in).
-    fn has_admin(&self) -> Result<bool, StoreError>;
+    ) -> Result<bool, StoreError>;
+    /// Removes the member with their sessions. False when there was none.
+    fn delete_user(&self, id: &str) -> Result<bool, StoreError>;
+    fn user_token(&self, id: &str) -> Result<Option<String>, StoreError>;
+    /// Replaces the member's token. False when there is no such member.
+    fn set_user_token(&self, id: &str, token: &str) -> Result<bool, StoreError>;
+    /// The member a token belongs to; records the use.
+    fn user_by_token(&self, token: &str) -> Result<Option<board_model::User>, StoreError>;
     fn insert_session(
         &self,
         token_hash: &str,
         user: &str,
         expires_at: u64,
     ) -> Result<(), StoreError>;
-    /// The account behind a session that has not expired at `now`.
-    fn session_user(
-        &self,
-        token_hash: &str,
-        now: u64,
-    ) -> Result<Option<board_model::User>, StoreError>;
+    /// A session that has not expired at `now`.
+    fn session(&self, token_hash: &str, now: u64) -> Result<Option<SessionRow>, StoreError>;
+    /// Marks every other live session of `user` replaced.
+    fn replace_sessions(&self, user: &str, except_hash: &str) -> Result<(), StoreError>;
     fn delete_session(&self, token_hash: &str) -> Result<(), StoreError>;
-    /// Replaces any unused setup token with this one.
-    fn set_setup_token(&self, token_hash: &str) -> Result<(), StoreError>;
-    /// Uses up the setup token. False when it is not the current unused one.
-    fn take_setup_token(&self, token_hash: &str) -> Result<bool, StoreError>;
-    fn allow_rules(&self) -> Result<Vec<AllowRule>, StoreError>;
-    fn add_allow_rule(&self, kind: &str, value: &str) -> Result<AllowRule, StoreError>;
-    /// False when there was no such rule.
-    fn remove_allow_rule(&self, id: i64) -> Result<bool, StoreError>;
-    /// Every account, oldest first.
-    fn users(&self) -> Result<Vec<board_model::User>, StoreError>;
-    fn insert_share_link(&self, link: &NewShareLink) -> Result<board_model::ShareLink, StoreError>;
-    /// A project's links, newest first, revoked ones included.
-    fn share_links(&self, project: &str) -> Result<Vec<board_model::ShareLink>, StoreError>;
-    fn share_link_by_token(
-        &self,
-        token_hash: &str,
-    ) -> Result<Option<board_model::ShareLink>, StoreError>;
-    /// Marks the link revoked and ends every session that came in through it. False when the
-    /// project has no such link or it was revoked already.
-    fn revoke_share_link(&self, project: &str, id: &str) -> Result<bool, StoreError>;
-    fn insert_guest(&self, id: &str, link: &str, name: &str) -> Result<(), StoreError>;
-    fn insert_guest_session(
-        &self,
-        token_hash: &str,
-        guest: &str,
-        expires_at: u64,
-    ) -> Result<(), StoreError>;
-    fn insert_cli_token(
-        &self,
-        id: &str,
-        user: &str,
-        name: &str,
-        token_hash: &str,
-        via: &str,
-    ) -> Result<board_model::CliToken, StoreError>;
-    fn cli_tokens(&self, user: &str) -> Result<Vec<board_model::CliToken>, StoreError>;
-    /// False when the user has no such token.
-    fn delete_cli_token(&self, user: &str, id: &str) -> Result<bool, StoreError>;
-    fn delete_cli_token_by_hash(&self, token_hash: &str) -> Result<(), StoreError>;
-    /// The account behind a CLI token; records the use.
-    fn token_user(&self, token_hash: &str) -> Result<Option<board_model::User>, StoreError>;
-    fn insert_device(
-        &self,
-        code_hash: &str,
-        user_code: &str,
-        name: &str,
-        expires_at: u64,
-    ) -> Result<(), StoreError>;
-    fn device_by_user_code(&self, user_code: &str) -> Result<Option<Device>, StoreError>;
-    fn device_by_code(&self, code_hash: &str) -> Result<Option<Device>, StoreError>;
-    /// Approves (for `user`) or denies a waiting device login. False when it is not waiting.
-    fn decide_device(&self, user_code: &str, user: &str, approve: bool)
-    -> Result<bool, StoreError>;
-    fn delete_device(&self, code_hash: &str) -> Result<(), StoreError>;
-    /// The guest behind a live session, with the (unrevoked) link they came through.
-    fn guest_session(
-        &self,
-        token_hash: &str,
-        now: u64,
-    ) -> Result<Option<(Guest, board_model::ShareLink)>, StoreError>;
-}
-
-/// A share link to create; the token arrives hashed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewShareLink {
-    pub id: String,
-    pub project: String,
-    pub token_hash: String,
-    pub role: board_model::Role,
-    pub label: String,
-    pub created_by: String,
-}
-
-/// A CLI login waiting for someone to approve it in the browser (device flow).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Device {
-    pub user_code: String,
-    pub name: String,
-    /// `pending`, `approved` or `denied`.
-    pub status: String,
-    pub user: Option<String>,
-    pub expires_at: u64,
-}
-
-/// Someone who came in through a share link.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Guest {
-    pub id: String,
-    pub name: String,
-}
-
-/// What the identity provider says about the person who signed in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Claims {
-    pub subject: String,
-    pub email: String,
-    pub email_verified: bool,
-    pub name: Option<String>,
-    pub picture: Option<String>,
-}
-
-/// One sign-in round trip the provider is asked to start.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AuthRequest {
-    pub state: String,
-    pub nonce: String,
-    /// PKCE `S256` challenge of the verifier the engine keeps.
-    pub code_challenge: String,
-}
-
-/// The sign-in provider (OIDC). Implemented by `board-oidc`.
-pub trait Identity: Send + Sync {
-    /// Short name stored with accounts (`google`, or the issuer's host).
-    fn provider(&self) -> &str;
-    /// Where to send the browser to sign in.
-    fn authorize_url(&self, request: &AuthRequest) -> Result<String, WorkspaceError>;
-    /// Trades the callback's `code` for the person's claims, checking `nonce`.
-    fn exchange(
-        &self,
-        code: &str,
-        code_verifier: &str,
-        nonce: &str,
-    ) -> Result<Claims, WorkspaceError>;
-    /// Whether the provider answers (its discovery document loads).
-    fn health(&self) -> Result<(), WorkspaceError> {
-        Ok(())
-    }
-    /// The callback address registered at the provider.
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "implementations return a field of their own"
-    )]
-    fn callback_url(&self) -> &str {
-        ""
-    }
+    /// Ends every session of `user` (their token changed).
+    fn delete_sessions(&self, user: &str) -> Result<(), StoreError>;
 }
 
 /// Someone in a project room, as the others see them.
@@ -536,13 +390,12 @@ pub trait Identity: Send + Sync {
 pub struct Peer {
     /// This connection (one person can have several tabs).
     pub id: String,
-    /// `local`, a user id or `guest:<id>` (same as comment authors).
+    /// `local`, a user id or `visitor:<id>` (same as comment authors).
     pub person: String,
     pub name: String,
-    /// `local`, `user` or `guest`.
+    /// `local`, `user` or `visitor`.
     pub kind: String,
     pub role: board_model::Role,
-    pub avatar_url: Option<String>,
 }
 
 /// What a connection receives.
@@ -566,10 +419,10 @@ pub struct Joined {
 /// Whose connections to close.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kick {
-    /// Every connection of this person (`local`, user id or `guest:<id>`).
+    /// Every connection of this person (`local`, user id or `visitor:<id>`).
     Person(String),
-    /// Every guest in this project (their link was revoked; the rest reconnect).
-    Guests(String),
+    /// Every visitor, wherever they are (visitors were turned off).
+    Visitors,
 }
 
 /// The realtime hub (`board-collab`): rooms per project, presence relayed as is, events with a
@@ -644,29 +497,6 @@ pub trait Notices: Send + Sync {
 /// Sends one webhook POST and returns the HTTP status (`board-server` over HTTPS).
 pub trait WebhookSender: Send + Sync {
     fn post(&self, url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String>;
-}
-
-/// An invite to store; only the token's hash is kept.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewInvite {
-    pub id: String,
-    pub token_hash: String,
-    pub role: board_model::Role,
-    pub user: Option<String>,
-    pub label: String,
-    pub created_by: String,
-    pub expires_at: u64,
-}
-
-/// One-time invite and sign-in links kept by the database.
-pub trait Invites: Send + Sync {
-    fn insert_invite(&self, invite: &NewInvite) -> Result<board_model::Invite, StoreError>;
-    fn invite_by_token(&self, token_hash: &str) -> Result<Option<board_model::Invite>, StoreError>;
-    /// Marks it used by `user`; false when someone used it first.
-    fn use_invite(&self, id: &str, user: &str) -> Result<bool, StoreError>;
-    /// Invites for new members (not sign-in links), newest first.
-    fn invites(&self) -> Result<Vec<board_model::Invite>, StoreError>;
-    fn delete_invite(&self, id: &str) -> Result<bool, StoreError>;
 }
 
 /// Runs the tunnels that bring people to the remote door (`board-tunnel`): Tailscale serve and

@@ -1,20 +1,26 @@
-//! Sign-in routes and working out who is calling (`docs/design/security.md` §2).
+//! Working out who is calling, and coming in with a token (`docs/design/security.md` §2).
+//!
+//! In order: the local door of a local board (the owner), a token the CLI sends, a browser's
+//! session cookie, a visitor's cookie. Every address but the local door follows the same rules.
 
-use axum::extract::{FromRequestParts, OptionalFromRequestParts, Query, State};
-use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
+use axum::Json;
+use axum::extract::{FromRequestParts, OptionalFromRequestParts, State};
+use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use board_engine::{Engine, SESSION_SECS, SessionState, SignIn};
-use board_model::Actor;
-use serde::Deserialize;
+use board_engine::{Engine, EngineError, SESSION_SECS, SessionState};
+use board_model::{Actor, Role};
+use serde::{Deserialize, Serialize};
 
 use crate::ApiError;
 use crate::projects::blocking;
 
 /// The session cookie on the tool origin.
 pub const SESSION_COOKIE: &str = "board_session";
-/// Changing requests that rely on the cookie must carry this header. Browsers only send custom
+/// The id a visitor's browser keeps, for their made-up name.
+pub const VISITOR_COOKIE: &str = "board_visitor";
+/// Changing requests that rely on a cookie must carry this header. Browsers only send custom
 /// headers cross-origin after a CORS preflight, which board never allows, so a page on another
 /// site cannot forge such a request.
 pub const CLIENT_HEADER: &str = "x-board-client";
@@ -23,7 +29,7 @@ pub const CLIENT_HEADER: &str = "x-board-client";
 #[derive(Debug, Clone, Copy)]
 pub struct Remote;
 
-/// True for a request through the local door of a local board: it acts as this machine's admin.
+/// True for a request through the local door of a local board: it acts as the owner.
 #[derive(Debug, Clone, Copy)]
 pub struct LocalDoor(pub bool);
 
@@ -42,7 +48,7 @@ fn local_door(parts: &Parts, engine: &Engine) -> bool {
     engine.local_mode() && parts.extensions.get::<Remote>().is_none()
 }
 
-/// Who is calling: this machine's admin through the local door, otherwise the session's member.
+/// Who is calling.
 #[derive(Debug)]
 pub struct Caller(pub Actor);
 
@@ -53,47 +59,30 @@ impl FromRequestParts<Engine> for Caller {
         if local_door(parts, engine) {
             return Ok(Caller(engine.local_actor()));
         }
-        // CLI tokens: no cookie, so no cross-site forgery to guard against.
+        // The CLI: no cookie, so no cross-site forgery to guard against.
         if let Some(token) = bearer(&parts.headers) {
             let engine = engine.clone();
             return match blocking(move || engine.token_actor(&token)).await? {
                 Some(actor) => Ok(Caller(actor)),
-                None => Err(ApiError::new(
-                    StatusCode::UNAUTHORIZED,
-                    "invalid_token",
-                    "This CLI token was revoked or never existed; run board login",
-                )),
+                None => Err(invalid_token()),
             };
         }
-        let Some(token) = cookie(&parts.headers, SESSION_COOKIE) else {
+        let session = cookie(&parts.headers, SESSION_COOKIE);
+        let visitor = cookie(&parts.headers, VISITOR_COOKIE);
+        if session.is_none() && visitor.is_none() {
             return Err(ApiError::unauthorized());
-        };
+        }
         if !safe(&parts.method) && !parts.headers.contains_key(CLIENT_HEADER) {
-            return Err(ApiError::new(
-                StatusCode::FORBIDDEN,
-                "csrf",
-                format!("send the {CLIENT_HEADER} header with changing requests"),
-            ));
+            return Err(csrf());
         }
         let engine = engine.clone();
-        match blocking(move || engine.session(&token)).await? {
-            Some(SessionState::Active(actor)) => Ok(Caller(actor)),
-            Some(SessionState::Waiting(_)) => Err(ApiError::new(
-                StatusCode::FORBIDDEN,
-                "pending",
-                "An admin has not approved your access yet",
-            )),
-            Some(SessionState::Refused(refusal)) => Err(ApiError::new(
-                StatusCode::FORBIDDEN,
-                refusal.code(),
-                "You do not have access to this board",
-            )),
-            None => Err(ApiError::unauthorized()),
-        }
+        blocking(move || browser(&engine, session.as_deref(), visitor.as_deref()))
+            .await?
+            .map(Caller)
     }
 }
 
-/// Anonymous callers are fine (`None`); a bad token or a refused account still fails.
+/// Nobody known is fine (`None`); a bad token or a replaced session still fails.
 impl OptionalFromRequestParts<Engine> for Caller {
     type Rejection = ApiError;
 
@@ -101,22 +90,60 @@ impl OptionalFromRequestParts<Engine> for Caller {
         parts: &mut Parts,
         engine: &Engine,
     ) -> Result<Option<Self>, ApiError> {
-        if !local_door(parts, engine)
-            && bearer(&parts.headers).is_none()
-            && cookie(&parts.headers, SESSION_COOKIE).is_none()
-        {
-            return Ok(None);
-        }
         match <Caller as FromRequestParts<Engine>>::from_request_parts(parts, engine).await {
             Ok(caller) => Ok(Some(caller)),
-            Err(error) if error.status() == StatusCode::UNAUTHORIZED => Ok(None),
+            Err(error) if error.code() == "unauthorized" => Ok(None),
             Err(error) => Err(error),
         }
     }
 }
 
+/// A browser: its member session, else the visitor it is.
+fn browser(
+    engine: &Engine,
+    session: Option<&str>,
+    visitor: Option<&str>,
+) -> Result<Result<Actor, ApiError>, EngineError> {
+    if let Some(session) = session {
+        match engine.session(session)? {
+            Some(SessionState::Active(actor)) => return Ok(Ok(actor)),
+            Some(SessionState::Replaced) => return Ok(Err(replaced())),
+            // Ended (the token was reissued): carry on as a visitor.
+            None => {}
+        }
+    }
+    Ok(match visitor {
+        Some(id) => engine.visitor(id)?.ok_or_else(ApiError::unauthorized),
+        None => Err(ApiError::unauthorized()),
+    })
+}
+
 fn safe(method: &Method) -> bool {
     matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
+}
+
+fn csrf() -> ApiError {
+    ApiError::new(
+        StatusCode::FORBIDDEN,
+        "csrf",
+        format!("send the {CLIENT_HEADER} header with changing requests"),
+    )
+}
+
+fn invalid_token() -> ApiError {
+    ApiError::new(
+        StatusCode::UNAUTHORIZED,
+        "invalid_token",
+        "This token was reissued or removed; ask an admin for the current one",
+    )
+}
+
+fn replaced() -> ApiError {
+    ApiError::new(
+        StatusCode::UNAUTHORIZED,
+        "replaced",
+        "Your token was used to sign in on another browser",
+    )
 }
 
 /// The token of an `Authorization: Bearer` header, if sent.
@@ -143,110 +170,135 @@ pub fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartQuery {
-    setup: Option<String>,
-    return_to: Option<String>,
+pub struct Me {
+    /// `local` (the built-in admin), `user` (a member) or `visitor`.
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    name: String,
+    role: Role,
+    /// True through the local door: this machine's admin, no token needed.
+    local_mode: bool,
 }
 
-/// `GET /api/auth/oidc/start`: sends the browser to the provider.
-pub async fn start(
-    State(engine): State<Engine>,
-    Query(query): Query<StartQuery>,
-) -> Result<Response, ApiError> {
-    let url =
-        blocking(move || engine.begin_sign_in(query.setup.as_deref(), query.return_to.as_deref()))
-            .await?;
-    Ok(redirect(&url, None))
-}
-
-#[derive(Deserialize)]
-pub struct CallbackQuery {
-    state: Option<String>,
-    code: Option<String>,
-    error: Option<String>,
-}
-
-/// `GET /api/auth/oidc/callback`: the provider sends the browser back here.
-pub async fn callback(
-    State(engine): State<Engine>,
-    Query(query): Query<CallbackQuery>,
-) -> Response {
-    let (Some(state), Some(code)) = (query.state, query.code) else {
-        // The person cancelled at the provider, or it reported an error.
-        let reason = if query.error.as_deref() == Some("access_denied") {
-            "cancelled"
-        } else {
-            "failed"
+impl Me {
+    fn new(actor: Actor, local_mode: bool) -> Self {
+        let role = actor.role();
+        let name = actor.name().to_owned();
+        let (kind, id) = match actor {
+            Actor::Local => ("local", None),
+            Actor::User { id, .. } => ("user", Some(id)),
+            Actor::Visitor { id, .. } => ("visitor", Some(id)),
         };
-        return redirect(&format!("/signin?error={reason}"), None);
-    };
-    let secure = engine.tool_url().is_some_and(|u| u.starts_with("https://"));
-    match blocking(move || engine.finish_sign_in(&state, &code)).await {
-        Ok(SignIn::Session {
-            token, return_to, ..
-        }) => redirect(
-            &return_to,
-            Some(session_cookie(&token, secure, SESSION_SECS)),
-        ),
-        Ok(SignIn::Refused(refusal)) => {
-            redirect(&format!("/signin?error={}", refusal.code()), None)
-        }
-        Err(error) => {
-            let code = match error.status() {
-                StatusCode::BAD_REQUEST => "expired",
-                StatusCode::SERVICE_UNAVAILABLE => "unavailable",
-                _ => "failed",
-            };
-            redirect(&format!("/signin?error={code}"), None)
+        Self {
+            kind,
+            id,
+            name,
+            role,
+            local_mode,
         }
     }
 }
 
-/// `POST /api/auth/logout`: ends the session (fine without one).
+/// `GET /api/auth/me`: who is calling. A browser without a session becomes a visitor here (the
+/// cookie is set) while visitors are allowed; otherwise it is told to enter a token.
+pub async fn me(
+    State(engine): State<Engine>,
+    LocalDoor(local): LocalDoor,
+    headers: HeaderMap,
+    caller: Option<Caller>,
+) -> Result<Response, ApiError> {
+    if let Some(Caller(actor)) = caller {
+        return Ok(Json(Me::new(actor, local)).into_response());
+    }
+    if bearer(&headers).is_some() {
+        return Err(ApiError::unauthorized());
+    }
+    let id = board_engine::new_visitor_id();
+    let found = {
+        let (engine, id) = (engine.clone(), id.clone());
+        blocking(move || engine.visitor(&id)).await?
+    };
+    let Some(actor) = found else {
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "token_required",
+            "This board needs a token; ask an admin for one",
+        ));
+    };
+    let mut response = Json(Me::new(actor, local)).into_response();
+    set_cookie(
+        &mut response,
+        &cookie_text(VISITOR_COOKIE, &id, secure(&engine), SESSION_SECS),
+    );
+    Ok(response)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TokenInput {
+    token: String,
+}
+
+/// `POST /api/auth/token`: a browser comes in with a member's token. Another browser that came
+/// in with it is signed out.
+pub async fn sign_in(
+    State(engine): State<Engine>,
+    LocalDoor(local): LocalDoor,
+    headers: HeaderMap,
+    Json(input): Json<TokenInput>,
+) -> Result<Response, ApiError> {
+    if !headers.contains_key(CLIENT_HEADER) {
+        return Err(csrf());
+    }
+    let secure = secure(&engine);
+    let signed = match blocking(move || engine.sign_in_with_token(&input.token)).await {
+        Ok(signed) => signed,
+        Err(error) if error.status() == StatusCode::NOT_FOUND => return Err(invalid_token()),
+        Err(error) => return Err(error),
+    };
+    let mut response = Json(Me::new(signed.user.actor(), local)).into_response();
+    set_cookie(
+        &mut response,
+        &cookie_text(SESSION_COOKIE, &signed.session, secure, SESSION_SECS),
+    );
+    Ok(response)
+}
+
+/// `POST /api/auth/logout`: ends the browser's session (fine without one); it is a visitor again.
 pub async fn logout(
     State(engine): State<Engine>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let secure = engine.tool_url().is_some_and(|u| u.starts_with("https://"));
-    if let Some(token) = bearer(&headers) {
-        blocking(move || engine.revoke_own_token(&token)).await?;
-        return Ok(StatusCode::NO_CONTENT.into_response());
-    }
-    if let Some(token) = cookie(&headers, SESSION_COOKIE) {
+    let secure = secure(&engine);
+    if let Some(session) = cookie(&headers, SESSION_COOKIE) {
         if !headers.contains_key(CLIENT_HEADER) {
-            return Err(ApiError::new(
-                StatusCode::FORBIDDEN,
-                "csrf",
-                format!("send the {CLIENT_HEADER} header with changing requests"),
-            ));
+            return Err(csrf());
         }
-        blocking(move || engine.sign_out(&token)).await?;
+        blocking(move || engine.sign_out(&session)).await?;
     }
     let mut response = StatusCode::NO_CONTENT.into_response();
-    if let Ok(value) = HeaderValue::from_str(&session_cookie("", secure, 0)) {
-        response.headers_mut().insert(SET_COOKIE, value);
-    }
+    set_cookie(&mut response, &cookie_text(SESSION_COOKIE, "", secure, 0));
     Ok(response)
 }
 
-pub(crate) fn session_cookie(token: &str, secure: bool, max_age: u64) -> String {
-    format!(
-        "{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{}",
-        if secure { "; Secure" } else { "" }
-    )
+fn secure(engine: &Engine) -> bool {
+    engine.tool_url().is_some_and(|u| u.starts_with("https://"))
 }
 
-fn redirect(location: &str, cookie: Option<String>) -> Response {
-    let mut response = StatusCode::FOUND.into_response();
-    if let Ok(value) = HeaderValue::from_str(location) {
-        response.headers_mut().insert(LOCATION, value);
+fn set_cookie(response: &mut Response, text: &str) {
+    if let Ok(value) = HeaderValue::from_str(text) {
+        response.headers_mut().append(SET_COOKIE, value);
     }
-    if let Some(value) = cookie.and_then(|c| HeaderValue::from_str(&c).ok()) {
-        response.headers_mut().insert(SET_COOKIE, value);
-    }
-    response
+}
+
+pub(crate) fn cookie_text(name: &str, value: &str, secure: bool, max_age: u64) -> String {
+    format!(
+        "{name}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{}",
+        if secure { "; Secure" } else { "" }
+    )
 }
 
 #[cfg(test)]
@@ -266,9 +318,9 @@ mod tests {
 
     #[test]
     fn cookie_is_http_only_and_secure_over_https() {
-        let text = session_cookie("t", true, 60);
+        let text = cookie_text(SESSION_COOKIE, "t", true, 60);
         assert!(text.contains("HttpOnly") && text.contains("SameSite=Lax"));
         assert!(text.ends_with("; Secure"));
-        assert!(!session_cookie("t", false, 60).contains("Secure"));
+        assert!(!cookie_text(SESSION_COOKIE, "t", false, 60).contains("Secure"));
     }
 }

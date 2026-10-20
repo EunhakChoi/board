@@ -192,8 +192,8 @@ impl Notices for Db {
 
 #[cfg(test)]
 mod tests {
-    use board_engine::{Accounts, NewUser};
-    use board_model::{Role, UserStatus};
+    use board_engine::Accounts;
+    use board_model::Role;
 
     use super::*;
 
@@ -212,17 +212,8 @@ mod tests {
     #[test]
     fn notifications_newest_first_and_marked_read() {
         let db = Db::memory().unwrap();
-        db.insert_user(&NewUser {
-            id: "u1".into(),
-            provider: "google".into(),
-            subject: "s".into(),
-            email: "a@example.com".into(),
-            name: "A".into(),
-            avatar_url: None,
-            role: Role::Editor,
-            status: UserStatus::Active,
-        })
-        .unwrap();
+        db.insert_user(&crate::accounts::tests::new_user("u1", Role::Editor))
+            .unwrap();
         db.insert_notifications(&[note("u1", "one"), note("u1", "two"), note("u1", "three")])
             .unwrap();
         let all = db.notifications("u1", false, 10).unwrap();

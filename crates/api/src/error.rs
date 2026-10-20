@@ -38,7 +38,15 @@ impl ApiError {
     }
 
     pub fn unauthorized() -> Self {
-        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", "Sign in first")
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "Enter your token first",
+        )
+    }
+
+    pub fn code(&self) -> &'static str {
+        self.code
     }
 
     pub fn status(&self) -> StatusCode {

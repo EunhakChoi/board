@@ -82,7 +82,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who is calling. In local mode this is the built-in admin. */
+        /**
+         * Who is calling
+         * @description Through the local door of a local board, the owner. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401 `token_required`. 401 `replaced`: the token signed in on another browser since.
+         */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -92,37 +95,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/auth/oidc/start": {
+    "/api/auth/token": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Sends the browser to the identity provider to sign in */
-        get: operations["startSignIn"];
+        get?: never;
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/oidc/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * The provider sends the browser back here
-         * @description Sets the session cookie and redirects to `returnTo`, or redirects to `/signin?error=<code>` (`setup_required`, `email_unverified`, `rejected`, `removed`, `cancelled`, `expired`, `unavailable`, `failed`).
+         * Signs the browser in with a member's token (sets the session cookie)
+         * @description Another browser signed in with the same token is signed out; the CLI is not.
          */
-        get: operations["finishSignIn"];
-        put?: never;
-        post?: never;
+        post: operations["signInWithToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -138,44 +124,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Ends the session */
+        /** Ends the browser's session (it is a visitor again) */
         post: operations["logout"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/allow-rules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Domains and addresses let in on their first sign-in (admins) */
-        get: operations["listAllowRules"];
-        put?: never;
-        /** Adds a domain or address to the allowlist (admins) */
-        post: operations["addAllowRule"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/allow-rules/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Removes an allowlist rule (admins); people already in stay in */
-        delete: operations["removeAllowRule"];
         options?: never;
         head?: never;
         patch?: never;
@@ -188,10 +139,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every account (admins); `pending` ones are access requests */
+        /** Every member with their token (admins) */
         get: operations["listUsers"];
         put?: never;
-        post?: never;
+        /** Adds a member and makes their token (admins) */
+        post: operations["addUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -202,105 +154,56 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: components["parameters"]["UserId"];
+            };
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /** Removes a member; their token stops and their browsers are signed out (admins) */
+        delete: operations["removeUser"];
         options?: never;
         head?: never;
         /**
-         * Changes a member's role, removes them or lets them back in (admins)
-         * @description Removing someone ends their sessions at once. The last admin cannot be demoted or removed.
+         * Renames a member or changes their role (admins)
+         * @description The owner (this machine's admin) and the last admin stay admins.
          */
         patch: operations["changeUser"];
         trace?: never;
     };
-    "/api/admin/users/{id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approves an access request; the person gets in at once (admins) */
-        post: operations["approveUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/users/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Declines an access request (admins) */
-        post: operations["rejectUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** The setup link without a provider; the first to use it becomes the admin as `name` */
-        post: operations["finishSetup"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/invites/{token}": {
+    "/api/admin/users/{id}/token": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                token: string;
+                id: components["parameters"]["UserId"];
             };
             cookie?: never;
         };
-        /** What an invite or sign-in link does (no sign-in needed) */
-        get: operations["getInvite"];
+        get?: never;
         put?: never;
+        /** Gives a member a new token; the old one stops and their browsers are signed out (admins) */
+        post: operations["reissueUserToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether people without a token may look (admins) */
+        get: operations["getAccess"];
+        /** Lets visitors look, or requires a token (admins) */
+        put: operations["setAccess"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/invites/{token}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Uses the link (a new member joins as `name`) and sets the session cookie */
-        post: operations["acceptInvite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -314,86 +217,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whether and where this local board is shared (admin) */
+        /** Whether and where this local board is shared (admins) */
         get: operations["getSharing"];
-        /** Turns sharing on or changes its address; the first time makes the owner account (this machine only) */
+        /** Turns sharing on or changes its address (admins) */
         put: operations["startSharing"];
         post?: never;
-        /** Turns sharing off (this machine only) */
+        /** Turns sharing off (admins) */
         delete: operations["stopSharing"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/invites": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Invites for new members, newest first (admin) */
-        get: operations["listInvites"];
-        put?: never;
-        /** A one-time invite for a new member with this role, open 7 days (admin) */
-        post: operations["createInvite"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/invites/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Withdraws an invite (admin) */
-        delete: operations["revokeInvite"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/users/{id}/sign-in-link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** A one-time link that signs this member in, open 7 days (admin) */
-        post: operations["createMemberSignInLink"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/me/sign-in-link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** A one-time link to sign in on another device, open 15 minutes */
-        post: operations["createOwnSignInLink"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -508,163 +338,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/me/cli-tokens": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The caller's CLI tokens */
-        get: operations["listCliTokens"];
-        put?: never;
-        /** Creates a personal CLI token; the secret is shown only now */
-        post: operations["createCliToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/me/cli-tokens/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Revokes one of the caller's CLI tokens */
-        delete: operations["revokeCliToken"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/device": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** A CLI starts a login to be approved in the browser (no sign-in needed) */
-        post: operations["startDeviceLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/device/token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * The CLI asks whether its login was approved
-         * @description `400` with code `authorization_pending` (ask again after `interval`), `access_denied` or `expired_token`.
-         */
-        post: operations["pollDeviceLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/device/{code}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** A waiting CLI login, for the approval page */
-        get: operations["getDeviceLogin"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/device/{code}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Lets the waiting CLI act as the caller */
-        post: operations["approveDeviceLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/auth/device/{code}/deny": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Turns the waiting CLI login down */
-        post: operations["denyDeviceLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/links/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** What a share link opens (no sign-in needed) */
-        get: operations["getSharedLink"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/links/{token}/enter": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Comes in through a share link under a name; sets the session cookie */
-        post: operations["enterSharedLink"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -733,41 +406,6 @@ export interface paths {
         post?: never;
         /** Removes a member (admins) */
         delete: operations["removeProjectMember"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/projects/{key}/share-links": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** A project's share links, revoked ones included (admins) */
-        get: operations["listShareLinks"];
-        put?: never;
-        /** Creates a share link (admins); its address is shown only now */
-        post: operations["createShareLink"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/projects/{key}/share-links/{id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Revokes a share link; everyone who came in through it is out at once (admins) */
-        post: operations["revokeShareLink"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1358,19 +996,6 @@ export interface components {
                 workspace: components["schemas"]["ServiceState"];
                 render: components["schemas"]["ServiceState"];
             };
-            /** @description How people sign in (public servers); null in local mode */
-            signIn: null | {
-                /** @description null when people come in through invite links only */
-                provider: string | null;
-                /** @description Register this at the provider as the redirect URI */
-                callbackUrl: string | null;
-                /** @description Whether the provider's discovery document loads */
-                ok: boolean;
-                /** @description Why it fails (admins only) */
-                error?: string;
-                /** @description False until the setup link was used */
-                hasAdmin: boolean;
-            };
         };
         ServiceState: {
             ok: boolean;
@@ -1381,16 +1006,21 @@ export interface components {
         Role: "admin" | "editor" | "commenter" | "viewer";
         User: {
             id: string;
-            email: string;
             name: string;
-            avatarUrl?: string | null;
             role: components["schemas"]["Role"];
-            /**
-             * @description `pending` = access request waiting for an admin
-             * @enum {string}
-             */
-            status: "pending" | "active" | "rejected" | "removed";
             createdAt: string;
+            /** @description When the token was last used to come in (browser or CLI) */
+            lastUsedAt: string | null;
+        };
+        /** @description A member as admins see them, with the token to hand over */
+        Member: components["schemas"]["User"] & {
+            token: string;
+            /** @description This machine's admin (the local door acts as them); cannot be removed or demoted */
+            owner: boolean;
+        };
+        Access: {
+            /** @description Whether people without a token may look (as viewers) */
+            visitors: boolean;
         };
         /**
          * @description `address`: set up by hand (reverse proxy or tunnel to the remote door); `tailscale`: people on the tailnet (Tailscale or Headscale); `funnel`: anyone, through Tailscale Funnel; `ngrok`: anyone, through ngrok run by the server; `lan`: this machine's LAN address, for trying out
@@ -1415,29 +1045,11 @@ export interface components {
             fixed: boolean;
             mode: components["schemas"]["ShareMode"] | null;
             url: string | null;
-            /** @description The account this machine acts as once sharing was turned on */
-            owner: {
-                id: string;
-                name: string;
-            } | null;
-        };
-        Invite: {
-            id: string;
-            role: components["schemas"]["Role"];
-            /** @description Set for a sign-in link */
-            user: string | null;
-            label: string;
-            createdBy: string;
-            createdAt: string;
-            /** @description Unix seconds */
-            expiresAt: number;
-            usedAt: string | null;
-            usedBy: string | null;
         };
         Notification: {
             id: number;
             /** @enum {string} */
-            kind: "comment.added" | "comment.replied" | "comment.resolved" | "comment.reopened" | "access.requested";
+            kind: "comment.added" | "comment.replied" | "comment.resolved" | "comment.reopened";
             project: string | null;
             actor: string;
             /** @description One line for people */
@@ -1462,45 +1074,17 @@ export interface components {
             lastError: string | null;
             lastDeliveryAt: string | null;
         };
-        CliToken: {
-            id: string;
-            name: string;
-            /** @enum {string} */
-            via: "device" | "manual";
-            createdAt: string;
-            lastUsedAt: string | null;
-        };
-        ShareLink: {
-            id: string;
-            project: string;
-            role: components["schemas"]["Role"];
-            label: string;
-            createdBy: string;
-            createdAt: string;
-            revokedAt: string | null;
-            /** @description How many people came in through it */
-            guests: number;
-        };
-        AllowRule: {
-            id: number;
-            /** @enum {string} */
-            kind: "domain" | "email";
-            value: string;
-        };
         Me: {
             /**
-             * @description `local` is the built-in admin of local mode (no sign-in); `pending` signed in and waits for an admin to approve the access request
+             * @description `user` is a member (by token, or the owner at this machine); `visitor` has no token and only looks; `local` is the built-in admin before the board has an owner
              * @enum {string}
              */
-            kind: "user" | "guest" | "local" | "pending";
+            kind: "user" | "visitor" | "local";
+            /** @description A member's id, or a visitor's (the web tool shows the visitor's made-up name from it) */
             id?: string;
             name: string;
-            email?: string;
-            avatarUrl?: string;
             role: components["schemas"]["Role"];
-            /** @description The one project a guest's share link opens */
-            project?: string;
-            /** @description True while the server only listens on localhost and needs no sign-in */
+            /** @description True through the local door (this machine's admin, no token needed) */
             localMode: boolean;
         };
         Project: {
@@ -1633,9 +1217,6 @@ export interface components {
     parameters: {
         /** @description A user id */
         MemberId: string;
-        /** @description The code the CLI printed (`BCDF-GHJK`) */
-        UserCode: string;
-        LinkToken: string;
         UserId: string;
         /** @description `main` (default), `v<number>` or a commit id */
         Rev: string;
@@ -1757,58 +1338,32 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
-    startSignIn: {
+    signInWithToken: {
         parameters: {
-            query?: {
-                /** @description Token from the one-time setup link; its first user becomes the admin */
-                setup?: string;
-                /** @description Path on the tool to come back to */
-                returnTo?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Redirect to the provider */
-            302: {
-                headers: {
-                    [name: string]: unknown;
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
                 };
-                content?: never;
             };
-            /** @description Sign-in is not configured or the provider does not answer */
-            503: {
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["Me"];
                 };
             };
-        };
-    };
-    finishSignIn: {
-        parameters: {
-            query?: {
-                state?: string;
-                code?: string;
-                error?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Redirect to the tool */
-            302: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     logout: {
@@ -1829,7 +1384,7 @@ export interface operations {
             };
         };
     };
-    listAllowRules: {
+    listUsers: {
         parameters: {
             query?: never;
             header?: never;
@@ -1838,21 +1393,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The allowlist */
+            /** @description Members, oldest first */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        rules: components["schemas"]["AllowRule"][];
+                        users: components["schemas"]["Member"][];
                     };
                 };
             };
             403: components["responses"]["Forbidden"];
         };
     };
-    addAllowRule: {
+    addUser: {
         parameters: {
             query?: never;
             header?: never;
@@ -1862,33 +1417,31 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
-                    kind: "domain" | "email";
-                    /** @description `example.com` or `someone@example.com` */
-                    value: string;
+                    name: string;
+                    role: components["schemas"]["Role"];
                 };
             };
         };
         responses: {
-            /** @description The rule (the existing one when it was there already) */
+            /** @description The new member */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AllowRule"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
         };
     };
-    removeAllowRule: {
+    removeUser: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                id: components["parameters"]["UserId"];
             };
             cookie?: never;
         };
@@ -1901,31 +1454,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    listUsers: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Accounts, oldest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        users: components["schemas"]["User"][];
-                    };
-                };
-            };
-            403: components["responses"]["Forbidden"];
         };
     };
     changeUser: {
@@ -1940,20 +1471,19 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    name?: string;
                     role?: components["schemas"]["Role"];
-                    /** @enum {string} */
-                    status?: "active" | "rejected" | "removed";
                 };
             };
         };
         responses: {
-            /** @description The account now */
+            /** @description The member now */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
             400: components["responses"]["Invalid"];
@@ -1961,7 +1491,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    approveUser: {
+    reissueUserToken: {
         parameters: {
             query?: never;
             header?: never;
@@ -1972,46 +1502,41 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The account now */
+            /** @description The member with the new token */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["Member"];
                 };
             };
-            400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
-    rejectUser: {
+    getAccess: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: components["parameters"]["UserId"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The account now */
+            /** @description Access */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["Access"];
                 };
             };
-            400: components["responses"]["Invalid"];
             403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
         };
     };
-    finishSetup: {
+    setAccess: {
         parameters: {
             query?: never;
             header?: never;
@@ -2020,79 +1545,20 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    token: string;
-                    name: string;
-                };
+                "application/json": components["schemas"]["Access"];
             };
         };
         responses: {
-            /** @description Signed in as the admin (session cookie set) */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Invalid"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getInvite: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The link */
+            /** @description Access */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        kind: "join" | "sign-in";
-                        role: components["schemas"]["Role"];
-                        /** @description For a sign-in link, whose account it opens */
-                        name?: string;
-                    };
+                    "application/json": components["schemas"]["Access"];
                 };
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    acceptInvite: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    name?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Signed in */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Invalid"];
-            404: components["responses"]["NotFound"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getSharing: {
@@ -2129,8 +1595,6 @@ export interface operations {
                     mode: components["schemas"]["ShareMode"];
                     /** @description For `address`: the address other machines open (it must reach the remote door) */
                     url?: string;
-                    /** @description Needed the first time */
-                    ownerName?: string;
                     /** @description For `ngrok`: a new authtoken (kept, never returned); else the saved one */
                     authtoken?: string;
                     /** @description For `ngrok`: a domain of the account (else ngrok picks one) */
@@ -2172,131 +1636,6 @@ export interface operations {
                 };
             };
             400: components["responses"]["Invalid"];
-            403: components["responses"]["Forbidden"];
-        };
-    };
-    listInvites: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Invites (without tokens) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        invites: components["schemas"]["Invite"][];
-                    };
-                };
-            };
-            403: components["responses"]["Forbidden"];
-        };
-    };
-    createInvite: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    role: components["schemas"]["Role"];
-                    label?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The invite and the address to hand out (shown once) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        invite: components["schemas"]["Invite"];
-                        url: string;
-                    };
-                };
-            };
-            403: components["responses"]["Forbidden"];
-        };
-    };
-    revokeInvite: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Withdrawn */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createMemberSignInLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The invite and the address to hand out (shown once) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        invite: components["schemas"]["Invite"];
-                        url: string;
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createOwnSignInLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The invite and the address to hand out (shown once) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        invite: components["schemas"]["Invite"];
-                        url: string;
-                    };
-                };
-            };
             403: components["responses"]["Forbidden"];
         };
     };
@@ -2458,278 +1797,6 @@ export interface operations {
                     "application/json": components["schemas"]["Webhook"];
                 };
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listCliTokens: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tokens (without their secrets) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        tokens: components["schemas"]["CliToken"][];
-                    };
-                };
-            };
-            400: components["responses"]["Invalid"];
-        };
-    };
-    createCliToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    name?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The token */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CliToken"] & {
-                        token: string;
-                    };
-                };
-            };
-            400: components["responses"]["Invalid"];
-        };
-    };
-    revokeCliToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    startDeviceLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description What the CLI calls itself (the machine), shown on the approval page */
-                    name?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Codes and where to approve */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        deviceCode: string;
-                        userCode: string;
-                        verificationUrl: string;
-                        verificationUrlComplete: string;
-                        /** @description Seconds between polls */
-                        interval: number;
-                        expiresIn: number;
-                    };
-                };
-            };
-        };
-    };
-    pollDeviceLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    deviceCode: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Approved; the token (handed out once) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        token: string;
-                    };
-                };
-            };
-            400: components["responses"]["Invalid"];
-        };
-    };
-    getDeviceLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The code the CLI printed (`BCDF-GHJK`) */
-                code: components["parameters"]["UserCode"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The login */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        userCode: string;
-                        name: string;
-                        /** @enum {string} */
-                        status: "pending" | "approved" | "denied";
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    approveDeviceLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The code the CLI printed (`BCDF-GHJK`) */
-                code: components["parameters"]["UserCode"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Approved */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Invalid"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    denyDeviceLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The code the CLI printed (`BCDF-GHJK`) */
-                code: components["parameters"]["UserCode"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Denied */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["Invalid"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getSharedLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The project and the role the link gives */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        project: string;
-                        projectTitle: string;
-                        role: components["schemas"]["Role"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    enterSharedLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description 1-40 characters, shown next to what the guest does */
-                    name: string;
-                };
-            };
-        };
-        responses: {
-            /** @description In; the project to open */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        project: string;
-                    };
-                };
-            };
-            400: components["responses"]["Invalid"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2940,92 +2007,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listShareLinks: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: components["parameters"]["ProjectKey"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Links, newest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        links: components["schemas"]["ShareLink"][];
-                    };
-                };
-            };
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createShareLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: components["parameters"]["ProjectKey"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @enum {string} */
-                    role: "editor" | "commenter" | "viewer";
-                    label?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The link and its address */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        link: components["schemas"]["ShareLink"];
-                        token: string;
-                        url: string;
-                    };
-                };
-            };
-            400: components["responses"]["Invalid"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    revokeShareLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: components["parameters"]["ProjectKey"];
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Revoked */
             204: {
                 headers: {
                     [name: string]: unknown;

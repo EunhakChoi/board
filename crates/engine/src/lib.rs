@@ -1,13 +1,10 @@
 //! Commands (merge, restore, comment.add, ...) and permission checks over the model; storage, database and rendering behind traits.
 
-mod access;
-mod auth;
 mod browse;
 mod captures;
 mod comments;
 mod error;
-mod invites;
-mod links;
+mod members;
 mod notices;
 pub mod policy;
 mod ports;
@@ -16,33 +13,29 @@ mod projects;
 mod realtime;
 mod sharing;
 mod sheet;
-mod tokens;
 
 use std::sync::{Arc, RwLock};
 
 use sharing::Live;
 
-pub use access::AccessChange;
-pub use auth::{Refusal, SESSION_SECS, SessionState, SignIn, SignInSettings};
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
-pub use invites::{InviteInfo, InviteKind, NewInviteLink};
-pub use links::{NewLink, SharedLink};
+pub use members::{
+    MemberChange, SESSION_SECS, SessionState, SignedIn, new_visitor_id, visitor_name,
+};
 pub use notices::{Inbox, WEBHOOK_EVENTS, WebhookSecret};
 pub use ports::{
-    Accounts, AllowRule, AuthRequest, Author, Build, BuildState, BuildStep, BuiltFile, Capture,
-    Captures, Change, ChangeKind, Claims, Comments, Device, FileChange, Guest, Identity, ImageKind,
-    Invites, Joined, Kick, NewComment, NewInvite, NewNotification, NewReply, NewShareLink, NewUser,
-    NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records, RenderJob, Renderer,
-    Settings, Shot, StoreError, TunnelMode, TunnelOptions, Tunnels, WebhookSender, Workspace,
-    WorkspaceError,
+    Accounts, Author, Build, BuildState, BuildStep, BuiltFile, Capture, Captures, Change,
+    ChangeKind, Comments, FileChange, ImageKind, Joined, Kick, NewComment, NewNotification,
+    NewReply, NewUser, NewWebhook, Notices, Outgoing, Peer, ProjectStore, Realtime, Records,
+    RenderJob, Renderer, SessionRow, Settings, Shot, StoreError, TunnelMode, TunnelOptions,
+    Tunnels, WebhookSender, Workspace, WorkspaceError,
 };
 pub use preview::{PREVIEW_PREFIX, Preview, PreviewSettings, preview_path};
 pub use projects::{Checkout, Import};
-pub use sharing::{Owner, ShareMode, ShareRequest, Sharing, SharingStatus};
+pub use sharing::{ShareMode, ShareRequest, Sharing, SharingStatus};
 pub use sheet::SheetItem;
-pub use tokens::{DEVICE_INTERVAL_SECS, DevicePoll, DeviceRequest, DeviceStart, NewCliToken};
 
 /// Everything the engine needs from the outside world.
 #[derive(Clone)]
@@ -57,7 +50,6 @@ pub struct Ports {
     pub accounts: Arc<dyn Accounts>,
     pub realtime: Arc<dyn Realtime>,
     pub notices: Arc<dyn Notices>,
-    pub invites: Arc<dyn Invites>,
     pub webhooks: Arc<dyn WebhookSender>,
 }
 
@@ -73,10 +65,9 @@ pub struct Engine {
     ports: Ports,
     local_mode: bool,
     preview: Option<Arc<PreviewSettings>>,
-    /// What can change while running: the address and sign-in, when sharing turns on or off.
+    /// What can change while running: the address (sharing) and the owner.
     live: Arc<RwLock<Live>>,
     tunnels: Option<Arc<dyn Tunnels>>,
-    pending: Arc<auth::PendingSignIns>,
     secret: Option<Arc<[u8; 32]>>,
 }
 
@@ -96,7 +87,6 @@ impl Engine {
             preview: None,
             live: Arc::default(),
             tunnels: None,
-            pending: Arc::default(),
             secret: None,
         }
     }
@@ -105,13 +95,6 @@ impl Engine {
     #[must_use]
     pub fn with_secret(mut self, key: [u8; 32]) -> Self {
         self.secret = Some(Arc::new(key));
-        self
-    }
-
-    /// Turns sign-in on (a public server): accounts come from the identity provider.
-    #[must_use]
-    pub fn with_sign_in(self, settings: SignInSettings) -> Self {
-        self.write_live(|live| live.base_sign_in = Some(Arc::new(settings)));
         self
     }
 
@@ -165,21 +148,6 @@ impl Engine {
             local_mode: self.local_mode,
             workspace: state(self.ports.workspace.health()),
             render: state(self.ports.renderer.health()),
-            sign_in: match &self.sign_in() {
-                Some(settings) => Some(SignInStatus {
-                    provider: settings.identity.as_ref().map(|i| i.provider().to_owned()),
-                    callback_url: settings
-                        .identity
-                        .as_ref()
-                        .map(|i| i.callback_url().to_owned()),
-                    state: settings
-                        .identity
-                        .as_ref()
-                        .map_or(ServiceState::Ok, |i| state(i.health())),
-                    has_admin: self.ports.accounts.has_admin()?,
-                }),
-                None => None,
-            },
         })
     }
 
@@ -200,7 +168,7 @@ impl Engine {
             .or_else(|| live.home_url.as_deref().map(str::to_owned))
     }
 
-    /// True while the server only listens on localhost: every request acts as the built-in admin.
+    /// True for a local board: the local door (this machine) acts as the owner.
     pub fn local_mode(&self) -> bool {
         self.local_mode
     }
@@ -226,19 +194,6 @@ pub struct System {
     pub local_mode: bool,
     pub workspace: ServiceState,
     pub render: ServiceState,
-    /// How people sign in, on a public server.
-    pub sign_in: Option<SignInStatus>,
-}
-
-/// The identity provider as `board doctor` sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SignInStatus {
-    /// `None`: no provider; people come in through invite links.
-    pub provider: Option<String>,
-    pub callback_url: Option<String>,
-    pub state: ServiceState,
-    /// False until someone used the setup link (or an admin address signed in).
-    pub has_admin: bool,
 }
 
 /// Whether an internal service answers.

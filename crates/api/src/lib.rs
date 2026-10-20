@@ -2,33 +2,28 @@
 //!
 //! Every route here has an entry in `contracts/openapi.yaml`; a test keeps the two in step.
 
-mod admin;
 mod auth;
 mod browse;
 mod captures;
 mod comments;
 mod error;
-mod invites;
-mod links;
+mod members;
 mod notices;
 mod preview;
 mod projects;
 mod sharing;
 mod socket;
-mod tokens;
 mod web;
 
 use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::IntoResponse;
-use axum::routing::{delete, get, patch, post, put};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use board_engine::{Engine, ServiceState, SessionState};
-use board_model::{Actor, Role, VERSION};
+use board_engine::{Engine, ServiceState};
+use board_model::{Role, VERSION};
 use serde::Serialize;
 
-pub use auth::{CLIENT_HEADER, Caller, LocalDoor, Remote, SESSION_COOKIE};
+pub use auth::{CLIENT_HEADER, Caller, LocalDoor, Remote, SESSION_COOKIE, VISITOR_COOKIE};
 pub use error::ApiError;
 pub use preview::{PreviewOrigin, preview_router};
 
@@ -39,24 +34,15 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/system"),
     ("get", "/api/ws"),
     ("get", "/api/auth/me"),
-    ("get", "/api/auth/oidc/start"),
-    ("get", "/api/auth/oidc/callback"),
+    ("post", "/api/auth/token"),
     ("post", "/api/auth/logout"),
-    ("get", "/api/admin/allow-rules"),
-    ("post", "/api/admin/allow-rules"),
-    ("delete", "/api/admin/allow-rules/{id}"),
     ("get", "/api/admin/users"),
+    ("post", "/api/admin/users"),
     ("patch", "/api/admin/users/{id}"),
-    ("post", "/api/admin/users/{id}/approve"),
-    ("post", "/api/admin/users/{id}/reject"),
-    ("post", "/api/auth/setup"),
-    ("get", "/api/invites/{token}"),
-    ("post", "/api/invites/{token}/accept"),
-    ("get", "/api/admin/invites"),
-    ("post", "/api/admin/invites"),
-    ("delete", "/api/admin/invites/{id}"),
-    ("post", "/api/admin/users/{id}/sign-in-link"),
-    ("post", "/api/me/sign-in-link"),
+    ("delete", "/api/admin/users/{id}"),
+    ("post", "/api/admin/users/{id}/token"),
+    ("get", "/api/admin/access"),
+    ("put", "/api/admin/access"),
     ("get", "/api/admin/sharing"),
     ("put", "/api/admin/sharing"),
     ("delete", "/api/admin/sharing"),
@@ -67,19 +53,6 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("delete", "/api/admin/webhooks/{id}"),
     ("post", "/api/admin/webhooks/{id}/rotate"),
     ("post", "/api/admin/webhooks/{id}/test"),
-    ("get", "/api/me/cli-tokens"),
-    ("post", "/api/me/cli-tokens"),
-    ("delete", "/api/me/cli-tokens/{id}"),
-    ("post", "/api/auth/device"),
-    ("post", "/api/auth/device/token"),
-    ("get", "/api/auth/device/{code}"),
-    ("post", "/api/auth/device/{code}/approve"),
-    ("post", "/api/auth/device/{code}/deny"),
-    ("get", "/api/links/{token}"),
-    ("post", "/api/links/{token}/enter"),
-    ("get", "/api/projects/{key}/share-links"),
-    ("post", "/api/projects/{key}/share-links"),
-    ("post", "/api/projects/{key}/share-links/{id}/revoke"),
     ("get", "/api/projects"),
     ("post", "/api/projects"),
     ("get", "/api/projects/{key}"),
@@ -142,9 +115,9 @@ pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
     app.merge(preview::preview_routes(engine, &origin))
 }
 
-/// The remote door of a local board: what a tunnel or reverse proxy points at. Everyone signs
-/// in here, previews are served sandboxed under the same address, and while sharing is off it
-/// answers nothing.
+/// The remote door of a local board: what a tunnel or reverse proxy points at. Nobody is the
+/// owner here (members bring their token), and previews are served sandboxed under the same
+/// address.
 pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
     let origin = PreviewOrigin {
         frame_ancestors: vec!["'self'".to_owned()],
@@ -153,22 +126,11 @@ pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router
     routes()
         .fallback(move |uri: axum::http::Uri| web::serve(web_dir.clone(), uri))
         .with_state(engine.clone())
-        .merge(preview::preview_routes(engine.clone(), &origin))
+        .merge(preview::preview_routes(engine, &origin))
         .layer(axum::middleware::from_fn(
-            move |mut request: axum::extract::Request, next: axum::middleware::Next| {
-                let open = engine.remote_open();
-                async move {
-                    if !open {
-                        return ApiError::new(
-                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                            "sharing_off",
-                            "This board is not shared right now",
-                        )
-                        .into_response();
-                    }
-                    request.extensions_mut().insert(Remote);
-                    next.run(request).await
-                }
+            |mut request: axum::extract::Request, next: axum::middleware::Next| async move {
+                request.extensions_mut().insert(Remote);
+                next.run(request).await
             },
         ))
 }
@@ -179,39 +141,9 @@ fn routes() -> Router<Engine> {
         .route("/api/version", get(version))
         .route("/api/system", get(system))
         .route("/api/ws", get(socket::socket))
-        .route("/api/auth/me", get(me))
-        .route("/api/auth/oidc/start", get(auth::start))
-        .route("/api/auth/oidc/callback", get(auth::callback))
+        .route("/api/auth/me", get(auth::me))
+        .route("/api/auth/token", post(auth::sign_in))
         .route("/api/auth/logout", post(auth::logout))
-        .route(
-            "/api/admin/allow-rules",
-            get(admin::allow_rules).post(admin::add_allow_rule),
-        )
-        .route(
-            "/api/admin/allow-rules/{id}",
-            delete(admin::remove_allow_rule),
-        )
-        .route("/api/admin/users", get(admin::users))
-        .route("/api/admin/users/{id}", patch(admin::change_user))
-        .route("/api/admin/users/{id}/approve", post(admin::approve))
-        .route("/api/admin/users/{id}/reject", post(admin::reject))
-        .route("/api/me/cli-tokens", get(tokens::list).post(tokens::create))
-        .route("/api/me/cli-tokens/{id}", delete(tokens::revoke))
-        .route("/api/auth/device", post(tokens::start))
-        .route("/api/auth/device/token", post(tokens::poll))
-        .route("/api/auth/device/{code}", get(tokens::request))
-        .route("/api/auth/device/{code}/approve", post(tokens::approve))
-        .route("/api/auth/device/{code}/deny", post(tokens::deny))
-        .route("/api/links/{token}", get(links::shared))
-        .route("/api/links/{token}/enter", post(links::enter))
-        .route(
-            "/api/projects/{key}/share-links",
-            get(links::list).post(links::create),
-        )
-        .route(
-            "/api/projects/{key}/share-links/{id}/revoke",
-            post(links::revoke),
-        )
         .route("/api/projects", get(projects::list).post(projects::create))
         .route(
             "/api/projects/{key}",
@@ -268,7 +200,7 @@ fn routes() -> Router<Engine> {
             get(comments::snapshot),
         )
         .merge(notices::routes())
-        .merge(invites::routes())
+        .merge(members::routes())
         .merge(sharing::routes())
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
@@ -304,20 +236,6 @@ struct SystemInfo {
     preview_url: Option<String>,
     local_mode: bool,
     services: Services,
-    sign_in: Option<SignInInfo>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SignInInfo {
-    /// `None`: no provider; people come in through invite links.
-    provider: Option<String>,
-    /// Register this at the provider as the redirect URI.
-    callback_url: Option<String>,
-    /// Whether the provider's discovery document loads.
-    #[serde(flatten)]
-    state: Service,
-    has_admin: bool,
 }
 
 #[derive(Serialize)]
@@ -334,7 +252,7 @@ struct Service {
     error: Option<String>,
 }
 
-/// Answers before sign-in too (the sign-in page and `board login` need `localMode`); only
+/// Answers without a token too (the token page and `board login` need `localMode`); only
 /// admins see why a service fails.
 async fn system(
     State(engine): State<Engine>,
@@ -368,100 +286,6 @@ async fn system(
             workspace: service(system.workspace),
             render: service(system.render),
         },
-        sign_in: system.sign_in.map(|sign_in| SignInInfo {
-            provider: sign_in.provider,
-            callback_url: sign_in.callback_url,
-            state: service(sign_in.state),
-            has_admin: sign_in.has_admin,
-        }),
-    }))
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Me {
-    /// `local`, `user`, `guest`, or `pending` (signed in, waiting for an admin).
-    kind: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    email: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    avatar_url: Option<String>,
-    role: Role,
-    /// The one project a guest's share link opens.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project: Option<String>,
-    local_mode: bool,
-}
-
-/// Who is calling. Unlike other routes this answers for people still waiting for approval, so
-/// the tool can show them the waiting page.
-async fn me(
-    State(engine): State<Engine>,
-    LocalDoor(local_mode): LocalDoor,
-    headers: HeaderMap,
-) -> Result<Json<Me>, ApiError> {
-    let state = if local_mode {
-        SessionState::Active(engine.local_actor())
-    } else if let Some(token) = auth::bearer(&headers) {
-        let engine = engine.clone();
-        let actor = projects::blocking(move || engine.token_actor(&token))
-            .await?
-            .ok_or_else(ApiError::unauthorized)?;
-        SessionState::Active(actor)
-    } else {
-        let token = auth::cookie(&headers, SESSION_COOKIE).ok_or_else(ApiError::unauthorized)?;
-        let engine = engine.clone();
-        projects::blocking(move || engine.session(&token))
-            .await?
-            .ok_or_else(ApiError::unauthorized)?
-    };
-    let actor = match state {
-        SessionState::Active(actor) => actor,
-        SessionState::Waiting(user) => {
-            return Ok(Json(Me {
-                kind: "pending",
-                id: Some(user.id),
-                name: user.name,
-                email: Some(user.email),
-                avatar_url: user.avatar_url,
-                role: user.role,
-                project: None,
-                local_mode,
-            }));
-        }
-        SessionState::Refused(refusal) => {
-            return Err(ApiError::new(
-                axum::http::StatusCode::FORBIDDEN,
-                refusal.code(),
-                "You do not have access to this board",
-            ));
-        }
-    };
-    let role = actor.role();
-    let name = actor.name().to_owned();
-    let (kind, id, email, project) = match actor {
-        Actor::Local => ("local", None, None, None),
-        // Members who came in through an invite have no address.
-        Actor::User { id, email, .. } => (
-            "user",
-            Some(id),
-            Some(email).filter(|e| !e.is_empty()),
-            None,
-        ),
-        Actor::Guest { id, project, .. } => ("guest", Some(id), None, Some(project)),
-    };
-    Ok(Json(Me {
-        kind,
-        id,
-        name,
-        email,
-        avatar_url: None,
-        role,
-        project,
-        local_mode,
     }))
 }
 
