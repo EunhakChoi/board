@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - compose.yaml
+      - compose.agent.yaml
+      - apps/charet-agent/**
       - .dockerignore
       - docker/**
       - scripts/docker-smoke.sh
