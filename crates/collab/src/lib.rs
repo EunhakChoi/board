@@ -356,8 +356,8 @@ mod tests {
         let mut admin = hub.join("web", peer("u1", "user", Role::Admin), None);
         let mut guest = hub.join("web", peer("visitor:g1", "visitor", Role::Viewer), None);
         let _ = next(&mut admin.receiver); // visitor joined
-        hub.publish_admins("access.requested", json!({ "email": "x@example.com" }));
-        assert_eq!(next(&mut admin.receiver)["kind"], "access.requested");
+        hub.publish_admins("access.changed", json!({}));
+        assert_eq!(next(&mut admin.receiver)["kind"], "access.changed");
         assert!(guest.receiver.try_recv().is_err());
 
         hub.working(

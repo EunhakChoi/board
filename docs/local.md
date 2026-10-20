@@ -56,7 +56,7 @@ someone else):
 
 ```bash
 mkdir -p ~/charet-data
-printf 'CHARET_DATA_DIR=%s\nBOARD_USER=%s\n' ~/charet-data "$(id -u):$(id -g)" >> .env
+printf 'CHARET_DATA_DIR=%s\nCHARET_USER=%s\n' ~/charet-data "$(id -u):$(id -g)" >> .env
 docker compose up -d
 ```
 

@@ -236,7 +236,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's notifications, newest first (empty in local mode and for guests) */
+        /** The caller's notifications, newest first (empty in local mode and for visitors) */
         get: operations["listNotifications"];
         put?: never;
         post?: never;

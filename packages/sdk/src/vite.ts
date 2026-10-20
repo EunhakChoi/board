@@ -168,7 +168,7 @@ export function charet(options: CharetPluginOptions = {}): Plugin[] {
         // Runs before any app module: where the build's root is (relative builds), and stand-ins
         // for storage and cookies, which a sandboxed preview does not have.
         const up = "../".repeat(frameFile.split("/").length - 1);
-        const root = `globalThis.__BOARD_ROOT__ = new URL(${JSON.stringify(up || "./")}, location.href).href;`;
+        const root = `globalThis.__CHARET_ROOT__ = new URL(${JSON.stringify(up || "./")}, location.href).href;`;
         return [{ tag: "script", children: root + OPAQUE_SHIM, injectTo: "head-prepend" }];
       },
     },

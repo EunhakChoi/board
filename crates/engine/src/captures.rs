@@ -94,7 +94,7 @@ impl Engine {
         requested: &[String],
         themes: &[String],
     ) -> Result<Rendered, EngineError> {
-        self.visible(actor, key, Command::ProjectView)?;
+        self.visible(actor, key, Command::BranchEdit)?;
         let (commit, settings) = self.ready_build(actor, key, rev)?;
         let jobs = self.jobs(key, &commit, requested, themes)?;
         let results = Self::run_parallel(&jobs, |(target, theme)| {
@@ -559,6 +559,14 @@ mod tests {
         );
         assert!(story.url.ends_with("&theme=light"), "{}", story.url);
         assert_eq!(engine.captures(&Actor::Local, "shop").unwrap(), []);
+        let visitor = Actor::Visitor {
+            id: "v1".into(),
+            name: "Calm Otter".into(),
+        };
+        assert!(
+            engine.check(&visitor, "shop", "main", &[], &[]).is_err(),
+            "rendering on demand is for editors"
+        );
     }
 
     #[test]
