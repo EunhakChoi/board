@@ -19,7 +19,6 @@ function system(overrides: Record<string, unknown> = {}) {
     toolUrl: "http://localhost:5280",
     previewUrl: "http://127.0.0.1:5281",
     localMode: true,
-    signIn: null,
     services: {
       workspace: { ok: true },
       render: { ok: false, error: "board-render: connection refused" },
@@ -159,18 +158,10 @@ test("doctor reports failing services and newer releases", async () => {
       toolUrl: "http://board.example.com",
       previewUrl: "http://preview.example.com",
       services: { workspace: { ok: true }, render: { ok: true } },
-      signIn: {
-        provider: "google",
-        callbackUrl: "http://board.example.com/api/auth/oidc/callback",
-        ok: true,
-        hasAdmin: false,
-      },
     }),
   });
   assert.equal(open.code, 1);
   assert.match(open.out, /✗ public address http:\/\/board\.example\.com is not HTTPS/);
-  assert.match(open.out, /✓ sign-in \(google\), callback http:\/\/board\.example\.com\/api/);
-  assert.match(open.out, /! No admin yet/);
 
   const down = await board(["doctor"], { sh });
   assert.match(down.out, /✗ server http:\/\/127\.0\.0\.1:5280: unreachable/);

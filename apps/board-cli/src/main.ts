@@ -42,7 +42,6 @@ const VALUE_FLAGS = new Set([
   "--sheet",
   "--on",
   "--token",
-  "--name",
 ]);
 const LIST_FLAGS = new Set(["--include"]);
 
@@ -227,7 +226,7 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         else throw new commands.CliError(t("cli.usage.inbox", {}, locale));
         break;
       case "login":
-        await auth.login(ctx, str(args, "--token"), str(args, "--name"));
+        await auth.login(ctx, str(args, "--token"));
         break;
       case "logout":
         await auth.logout(ctx);

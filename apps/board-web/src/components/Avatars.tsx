@@ -7,22 +7,9 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
-export function Avatar({
-  peer,
-  size = 7,
-}: {
-  peer: Pick<Peer, "person" | "name" | "avatarUrl">;
-  size?: 6 | 7;
-}) {
+export function Avatar({ peer, size = 7 }: { peer: Pick<Peer, "person" | "name">; size?: 6 | 7 }) {
   const box = size === 6 ? "size-6 text-xs" : "size-7 text-xs";
-  return peer.avatarUrl ? (
-    <img
-      src={peer.avatarUrl}
-      alt=""
-      className={`${box} rounded-full ring-2 ring-background`}
-      referrerPolicy="no-referrer"
-    />
-  ) : (
+  return (
     <span
       className={`${box} flex items-center justify-center rounded-full font-medium text-white ring-2 ring-background`}
       style={{ background: colorOf(peer.person) }}
@@ -56,7 +43,9 @@ export function Avatars() {
           {people.slice(0, 5).map(({ peer }) => (
             <li
               key={peer.person}
-              title={peer.kind === "guest" ? `${peer.name} (${t("web.links.guest")})` : peer.name}
+              title={
+                peer.kind === "visitor" ? `${peer.name} (${t("web.auth.visitor")})` : peer.name
+              }
             >
               <button
                 type="button"

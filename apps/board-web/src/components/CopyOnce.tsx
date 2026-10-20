@@ -4,7 +4,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
 
-/** A secret or one-time link right after it was made; it is not shown again. */
+/**
+ * Puts `text` on the clipboard. Pages on a plain-HTTP address (an IP on the LAN) have no
+ * clipboard API, so a hidden text area and the older copy command stand in.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(
+      () => true,
+      () => false,
+    );
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.append(area);
+  area.select();
+  const ok = document.execCommand("copy");
+  area.remove();
+  return ok;
+}
+
+/** A secret right after it was made; it is not shown again. */
 export function CopyOnce({ value, label, note }: { value: string; label: string; note: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -16,11 +38,8 @@ export function CopyOnce({ value, label, note }: { value: string; label: string;
         <Button
           size="sm"
           variant="outline"
-          aria-label={t("web.links.copy")}
-          onClick={() => {
-            void navigator.clipboard?.writeText(value);
-            setCopied(true);
-          }}
+          aria-label={t("web.common.copy")}
+          onClick={() => copyText(value).then(setCopied)}
         >
           {copied ? <Check /> : <Copy />}
         </Button>

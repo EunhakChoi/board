@@ -12,8 +12,8 @@ import { useSharing, useSharingActions } from "@/lib/queries";
 const REMOTE_PORT = 5284;
 
 /**
- * Sharing a local board with other machines (only shown through the local door): the address
- * people open, and the owner account this machine acts as from then on.
+ * Sharing a local board with other machines: the tunnel that runs and the address links use.
+ * Members come in with their token through any address; this machine stays the admin.
  */
 export function SharingPanel() {
   const t = useT();
@@ -25,8 +25,6 @@ export function SharingPanel() {
   const [domain, setDomain] = useState("");
   const tokenId = useId();
   const domainId = useId();
-  const [name, setName] = useState("");
-  const nameId = useId();
   const urlId = useId();
   const data = sharing.data;
   // While shared, the form starts from what is on, so a changed domain or address is applied as is.
@@ -50,9 +48,7 @@ export function SharingPanel() {
         : mode === "ngrok"
           ? { mode, ...(authtoken ? { authtoken } : {}), ...(domain ? { domain } : {}) }
           : { mode };
-    start.mutate(data.owner ? body : { ...body, ownerName: name }, {
-      onSuccess: () => setAuthtoken(""),
-    });
+    start.mutate(body, { onSuccess: () => setAuthtoken("") });
   };
   const error = start.error ?? stop.error;
   return (
@@ -102,18 +98,6 @@ export function SharingPanel() {
                   ? t("web.sharing.willOpen", { url: chosen.detail })
                   : chosen.detail}
               </p>
-            )}
-            {!data.owner && (
-              <div className="flex flex-col gap-1 text-sm">
-                <label htmlFor={nameId}>{t("web.sharing.ownerName")}</label>
-                <Input
-                  id={nameId}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  maxLength={40}
-                  required
-                />
-              </div>
             )}
             {mode === "address" && (
               <div className="flex flex-col gap-1 text-sm">

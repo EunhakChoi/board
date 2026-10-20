@@ -1,14 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { adminToken, base, enter } from "./people.ts";
 
 // The public server (`stack.ts`) has no preview address of its own: previews come from the tool's
 // address under /_preview, sandboxed into an opaque origin.
-const base = () => process.env.BOARD_E2E_PUBLIC_URL ?? "";
 
 test("a live preview on the tool's address renders but cannot reach the tool", async ({ page }) => {
   test.setTimeout(240_000);
-  await page.goto(`${base()}/signin`);
-  await page.getByRole("link", { name: "Sign in with your account" }).click();
-  await page.getByRole("link", { name: "boss@example.com" }).click();
+  await enter(page, adminToken());
   await page.goto(`${base()}/p/demo/t/screen/tasks-list`);
   await page.getByRole("radio", { name: "Live" }).click();
 

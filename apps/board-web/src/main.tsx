@@ -3,49 +3,25 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AuthGate } from "@/components/AuthGate";
+import { api } from "@/lib/api";
 import { LocaleProvider } from "@/lib/i18n";
-import { Account } from "@/pages/Account";
 import { Code } from "@/pages/Code";
 import { Components } from "@/pages/Components";
-import { Device } from "@/pages/Device";
 import { Flows } from "@/pages/Flows";
-import { JoinInvite } from "@/pages/JoinInvite";
-import { JoinLink } from "@/pages/JoinLink";
 import { ProjectLayout } from "@/pages/ProjectLayout";
 import { Projects } from "@/pages/Projects";
 import { Screens } from "@/pages/Screens";
-import { Setup, SignIn } from "@/pages/SignIn";
 import { Target } from "@/pages/Target";
 import { Team } from "@/pages/Team";
 import { Versions } from "@/pages/Versions";
 import "./index.css";
 
 const router = createBrowserRouter([
-  { path: "/signin", element: <SignIn /> },
-  { path: "/setup", element: <Setup /> },
-  { path: "/l/:token", element: <JoinLink /> },
-  { path: "/i/:token", element: <JoinInvite /> },
   {
     path: "/",
     element: (
       <AuthGate>
         <Projects />
-      </AuthGate>
-    ),
-  },
-  {
-    path: "/device",
-    element: (
-      <AuthGate>
-        <Device />
-      </AuthGate>
-    ),
-  },
-  {
-    path: "/account",
-    element: (
-      <AuthGate>
-        <Account />
       </AuthGate>
     ),
   },
@@ -80,14 +56,29 @@ const queries = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: true } },
 });
 
+/**
+ * A link an admin handed over (`…/?t=<token>`) signs this browser in. The token leaves the
+ * address bar first, so it stays out of history and screenshots.
+ */
+async function enterLinkToken() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("t");
+  if (!token) return;
+  url.searchParams.delete("t");
+  window.history.replaceState(window.history.state, "", url);
+  await api.POST("/api/auth/token", { body: { token } }).catch(() => undefined);
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("no #root element");
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={queries}>
-      <LocaleProvider>
-        <RouterProvider router={router} />
-      </LocaleProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+void enterLinkToken().finally(() =>
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={queries}>
+        <LocaleProvider>
+          <RouterProvider router={router} />
+        </LocaleProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  ),
 );

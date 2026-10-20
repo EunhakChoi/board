@@ -1,21 +1,20 @@
-import { Check, KeyRound, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Check, Copy, Link2, RefreshCw, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
-import { CopyOnce } from "@/components/CopyOnce";
+import { CopyOnce, copyText } from "@/components/CopyOnce";
 import { SharingPanel } from "@/components/SharingPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
-import type { Role, User, Webhook } from "@/lib/api";
+import type { Member, Role, Webhook } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import {
+  useAccess,
   useAdminActions,
-  useAllowRules,
-  useInviteActions,
-  useInvites,
   useMe,
   useProjects,
+  useSystem,
   useUsers,
   useWebhookActions,
   useWebhooks,
@@ -23,65 +22,25 @@ import {
 
 const ROLES: Role[] = ["admin", "editor", "commenter", "viewer"];
 
-/** `/team`: who is in, who is waiting, and who gets in on sight (admins). */
+/** `/team`: members and their tokens, visitors, sharing and webhooks (admins). */
 export function Team() {
   const t = useT();
   const me = useMe();
-  if (me.data?.kind === "local") {
-    // Local mode has no accounts; webhooks still work.
-    return (
-      <div className="flex min-h-svh flex-col">
-        <AppHeader />
-        <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
-          <h1 className="text-2xl font-semibold">{t("web.team.title")}</h1>
-          <SharingPanel />
-          <Webhooks />
-        </main>
-      </div>
-    );
-  }
-  return <Members sharing={me.data?.localMode === true} />;
-}
-
-function Members({ sharing }: { sharing: boolean }) {
-  const t = useT();
-  const users = useUsers();
-  const all = users.data?.users ?? [];
-  const pending = all.filter((u) => u.status === "pending");
-  const members = all.filter((u) => u.status === "active");
-  const out = all.filter((u) => u.status === "rejected" || u.status === "removed");
+  const admin = me.data?.role === "admin";
   return (
     <div className="flex min-h-svh flex-col">
       <AppHeader />
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
         <h1 className="text-2xl font-semibold">{t("web.team.title")}</h1>
-        {users.error && (
-          <p className="text-sm text-destructive">
-            {t("web.common.error", { message: users.error.message })}
-          </p>
-        )}
-        {sharing && <SharingPanel />}
-        <Section title={t("web.team.requests")} count={pending.length}>
-          {pending.length === 0 ? (
-            <Empty text={t("web.team.noRequests")} />
-          ) : (
-            pending.map((user) => <RequestRow key={user.id} user={user} />)
-          )}
-        </Section>
-        <Section title={t("web.team.members")} count={members.length}>
-          {members.map((user) => (
-            <MemberRow key={user.id} user={user} />
-          ))}
-        </Section>
-        <Invites />
-        <Allowlist />
-        <Webhooks />
-        {out.length > 0 && (
-          <Section title={t("web.team.removed")} count={out.length}>
-            {out.map((user) => (
-              <RemovedRow key={user.id} user={user} />
-            ))}
-          </Section>
+        {admin ? (
+          <>
+            <Members />
+            <Visitors />
+            <SharingPanel />
+            <Webhooks />
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("web.team.adminsOnly")}</p>
         )}
       </main>
     </div>
@@ -91,10 +50,12 @@ function Members({ sharing }: { sharing: boolean }) {
 function Section({
   title,
   count,
+  lead,
   children,
 }: {
   title: string;
   count?: number;
+  lead?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -103,6 +64,7 @@ function Section({
         {title}
         {count !== undefined && <Badge variant="secondary">{count}</Badge>}
       </h2>
+      {lead && <p className="mb-2 text-sm text-muted-foreground">{lead}</p>}
       <div className="divide-y rounded-xl border">{children}</div>
     </section>
   );
@@ -112,154 +74,193 @@ function Empty({ text }: { text: string }) {
   return <p className="p-4 text-sm text-muted-foreground">{text}</p>;
 }
 
-function Person({ user }: { user: User }) {
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="truncate text-sm font-medium">{user.name}</div>
-      <div className="truncate text-xs text-muted-foreground">{user.email}</div>
-    </div>
-  );
-}
-
-function RequestRow({ user }: { user: User }) {
+/** Everyone on the board: add people, change their role and hand over their token. */
+function Members() {
   const t = useT();
-  const { approve, reject } = useAdminActions();
-  return (
-    <div className="flex items-center gap-3 p-3">
-      <Person user={user} />
-      <Button size="sm" onClick={() => approve.mutate(user.id)} disabled={approve.isPending}>
-        <Check />
-        {t("web.team.approve")}
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => reject.mutate(user.id)}
-        disabled={reject.isPending}
-      >
-        <X />
-        {t("web.team.reject")}
-      </Button>
-    </div>
-  );
-}
-
-function MemberRow({ user }: { user: User }) {
-  const t = useT();
-  const me = useMe();
-  const { change } = useAdminActions();
-  const { memberLink } = useInviteActions();
-  const self = me.data?.id === user.id;
-  return (
-    <div className="flex flex-wrap items-center gap-3 p-3">
-      <Person user={user} />
-      {self && <Badge variant="outline">{t("web.team.you")}</Badge>}
-      <Segmented
-        label={t("web.team.role")}
-        value={user.role}
-        onChange={(role) => change.mutate({ id: user.id, role })}
-        options={ROLES.map((role) => ({ value: role, label: t(`web.team.role.${role}`) }))}
-      />
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => change.mutate({ id: user.id, status: "removed" })}
-        aria-label={t("web.team.remove", { name: user.name })}
-        title={t("web.team.remove", { name: user.name })}
-      >
-        <Trash2 />
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => memberLink.mutate(user.id)}
-        aria-label={t("web.invites.memberLink", { name: user.name })}
-        title={t("web.invites.memberLink", { name: user.name })}
-      >
-        <KeyRound />
-      </Button>
-      {change.error && <p className="w-full text-sm text-destructive">{change.error.message}</p>}
-      {memberLink.data && (
-        <div className="w-full">
-          <CopyOnce
-            value={memberLink.data.url}
-            label={t("web.invites.address")}
-            note={t("web.invites.memberLinkOnce", { name: user.name })}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RemovedRow({ user }: { user: User }) {
-  const t = useT();
-  const { change } = useAdminActions();
-  return (
-    <div className="flex items-center gap-3 p-3">
-      <Person user={user} />
-      <Badge variant="outline">
-        {t(`web.team.status.${user.status as "rejected" | "removed"}`)}
-      </Badge>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => change.mutate({ id: user.id, status: "active" })}
-      >
-        {t("web.team.letBackIn")}
-      </Button>
-    </div>
-  );
-}
-
-function Allowlist() {
-  const t = useT();
-  const rules = useAllowRules();
-  const { addRule, removeRule } = useAdminActions();
-  const [value, setValue] = useState("");
+  const users = useUsers();
+  const { add } = useAdminActions();
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<Role>("editor");
+  const [added, setAdded] = useState<string | undefined>();
+  const all = users.data?.users ?? [];
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const text = value.trim();
-    if (!text) return;
-    const kind = text.includes("@") && !text.startsWith("@") ? "email" : "domain";
-    addRule.mutate({ kind, value: text }, { onSuccess: () => setValue("") });
+    add.mutate(
+      { name: name.trim(), role },
+      {
+        onSuccess: (member) => {
+          setName("");
+          setAdded(member.id);
+        },
+      },
+    );
   };
   return (
-    <Section title={t("web.team.allowlist")}>
-      <form onSubmit={submit} className="flex gap-2 p-3">
+    <Section title={t("web.team.members")} count={all.length} lead={t("web.team.lead")}>
+      <form onSubmit={submit} className="flex flex-wrap items-center gap-2 p-3">
         <Input
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder={t("web.team.allowPlaceholder")}
-          aria-label={t("web.team.allowlist")}
+          className="w-48 flex-1"
+          value={name}
+          maxLength={60}
+          onChange={(event) => setName(event.target.value)}
+          placeholder={t("web.team.namePlaceholder")}
+          aria-label={t("web.team.name")}
         />
-        <Button type="submit" disabled={addRule.isPending || !value.trim()}>
-          {t("web.team.allowAdd")}
+        <Segmented
+          label={t("web.team.role")}
+          value={role}
+          onChange={setRole}
+          options={ROLES.map((r) => ({ value: r, label: t(`web.team.role.${r}`) }))}
+        />
+        <Button type="submit" disabled={add.isPending || !name.trim()}>
+          {t("web.team.add")}
         </Button>
       </form>
-      {addRule.error && (
-        <p className="px-3 pb-3 text-sm text-destructive">{addRule.error.message}</p>
+      {add.error && <p className="px-3 pb-3 text-sm text-destructive">{add.error.message}</p>}
+      {users.error && (
+        <p className="p-3 text-sm text-destructive">
+          {t("web.common.error", { message: users.error.message })}
+        </p>
       )}
-      {(rules.data?.rules ?? []).map((rule) => (
-        <div key={rule.id} className="flex items-center gap-3 p-3">
-          <Badge variant="secondary">{t(`web.team.kind.${rule.kind}`)}</Badge>
-          <span className="flex-1 text-sm">{rule.value}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => removeRule.mutate(rule.id)}
-            aria-label={t("web.team.allowRemove", { value: rule.value })}
-          >
-            <Trash2 />
-          </Button>
-        </div>
+      {all.map((member) => (
+        <MemberRow key={member.id} member={member} fresh={member.id === added} />
       ))}
-      {rules.data?.rules.length === 0 && <Empty text={t("web.team.allowEmpty")} />}
     </Section>
   );
 }
 
-/** Addresses that get a signed POST when comments, versions or access requests happen. */
+function MemberRow({ member, fresh }: { member: Member; fresh: boolean }) {
+  const t = useT();
+  const me = useMe();
+  const system = useSystem();
+  const { change, reissue, remove } = useAdminActions();
+  const [name, setName] = useState(member.name);
+  const self = me.data?.id === member.id;
+  const home = system.data?.toolUrl ?? window.location.origin;
+  const link = `${home}/?t=${encodeURIComponent(member.token)}`;
+  const error = change.error ?? reissue.error ?? remove.error;
+  const rename = () => {
+    const next = name.trim();
+    if (next && next !== member.name) change.mutate({ id: member.id, name: next });
+    else setName(member.name);
+  };
+  return (
+    <div className={`flex flex-col gap-2 p-3 ${fresh ? "bg-muted/50" : ""}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="h-8 w-44"
+          value={name}
+          maxLength={60}
+          onChange={(event) => setName(event.target.value)}
+          onBlur={rename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          aria-label={t("web.team.rename", { name: member.name })}
+        />
+        {member.owner && <Badge variant="outline">{t("web.team.owner")}</Badge>}
+        {self && <Badge variant="outline">{t("web.team.you")}</Badge>}
+        <span className="text-xs text-muted-foreground">
+          {member.lastUsedAt
+            ? t("web.team.used", { when: new Date(member.lastUsedAt).toLocaleString() })
+            : t("web.team.unused")}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <Segmented
+            label={t("web.team.role")}
+            value={member.role}
+            onChange={(role) => change.mutate({ id: member.id, role })}
+            options={ROLES.map((role) => ({ value: role, label: t(`web.team.role.${role}`) }))}
+          />
+          {!member.owner && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => remove.mutate(member.id)}
+              aria-label={t("web.team.remove", { name: member.name })}
+              title={t("web.team.remove", { name: member.name })}
+            >
+              <Trash2 />
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          readOnly
+          className="h-8 w-72 flex-1"
+          value={member.token}
+          aria-label={t("web.team.token", { name: member.name })}
+          onFocus={(event) => event.target.select()}
+        />
+        <CopyButton value={member.token} label={t("web.team.copyToken")} icon={<Copy />} />
+        <CopyButton value={link} label={t("web.team.copyLink")} icon={<Link2 />} />
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => reissue.mutate(member.id)}
+          disabled={reissue.isPending}
+          title={t("web.team.reissueHint")}
+        >
+          <RefreshCw />
+          {t("web.team.reissue")}
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error.message}</p>}
+    </div>
+  );
+}
+
+function CopyButton({
+  value,
+  label,
+  icon,
+}: {
+  value: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => copyText(value).then((ok) => setCopied(ok))}
+      onBlur={() => setCopied(false)}
+    >
+      {copied ? <Check /> : icon}
+      {label}
+    </Button>
+  );
+}
+
+/** Whether people without a token may look around (as viewers, with a made-up name). */
+function Visitors() {
+  const t = useT();
+  const access = useAccess(true);
+  const { visitors } = useAdminActions();
+  const on = access.data?.visitors;
+  return (
+    <Section title={t("web.team.visitors")} lead={t("web.team.visitorsLead")}>
+      <div className="flex items-center gap-3 p-3">
+        {on !== undefined && (
+          <Segmented
+            label={t("web.team.visitors")}
+            value={on ? "on" : "off"}
+            onChange={(value) => visitors.mutate(value === "on")}
+            options={[
+              { value: "on", label: t("web.team.visitorsOn") },
+              { value: "off", label: t("web.team.visitorsOff") },
+            ]}
+          />
+        )}
+        {visitors.error && <p className="text-sm text-destructive">{visitors.error.message}</p>}
+      </div>
+    </Section>
+  );
+}
+
+/** Addresses that get a signed POST when comments or versions happen. */
 function Webhooks() {
   const t = useT();
   const hooks = useWebhooks();
@@ -410,76 +411,5 @@ function WebhookRow({
         />
       )}
     </div>
-  );
-}
-
-/** One-time links for new members: they open it, pick a name and are in with the role. */
-function Invites() {
-  const t = useT();
-  const invites = useInvites();
-  const { create, revoke } = useInviteActions();
-  const [role, setRole] = useState<Role>("editor");
-  const [label, setLabel] = useState("");
-  const now = Date.now() / 1000;
-  const open = (invites.data?.invites ?? []).filter((i) => !i.usedAt && i.expiresAt > now);
-  return (
-    <Section title={t("web.invites.section")} count={open.length}>
-      <form
-        className="flex flex-wrap items-center gap-2 p-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          create.mutate({ role, label }, { onSuccess: () => setLabel("") });
-        }}
-      >
-        <Segmented
-          label={t("web.team.role")}
-          value={role}
-          onChange={setRole}
-          options={ROLES.map((r) => ({ value: r, label: t(`web.team.role.${r}`) }))}
-        />
-        <Input
-          className="w-48 flex-1"
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          placeholder={t("web.links.labelPlaceholder")}
-          aria-label={t("web.links.label")}
-        />
-        <Button type="submit" disabled={create.isPending}>
-          {t("web.invites.create")}
-        </Button>
-      </form>
-      {create.error && <p className="px-3 pb-3 text-sm text-destructive">{create.error.message}</p>}
-      {create.data && (
-        <div className="p-3">
-          <CopyOnce
-            value={create.data.url}
-            label={t("web.invites.address")}
-            note={t("web.invites.once")}
-          />
-        </div>
-      )}
-      {open.map((invite) => (
-        <div key={invite.id} className="flex items-center gap-3 p-3">
-          <Badge variant="secondary">{t(`web.team.role.${invite.role}`)}</Badge>
-          <span className="flex-1 truncate text-sm">
-            {invite.label || t("web.invites.unnamed")}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {t("web.invites.until", {
-              date: new Date(invite.expiresAt * 1000).toLocaleDateString(),
-            })}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => revoke.mutate(invite.id)}
-            aria-label={t("web.invites.revoke", { label: invite.label || invite.id })}
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      ))}
-      {open.length === 0 && !create.data && <Empty text={t("web.invites.none")} />}
-    </Section>
   );
 }

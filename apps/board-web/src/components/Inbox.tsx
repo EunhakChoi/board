@@ -114,7 +114,6 @@ export function Inbox() {
 
 function describe(t: ReturnType<typeof useT>, n: Notification): string {
   const target = typeof n.data.target === "string" ? n.data.target : "";
-  const name = typeof n.data.name === "string" ? n.data.name : n.actor;
   switch (n.kind) {
     case "comment.added":
       return t("web.inbox.added", { actor: n.actor, target });
@@ -124,8 +123,6 @@ function describe(t: ReturnType<typeof useT>, n: Notification): string {
       return t("web.inbox.resolved", { actor: n.actor, target });
     case "comment.reopened":
       return t("web.inbox.reopened", { actor: n.actor, target });
-    case "access.requested":
-      return t("web.inbox.requested", { name });
     default:
       return n.text;
   }

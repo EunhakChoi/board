@@ -1,15 +1,14 @@
-// Signing the CLI in to a team server: `board login` (approve in the browser, or a personal
-// token), `board logout`, `board whoami`. Tokens are kept per server in credentials.json (0600).
+// Signing the CLI in to a shared board: `board login` with the token an admin handed over,
+// `board logout`, `board whoami`. Tokens are kept per server in credentials.json (0600).
 
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { createClient } from "@board/api-client";
 import { t } from "@board/i18n";
 import { CliError, type Context, client } from "./commands.ts";
 import { configDir } from "./system.ts";
 
-type Credentials = Record<string, { token: string; email?: string }>;
+type Credentials = Record<string, { token: string; name?: string }>;
 
 function credentialsFile(env: NodeJS.ProcessEnv): string {
   return join(configDir(env), "credentials.json");
@@ -44,32 +43,7 @@ function withToken(ctx: Context, token: string) {
   });
 }
 
-const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
-
-/** Starts a device login and waits until someone approves it in the browser. */
-async function deviceLogin(ctx: Context, name: string | undefined): Promise<string> {
-  const api = client(ctx);
-  const started = await api.POST("/api/auth/device", { body: { name: name ?? hostname() } });
-  if (!started.data) throw new CliError(`login failed (${started.response.status})`);
-  const { deviceCode, userCode, verificationUrl, verificationUrlComplete, interval } = started.data;
-  ctx.err(t("cli.login.open", { url: verificationUrl, code: userCode }, ctx.locale));
-  // A person at the terminal gets the page opened for them.
-  if (ctx.ask)
-    ctx.sh?.(process.platform === "darwin" ? "open" : "xdg-open", [verificationUrlComplete]);
-  const wait = ctx.pollMs ?? interval * 1000;
-  for (;;) {
-    await sleep(wait);
-    const polled = await api.POST("/api/auth/device/token", { body: { deviceCode } });
-    if (polled.data) return polled.data.token;
-    const code = polled.error?.code;
-    if (code === "authorization_pending") continue;
-    throw new CliError(
-      t(code === "access_denied" ? "cli.login.denied" : "cli.login.expired", {}, ctx.locale),
-    );
-  }
-}
-
-export async function login(ctx: Context, token: string | undefined, name: string | undefined) {
+export async function login(ctx: Context, token: string | undefined) {
   const system = await client(ctx).GET("/api/system");
   if (!system.data) {
     throw new CliError(t("cli.error.unreachable", { server: ctx.server }, ctx.locale));
@@ -78,20 +52,19 @@ export async function login(ctx: Context, token: string | undefined, name: strin
     ctx.out(t("cli.login.local", { server: ctx.server }, ctx.locale));
     return;
   }
-  const issued = token ?? (await deviceLogin(ctx, name));
-  const me = await withToken(ctx, issued).GET("/api/auth/me");
-  if (!me.data) throw new CliError(t("cli.login.badToken", {}, ctx.locale));
+  const given =
+    token?.trim() || (ctx.ask ? (await ctx.ask(t("cli.login.prompt", {}, ctx.locale))).trim() : "");
+  if (!given) throw new CliError(t("cli.login.needToken", {}, ctx.locale));
+  const me = await withToken(ctx, given).GET("/api/auth/me");
+  if (me.data?.kind !== "user") throw new CliError(t("cli.login.badToken", {}, ctx.locale));
   const credentials = readCredentials(ctx.env);
-  credentials[ctx.server] = {
-    token: issued,
-    ...(me.data.email ? { email: me.data.email } : {}),
-  };
+  credentials[ctx.server] = { token: given, name: me.data.name };
   writeCredentials(ctx.env, credentials);
   if (ctx.json) {
     ctx.out(JSON.stringify({ server: ctx.server, ...me.data }, null, 2));
     return;
   }
-  const params = { name: me.data.name, email: me.data.email ?? "", server: ctx.server };
+  const params = { name: me.data.name, role: me.data.role, server: ctx.server };
   ctx.out(t("cli.login.done", params, ctx.locale));
 }
 
@@ -99,10 +72,7 @@ export async function logout(ctx: Context) {
   const credentials = readCredentials(ctx.env);
   const saved = credentials[ctx.server];
   if (saved) {
-    // Revoke it on the server too; a server that is gone just loses the local copy.
-    await withToken(ctx, saved.token)
-      .POST("/api/auth/logout")
-      .catch(() => undefined);
+    // The token itself stays valid (it is the member's); an admin reissues it to stop it.
     delete credentials[ctx.server];
     writeCredentials(ctx.env, credentials);
   }
@@ -111,6 +81,9 @@ export async function logout(ctx: Context) {
 
 export async function whoami(ctx: Context) {
   const { data, error } = await client(ctx).GET("/api/auth/me");
+  if (data?.kind === "visitor") {
+    throw new CliError(t("cli.whoami.out", { server: ctx.server }, ctx.locale));
+  }
   if (!data) {
     if (error?.code === "unauthorized" || error?.code === "invalid_token")
       throw new CliError(t("cli.whoami.out", { server: ctx.server }, ctx.locale));
@@ -124,6 +97,6 @@ export async function whoami(ctx: Context) {
     ctx.out(t("cli.whoami.local", { server: ctx.server }, ctx.locale));
     return;
   }
-  const params = { name: data.name, email: data.email ?? "", role: data.role, server: ctx.server };
+  const params = { name: data.name, role: data.role, server: ctx.server };
   ctx.out(t("cli.whoami.user", params, ctx.locale));
 }

@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { type Comment, HttpError, snapshotImage } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n";
 import { useAnswer } from "@/lib/queries";
-import { isGuest, useCan } from "@/lib/role";
+import { useCan } from "@/lib/role";
 import { cn } from "@/lib/utils";
 
 /** One comment with its replies, a reply box, and resolve / reopen. */
@@ -49,7 +49,6 @@ export function CommentThread({
     >
       <header className="flex items-center gap-2">
         <span className="font-medium">{comment.author.name}</span>
-        {isGuest(comment.author) && <Badge variant="outline">{t("web.links.guest")}</Badge>}
         <span className="text-xs text-muted-foreground">{when(comment.createdAt)}</span>
         <span className="flex-1" />
         <Badge variant={comment.status === "open" ? "info" : "secondary"}>
@@ -74,8 +73,7 @@ export function CommentThread({
       {comment.replies.map((r) => (
         <div key={r.id} className="border-l-2 pl-3">
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{r.author.name}</span>
-            {isGuest(r.author) && ` (${t("web.links.guest")})`}{" "}
+            <span className="font-medium text-foreground">{r.author.name}</span>{" "}
             {r.kind === "resolve" && t("web.comments.resolvedBy")}
             {r.kind === "reopen" && t("web.comments.reopenedBy")} · {when(r.createdAt)}
           </p>

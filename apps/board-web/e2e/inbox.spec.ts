@@ -1,29 +1,18 @@
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { addMember, adminToken, base, enter } from "./people.ts";
 
 // Notifications and webhooks on the public server (`stack.ts`).
-const base = () => process.env.BOARD_E2E_PUBLIC_URL ?? "";
-
-async function signIn(page: Page, who: string) {
-  await page.goto(`${base()}/signin`);
-  await page.getByRole("link", { name: "Sign in with your account" }).click();
-  await page.getByRole("link", { name: `${who}@example.com` }).click();
-  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-}
 
 test("a new comment rings the bell and opens on the comment", async ({ browser }) => {
   const boss = await (await browser.newContext()).newPage();
-  await signIn(boss, "boss");
-  const rule = await boss.request.post(`${base()}/api/admin/allow-rules`, {
-    headers: { "x-board-client": "e2e" },
-    data: { kind: "email", value: "ann@example.com" },
-  });
-  expect(rule.ok()).toBe(true);
+  await enter(boss, adminToken());
+  const annToken = await addMember(boss, "Ann", "editor");
   await boss.goto(`${base()}/p/demo/screens`);
 
   const ann = await (await browser.newContext()).newPage();
-  await signIn(ann, "ann");
+  await enter(ann, annToken);
   const added = await ann.request.post(`${base()}/api/projects/demo/comments`, {
     headers: { "x-board-client": "e2e" },
     data: { kind: "screen", target: "tasks-list", at: { x: 20, y: 20 }, body: "Ping from Ann" },
@@ -57,7 +46,7 @@ test("an admin adds a webhook and a test delivery arrives signed", async ({ page
   await new Promise<void>((done) => receiver.listen(0, "127.0.0.1", done));
   const url = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/hook`;
   try {
-    await signIn(page, "boss");
+    await enter(page, adminToken());
     await page.getByRole("link", { name: "Team" }).click();
     const hooks = page.getByRole("region", { name: "Webhooks" });
     await hooks.getByRole("textbox", { name: "Webhook address" }).fill(url);

@@ -2,10 +2,10 @@
 
 **English** | [한국어](public.ko.md)
 
-In [local mode](local.md) board trusts everyone who reaches its ports. Public mode is for a team:
-everyone signs in, and an admin decides who gets in. No outside account is needed: members come
-in through **invite links**. Signing in with Google (or another OpenID Connect provider) is an
-option on top.
+In [local mode](local.md) the person at the machine is the admin without a token. Public mode is
+for a server only a team uses: nobody is trusted by address. Members come in with the **token** an
+admin hands over; everyone else is a visitor who can only look (or nobody, if the admin requires a
+token).
 
 ## What you need
 
@@ -23,14 +23,6 @@ option on top.
   | Office LAN (testing; not encrypted) | `http://192.168.0.10:5280` |
 
   Prefer an address with a name: links people get then show no IP address.
-- **Optional: an OpenID Connect client**, for signing in with Google instead of invite links:
-  1. Google Cloud console → *APIs & Services* → *Credentials* → *Create credentials* →
-     *OAuth client ID* → *Web application*.
-  2. Authorized redirect URI: `https://board.example.com/api/auth/oidc/callback`.
-  3. Keep the client ID and secret.
-
-  Any OIDC provider works: set `BOARD_OIDC_ISSUER` to its issuer URL.
-
 ## Start
 
 Add to `.env` next to `compose.yaml`:
@@ -39,51 +31,41 @@ Add to `.env` next to `compose.yaml`:
 BOARD_PUBLIC_URL=https://board.example.com
 # optional: previews on their own origin instead of the tool's address
 # BOARD_PUBLIC_PREVIEW_URL=https://preview.board.example.com
-# optional: sign in with Google (or BOARD_OIDC_ISSUER for another provider)
-BOARD_OIDC_CLIENT_ID=…
-BOARD_OIDC_CLIENT_SECRET=…
-# optional, with a provider: addresses that become admins on their first sign-in
-BOARD_ADMIN_EMAILS=you@example.com
 ```
 
 ```bash
 docker compose -f compose.yaml -f compose.public.yaml up -d
-docker compose logs server | grep -A1 "setup link"
+docker compose logs server | grep -A1 "Admin token"
 ```
 
 Without Docker: `board-server --public` with the same variables (`BOARD_PREVIEW_URL` instead of
 `BOARD_PUBLIC_PREVIEW_URL`). The server refuses to start in public mode without a fixed address.
 
 Then check it from any machine: `board doctor --server https://board.example.com`. Besides the
-services it checks that the address is HTTPS, that the server reaches the sign-in provider, the
-callback URL to register (it must match the OAuth client exactly) and whether an admin exists.
+services it checks that the address is HTTPS (tokens travel with every request).
 
 ## The first admin
 
-Until an admin exists, nobody gets in. On start the server prints a **one-time setup link** to
-its log; whoever opens it first enters a name (or signs in with the provider) and becomes the
-admin. An address in
-`BOARD_ADMIN_EMAILS` becomes an admin on its own. The link stops working once used, and a new one
-is printed on each start while there is still no admin.
+On its first start the server makes the admin (named *Admin*; rename it on the Team page) and
+prints their **token** to its log, once. Open `https://board.example.com/?t=<token>`, or enter the
+token on the page. Lost it? `board-server admin-token` (in Docker:
+`docker compose exec server board-server admin-token --public`) prints it again.
 
 ## Who gets in
 
-- **Invite links** (Team → Invites): pick the role, send the link. It works once, for 7 days; the
-  new member enters a name and is in. A member who lost their session gets a sign-in link from an
-  admin (the key button next to their name); for a phone or second computer they make one
-  themselves on their account page (15 minutes).
-- With a provider: addresses or domains on the **allowlist** get in on their first sign-in, as editors.
-- Anyone else sees "Waiting for approval" while an admin approves or declines the **access
-  request**.
+- **Members** (Team → Members): add a name and a role, then hand over the token or the link that
+  carries it. The browser stays signed in; a second browser with the same token signs the first
+  one out (the CLI is not affected: `board login --token …`). **New token** stops the old one.
+- **Visitors**: without a token, people look at the team's projects (view only) under a made-up
+  name. Set *Visitors* to *Token required* to close that.
 
 ## Notifications and webhooks
 
 - **Inbox**: a new comment reaches everyone who can see the project; a reply, resolve or reopen
-  reaches the people in that thread; access requests reach the admins. Nobody is told about their
-  own action. The bell in the header shows them; agents read them with `board inbox`.
+  reaches the people in that thread. Nobody is told about their own action. The bell in the header shows them; agents read them with `board inbox`.
 - **Webhooks** (Team → Webhooks, admins; works in local mode too): pick the events
   (`comment.added`, `comment.replied`, `comment.resolved`, `comment.reopened`,
-  `version.created`, `access.requested`) and optionally one project. A private project's events
+  `version.created`) and optionally one project. A private project's events
   only go to webhooks set to that project. Each delivery is a JSON `POST`:
 
   ```json
@@ -98,9 +80,9 @@ is printed on each start while there is still no admin.
 
 ## Security notes
 
-- Sessions are `HttpOnly`, `SameSite=Lax` cookies, `Secure` over HTTPS, lasting 30 days. Changing
-  requests also need the `x-board-client` header, which other sites cannot send.
-- Only token hashes are stored. Removing or declining someone ends their sessions at once.
-- The client secret can come from a file: `BOARD_OIDC_CLIENT_SECRET_FILE`.
+- Browser sessions are `HttpOnly`, `SameSite=Lax` cookies, `Secure` over HTTPS, lasting a year.
+  Changing requests also need the `x-board-client` header, which other sites cannot send.
+- Member tokens are stored as they are, so admins can hand them over again; session cookies are
+  stored as hashes. Removing a member or giving them a new token ends their sessions at once.
 - Webhook secrets are derived from the server key (`BOARD_SECRET_KEY` or `data/secret.key`) and
   never stored; changing that key changes every webhook secret.

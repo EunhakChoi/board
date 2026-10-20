@@ -6,7 +6,6 @@ import { chmodSync, mkdtempSync, openSync, rmSync, writeFileSync } from "node:fs
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { startIdp } from "./idp.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 
@@ -54,26 +53,9 @@ async function waitFor(
   throw new Error(`timed out waiting for ${url}: ${JSON.stringify(last)}`);
 }
 
-/** Signs `who` in to the public server through the stand-in provider; returns a CLI token. */
-async function tokenFor(base: string, who: string): Promise<string> {
-  const start = await fetch(`${base}/api/auth/oidc/start`, { redirect: "manual" });
-  const page = await (await fetch(start.headers.get("location") ?? "")).text();
-  const back = new RegExp(`href="([^"]+)">${who}@`).exec(page)?.[1]?.replaceAll("&amp;", "&");
-  const callback = await fetch(back ?? "", { redirect: "manual" });
-  const cookie = (callback.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-  const created = await fetch(`${base}/api/me/cli-tokens`, {
-    method: "POST",
-    headers: { cookie, "x-board-client": "e2e", "content-type": "application/json" },
-    body: JSON.stringify({ name: "e2e setup" }),
-  });
-  const { token } = (await created.json()) as { token: string };
-  return token;
-}
-
 export default async function setup() {
   const home = mkdtempSync(join(tmpdir(), "board-e2e-"));
-  const [api, preview, workspace, render, publicApi, publicPreview, idp] = [
-    await freePort(),
+  const [api, preview, workspace, render, publicApi, publicPreview] = [
     await freePort(),
     await freePort(),
     await freePort(),
@@ -87,7 +69,6 @@ export default async function setup() {
     await freePort(),
     await freePort(),
   ];
-  const stopIdp = startIdp(idp);
   // A stand-in tailscale CLI for the shared server: connected, with HTTPS names.
   const tailscale = join(home, "tailscale");
   writeFileSync(
@@ -99,6 +80,17 @@ export default async function setup() {
   const start = (command: string, args: string[], env: Record<string, string>): ChildProcess =>
     spawn(command, args, { env: { ...process.env, ...env }, stdio: ["ignore", log, log] });
   const token = "e2e";
+  const publicEnv = {
+    BOARD_HOME: join(home, "public"),
+    BOARD_BIND: `127.0.0.1:${publicApi}`,
+    BOARD_PREVIEW_BIND: `127.0.0.1:${publicPreview}`,
+    BOARD_PUBLIC_URL: `http://localhost:${publicApi}`,
+    BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
+    BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
+    BOARD_WORKSPACE_TOKEN: token,
+    BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
+    BOARD_UPDATE_CHECK: "false",
+  };
   const children = [
     start(join(root, "target/debug/board-render"), [], {
       BOARD_RENDER_BIND: `127.0.0.1:${render}`,
@@ -134,28 +126,14 @@ export default async function setup() {
       BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
       BOARD_UPDATE_CHECK: "false",
     }),
-    // A second server in public mode: sign-in through the stand-in provider.
-    start(join(root, "target/debug/board-server"), ["--public"], {
-      BOARD_HOME: join(home, "public"),
-      BOARD_BIND: `127.0.0.1:${publicApi}`,
-      BOARD_PREVIEW_BIND: `127.0.0.1:${publicPreview}`,
-      BOARD_PUBLIC_URL: `http://localhost:${publicApi}`,
-      BOARD_WEB_DIR: join(root, "apps/board-web/dist"),
-      BOARD_WORKSPACE_URL: `http://127.0.0.1:${workspace}`,
-      BOARD_WORKSPACE_TOKEN: token,
-      BOARD_RENDER_URL: `http://127.0.0.1:${render}`,
-      BOARD_UPDATE_CHECK: "false",
-      BOARD_OIDC_ISSUER: `http://127.0.0.1:${idp}`,
-      BOARD_OIDC_CLIENT_ID: "e2e-client",
-      BOARD_OIDC_CLIENT_SECRET: "e2e-secret",
-      BOARD_ADMIN_EMAILS: "boss@example.com",
-    }),
+    // A second server in public mode: everyone comes in by token (or as a visitor).
+    start(join(root, "target/debug/board-server"), ["--public"], publicEnv),
   ];
   const teardown = async () => {
     for (const child of children) child.kill();
-    stopIdp();
     if (!process.env.BOARD_E2E_KEEP) rmSync(home, { recursive: true, force: true });
   };
+  let adminToken = "";
   try {
     const base = `http://127.0.0.1:${api}`;
     await waitFor(`${base}/api/health`, () => true, 60);
@@ -172,6 +150,16 @@ export default async function setup() {
         stdio: ["ignore", log, log],
       },
     );
+    // The public server's admin token, as `board-server admin-token` prints it.
+    adminToken = execFileSync(
+      join(root, "target/debug/board-server"),
+      ["admin-token", "--public"],
+      {
+        env: { ...process.env, ...publicEnv },
+      },
+    )
+      .toString()
+      .trim();
     // The same template on the public server, for the realtime tests (two people, one board).
     const publicBase = `http://127.0.0.1:${publicApi}`;
     execFileSync(
@@ -182,7 +170,7 @@ export default async function setup() {
         env: {
           ...process.env,
           BOARD_URL: publicBase,
-          BOARD_TOKEN: await tokenFor(publicBase, "boss"),
+          BOARD_TOKEN: adminToken,
           BOARD_CONFIG_DIR: join(home, "cli"),
         },
         stdio: ["ignore", log, log],
@@ -199,11 +187,11 @@ export default async function setup() {
     );
   } catch (error) {
     for (const child of children) child.kill();
-    stopIdp();
     throw new Error(`stack did not start (logs: ${join(home, "stack.log")}): ${error}`);
   }
   process.env.BOARD_E2E_URL = `http://localhost:${api}`;
   process.env.BOARD_E2E_PUBLIC_URL = `http://localhost:${publicApi}`;
+  process.env.BOARD_E2E_ADMIN_TOKEN = adminToken;
   process.env.BOARD_E2E_SHARE_URL = `http://localhost:${shareApi}`;
   process.env.BOARD_E2E_SHARE_REMOTE = `http://127.0.0.1:${shareRemote}`;
   return teardown;
