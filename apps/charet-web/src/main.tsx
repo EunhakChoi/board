@@ -5,6 +5,8 @@ import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AuthGate } from "@/components/AuthGate";
 import { api } from "@/lib/api";
 import { LocaleProvider } from "@/lib/i18n";
+import { Branch } from "@/pages/Branch";
+import { Branches } from "@/pages/Branches";
 import { Code } from "@/pages/Code";
 import { Components } from "@/pages/Components";
 import { Flows } from "@/pages/Flows";
@@ -45,6 +47,8 @@ const router = createBrowserRouter([
       { path: "screens", element: <Screens /> },
       { path: "flows", element: <Flows /> },
       { path: "components", element: <Components /> },
+      { path: "branches", element: <Branches /> },
+      { path: "branches/:number", element: <Branch /> },
       { path: "versions", element: <Versions /> },
       { path: "code", element: <Code /> },
       { path: "t/:kind/:target", element: <Target /> },

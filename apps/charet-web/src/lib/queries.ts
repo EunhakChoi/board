@@ -33,11 +33,16 @@ export function useVersions(key: string) {
   });
 }
 
-/** The preview of `main`; polls while it builds. */
-export function usePreview(key: string) {
+/** The preview of `main` (or of `rev`); polls while it builds. */
+export function usePreview(key: string, rev?: string) {
   return useQuery({
-    queryKey: ["preview", key],
-    queryFn: () => unwrap(api.GET("/api/projects/{key}/preview", path(key))),
+    queryKey: ["preview", key, rev ?? "main"],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/preview", {
+          params: { path: { key }, query: rev ? { rev } : {} },
+        }),
+      ),
     refetchInterval: (query) => {
       const state = query.state.data?.state;
       return state === "queued" || state === "running" ? 1500 : false;
@@ -45,11 +50,16 @@ export function usePreview(key: string) {
   });
 }
 
-/** Pages, screens, flows and stories of `main`; retried while the preview builds. */
-export function useManifest(key: string) {
+/** Pages, screens, flows and stories of `main` (or of `rev`); retried while the preview builds. */
+export function useManifest(key: string, rev?: string) {
   return useQuery({
-    queryKey: ["manifest", key],
-    queryFn: () => unwrap(api.GET("/api/projects/{key}/manifest", path(key))),
+    queryKey: ["manifest", key, rev ?? "main"],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/manifest", {
+          params: { path: { key }, query: rev ? { rev } : {} },
+        }),
+      ),
     retry: (count, error) => error instanceof HttpError && error.code === "pending" && count < 400,
     retryDelay: 1500,
     placeholderData: keepPreviousData,
@@ -412,4 +422,108 @@ export function useSharingActions() {
       onSettled: settled,
     }),
   };
+}
+
+export function useBranches(key: string) {
+  return useQuery({
+    queryKey: ["branches", key],
+    queryFn: () => unwrap(api.GET("/api/projects/{key}/branches", path(key))),
+  });
+}
+
+export function useBranch(key: string, number: number) {
+  return useQuery({
+    queryKey: ["branch", key, number],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/branches/{number}", {
+          params: { path: { key, number } },
+        }),
+      ),
+  });
+}
+
+/** A file at `rev` as text (`undefined` when missing or not UTF-8). */
+export function useFileAt(key: string, rev: string | undefined, file: string | undefined) {
+  return useQuery({
+    queryKey: ["file", key, rev, file],
+    enabled: !!rev && !!file,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(key)}/file?rev=${encodeURIComponent(rev ?? "")}&path=${encodeURIComponent(file ?? "")}`,
+      );
+      if (response.status === 404) return { text: undefined };
+      if (!response.ok) throw new HttpError(response.status, "error", response.statusText);
+      const text = response.headers.get("content-type")?.startsWith("text/")
+        ? await response.text()
+        : undefined;
+      return { text };
+    },
+  });
+}
+
+/** Review, merge, archive, reopen, duplicate and catch-up of branches; restoring versions. */
+export function useBranchActions(key: string) {
+  const client = useQueryClient();
+  const settled = () => {
+    void client.invalidateQueries({ queryKey: ["branches", key] });
+    void client.invalidateQueries({ queryKey: ["branch", key] });
+    void client.invalidateQueries({ queryKey: ["versions", key] });
+  };
+  const on = (number: number) => ({ params: { path: { key, number } } });
+  return {
+    review: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/request-review", on(number))),
+      onSettled: settled,
+    }),
+    merge: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/merge", on(number))),
+      onSettled: settled,
+    }),
+    archive: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/archive", on(number))),
+      onSettled: settled,
+    }),
+    reopen: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/reopen", on(number))),
+      onSettled: settled,
+    }),
+    duplicate: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/duplicate", on(number))),
+      onSettled: settled,
+    }),
+    catchUp: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(api.POST("/api/projects/{key}/branches/{number}/catch-up", on(number))),
+      onSettled: settled,
+    }),
+    restore: useMutation({
+      mutationFn: (number: number) =>
+        unwrap(
+          api.POST("/api/projects/{key}/versions/{number}/restore", {
+            params: { path: { key, number } },
+          }),
+        ),
+      onSettled: settled,
+    }),
+  };
+}
+
+/** Paths changed from `from` to `to` (each `main`, `v<n>`, `b<n>` or a commit). */
+export function useDiff(key: string, from: string | undefined, to: string | undefined) {
+  return useQuery({
+    queryKey: ["diff", key, from, to],
+    enabled: !!from && !!to,
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/diff", {
+          params: { path: { key }, query: { from: from ?? "", to: to ?? "" } },
+        }),
+      ),
+  });
 }
