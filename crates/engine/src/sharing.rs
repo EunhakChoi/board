@@ -421,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn a_public_board_takes_sharing_from_its_environment() {
+    fn a_public_server_takes_sharing_from_its_environment() {
         let engine = crate::testing::public_engine();
         assert!(engine.sharing(&Actor::Local).unwrap().fixed);
         assert!(matches!(

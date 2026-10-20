@@ -66,7 +66,7 @@ export function addSourceLocations(
       if (!skip && isPublic(value)) {
         // Preview builds are relative (served under a per-viewer path); the frame records where
         // the build's root is. Elsewhere the configured base applies.
-        const rebased = `(globalThis.__BOARD_ROOT__ ?? import.meta.env.BASE_URL) + ${JSON.stringify(value.slice(1))}`;
+        const rebased = `(globalThis.__CHARET_ROOT__ ?? import.meta.env.BASE_URL) + ${JSON.stringify(value.slice(1))}`;
         out.overwrite(
           node.start,
           node.end,

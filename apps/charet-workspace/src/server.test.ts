@@ -135,7 +135,7 @@ test("builds and verifies a commit, then serves it", { timeout: 300_000 }, async
   ).text();
   // Relative: one build serves every viewer's preview path.
   assert.match(frame, /src="\.\.\/assets\/frame-[\w-]+\.js"/);
-  assert.match(frame, /globalThis\.__BOARD_ROOT__ = new URL\("\.\.\/", location\.href\)/);
+  assert.match(frame, /globalThis\.__CHARET_ROOT__ = new URL\("\.\.\/", location\.href\)/);
   const traversal = await fetch(`${base}/v1/files/demo/${COMMIT}/..%2F..%2Fbuild.json`, {
     headers: auth,
   });

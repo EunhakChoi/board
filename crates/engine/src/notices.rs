@@ -3,7 +3,6 @@
 //!
 //! - A new comment: everyone who can see the project.
 //! - A reply, resolve or reopen: the people in that thread.
-//! - An access request: the admins.
 //!
 //! The one who acted is never told about their own action. Visitors have no inbox. Webhooks get
 //! the events they chose; a private project's events only reach webhooks set to that project.

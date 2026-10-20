@@ -354,7 +354,7 @@ paths:
     get:
       tags: [inbox]
       operationId: listNotifications
-      summary: The caller's notifications, newest first (empty in local mode and for guests)
+      summary: The caller's notifications, newest first (empty in local mode and for visitors)
       parameters:
         - name: unread
           in: query

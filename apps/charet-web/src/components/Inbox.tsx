@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n";
 import { useInbox, useMarkRead, useMe } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-/** The bell: new comments, answers in your threads and (for admins) access requests. */
+/** The bell: new comments and what happens in your threads. */
 export function Inbox() {
   const t = useT();
   const me = useMe();

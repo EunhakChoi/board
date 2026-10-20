@@ -9,8 +9,8 @@ are in) and `--server <url>` (default: the checkout's server, else `CHARET_URL`,
 | Command | Does |
 |---|---|
 | `charet setup [--yes]` | First-run guide: checks the server, offers to install this skill |
-| `charet login [--token t]` | Signs in to a team server: prints a code, the person approves it in the browser (`--token` uses a personal token instead). Not needed in local mode |
-| `charet whoami` · `charet logout` | Who the CLI acts as · sign out and revoke the token |
+| `charet login [--token t]` | Signs in to a team server with the token an admin handed over (asks for it without `--token`). Not needed in local mode |
+| `charet whoami` · `charet logout` | Who the CLI acts as · forget the saved token on this machine |
 | `charet doctor` | Checks node, git, the server, charet-workspace, charet-render, cookie separation (exit 1 on failure) |
 | `charet serve [--server-only]` | Runs charet-server with charet-workspace and charet-render |
 | `charet skill install [--claude] [--codex]` | Installs this skill for Claude Code (`~/.claude/skills/charet`) and / or Codex (`~/.codex/skills/charet`) |
@@ -66,5 +66,5 @@ No ids = every screen and story.
 | `charet comments add <id> --at x,y\|selector -m text [--theme dark]` | Pins a comment to the smallest element at the point (or the selector) |
 | `charet comments reply c12 -m text` | Replies |
 | `charet comments resolve c12 [-m note]` · `reopen c12 [-m note]` | Resolves · reopens |
-| `charet inbox [--all]` | Your notifications on a team server (new comments, answers in your threads, access requests for admins), each with a link; unread only unless `--all` |
+| `charet inbox [--all]` | Your notifications on a team server (new comments, answers in your threads), each with a link; unread only unless `--all` |
 | `charet inbox read [id...]` | Marks those notifications (or all) read |
