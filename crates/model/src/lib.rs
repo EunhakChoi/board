@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn project_keys() {
-        for good in ["a", "meridian", "admin-web-2", "0x"] {
+        for good in ["a", "acme", "admin-web-2", "0x"] {
             assert!(Project::valid_key(good), "{good}");
         }
         for bad in ["", "-a", "A", "a_b", "a/b", &"a".repeat(64)] {
