@@ -89,7 +89,7 @@ pub(crate) struct Live {
     /// The address from the server's settings (`http://localhost:5280` on a local charet).
     pub home_url: Option<Arc<str>>,
     pub sharing: Option<Sharing>,
-    /// Who the local door acts as.
+    /// The owner as an actor.
     pub owner: Option<Actor>,
     pub warning: Option<String>,
 }

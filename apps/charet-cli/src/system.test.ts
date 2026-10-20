@@ -94,6 +94,40 @@ test("setup asks to star once, stars with gh, and installs the skill", async () 
   assert.deepEqual(again.asked, ["Install the charet skill for claude? [Y/n] "]);
 });
 
+test("setup signs the CLI in as the owner of a charet on this machine", async () => {
+  const token = "ab".repeat(16);
+  const lines: string[] = [];
+  const calls: string[] = [];
+  const code = await run(["setup", "--yes"], {
+    locale: "en",
+    cwd: home,
+    env: {
+      HOME: home,
+      CHARET_CONFIG_DIR: join(home, "owner"),
+      CHARET_URL: "http://localhost:5280",
+    },
+    fetch: (async (input: Request) => {
+      if (new URL(input.url).pathname !== "/api/auth/me") return json(system());
+      return input.headers.get("authorization") === `Bearer ${token}`
+        ? json({ kind: "user", id: "u1", name: "Admin", role: "admin", localMode: true })
+        : json({ kind: "visitor", id: "v1", name: "Fox", role: "viewer", localMode: true });
+    }) as typeof fetch,
+    out: (line) => lines.push(line),
+    err: (line) => lines.push(line),
+    sh: (command, args) => {
+      calls.push([command, ...args].join(" "));
+      if (args[0] === "ps") return "abc123 127.0.0.1:5280->5280/tcp, 127.0.0.1:5284->5284/tcp";
+      if (args[0] === "exec") return token;
+      return undefined;
+    },
+  });
+  assert.equal(code, 0, lines.join("\n"));
+  assert.ok(calls.includes("docker exec abc123 charet-server admin-token"));
+  assert.match(lines.join("\n"), new RegExp(`http://localhost:5280/\\?t=${token}`));
+  const saved = JSON.parse(readFileSync(join(home, "owner/credentials.json"), "utf8"));
+  assert.equal(saved["http://localhost:5280"].token, token);
+});
+
 test("setup never asks without a terminal or with --yes", async () => {
   const quiet = await charet(["setup", "--yes"], {
     answers: [],

@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { asOwner } from "./people.ts";
 
 const base = () => process.env.CHARET_E2E_URL ?? "";
 
 test.describe.configure({ mode: "serial" });
+// The owner, as the admin link or the CLI would sign them in.
+test.use({ extraHTTPHeaders: asOwner() });
 
 test("captures screens onto the board", async ({ page }) => {
   await page.goto(`${base()}/`);

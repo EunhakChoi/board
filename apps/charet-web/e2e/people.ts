@@ -6,6 +6,11 @@ export const base = () => process.env.CHARET_E2E_PUBLIC_URL ?? "";
 /** The public server's admin (its owner), as `charet-server admin-token` printed it. */
 export const adminToken = () => process.env.CHARET_E2E_ADMIN_TOKEN ?? "";
 
+/** The main server's owner (`stack.ts`), for the specs that work on it as its admin. */
+export const ownerToken = () => process.env.CHARET_E2E_OWNER_TOKEN ?? "";
+/** Signs requests in as the main server's owner, as the CLI does. */
+export const asOwner = () => ({ authorization: `Bearer ${ownerToken()}` });
+
 /** Opens the link an admin hands over (`/?t=<token>`); the page is then signed in. */
 export async function enter(page: Page, token: string, at = base()) {
   await page.goto(`${at}/?t=${encodeURIComponent(token)}`);

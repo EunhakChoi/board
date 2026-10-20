@@ -34,8 +34,20 @@ export function savedToken(env: NodeJS.ProcessEnv, server: string): string | und
   return readCredentials(env)[server]?.token;
 }
 
+/** Keeps `token` as the CLI's way into `server`. */
+export function rememberToken(
+  env: NodeJS.ProcessEnv,
+  server: string,
+  token: string,
+  name?: string,
+): void {
+  const credentials = readCredentials(env);
+  credentials[server] = { token, ...(name ? { name } : {}) };
+  writeCredentials(env, credentials);
+}
+
 /** A client that sends `token` (instead of the context's). */
-function withToken(ctx: Context, token: string) {
+export function withToken(ctx: Context, token: string) {
   return createClient({
     baseUrl: ctx.server,
     token,
@@ -48,18 +60,12 @@ export async function login(ctx: Context, token: string | undefined) {
   if (!system.data) {
     throw new CliError(t("cli.error.unreachable", { server: ctx.server }, ctx.locale));
   }
-  if (system.data.localMode) {
-    ctx.out(t("cli.login.local", { server: ctx.server }, ctx.locale));
-    return;
-  }
   const given =
     token?.trim() || (ctx.ask ? (await ctx.ask(t("cli.login.prompt", {}, ctx.locale))).trim() : "");
   if (!given) throw new CliError(t("cli.login.needToken", {}, ctx.locale));
   const me = await withToken(ctx, given).GET("/api/auth/me");
   if (me.data?.kind !== "user") throw new CliError(t("cli.login.badToken", {}, ctx.locale));
-  const credentials = readCredentials(ctx.env);
-  credentials[ctx.server] = { token: given, name: me.data.name };
-  writeCredentials(ctx.env, credentials);
+  rememberToken(ctx.env, ctx.server, given, me.data.name);
   if (ctx.json) {
     ctx.out(JSON.stringify({ server: ctx.server, ...me.data }, null, 2));
     return;
@@ -91,10 +97,6 @@ export async function whoami(ctx: Context) {
   }
   if (ctx.json) {
     ctx.out(JSON.stringify({ server: ctx.server, ...data }, null, 2));
-    return;
-  }
-  if (data.kind === "local") {
-    ctx.out(t("cli.whoami.local", { server: ctx.server }, ctx.locale));
     return;
   }
   const params = { name: data.name, role: data.role, server: ctx.server };

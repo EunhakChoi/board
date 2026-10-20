@@ -10,13 +10,21 @@ export CHARET_PORT="${CHARET_PORT:-5380}" CHARET_PREVIEW_PORT="${CHARET_PREVIEW_
 export CHARET_REMOTE_PORT="${CHARET_REMOTE_PORT:-5384}"
 export CHARET_UPDATE_CHECK=false CHARET_AGENT_SCRIPT=true CHARET_AGENT_NETWORK=charet-smoke-agent-runs
 project=charet-smoke
-compose() { docker compose -p "$project" -f compose.yaml -f compose.agent.yaml "$@"; }
+# `--env-file /dev/null`: this checkout's `.env` (e.g. a CHARET_DATA_DIR in use) stays out of it.
+compose() {
+  docker compose -p "$project" --env-file /dev/null -f compose.yaml -f compose.agent.yaml "$@"
+}
 cli="$PWD/apps/charet-cli/src/main.ts"
-charet() { CHARET_URL="http://127.0.0.1:$CHARET_PORT" node "$cli" "$@"; }
+charet() {
+  CHARET_URL="http://127.0.0.1:$CHARET_PORT" CHARET_TOKEN="${token:-}" CHARET_CONFIG_DIR="$config" \
+    node "$cli" "$@"
+}
+config="$(mktemp -d)"
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then compose logs --tail 80 || true; fi
   if [ -z "${KEEP:-}" ]; then compose down -v --remove-orphans >/dev/null 2>&1 || true; fi
+  rm -rf "$config"
   exit "$status"
 }
 trap cleanup EXIT
@@ -31,16 +39,21 @@ done
 charet doctor
 
 curl -sf "http://localhost:$CHARET_PORT/" | grep -q 'id="root"'
+# No address grants anything: without a token the CLI is a visitor; the owner's token signs it in.
+if charet whoami >/dev/null 2>&1; then echo "signed in without a token" >&2; exit 1; fi
+token="$(compose exec -T server charet-server admin-token)"
+charet whoami
 (cd templates/recommended && charet import --key smoke)
 charet check -p smoke --theme both
 charet capture -p smoke --theme both
 charet ls -p smoke
 
 # The web agent: a run container checks out a new draft, writes a file and saves it.
-node --input-type=module - "http://127.0.0.1:$CHARET_PORT" <<'JS'
+CHARET_TOKEN="$token" node --input-type=module - "http://127.0.0.1:$CHARET_PORT" <<'JS'
 const base = process.argv[2];
+const headers = { "content-type": "application/json", authorization: `Bearer ${process.env.CHARET_TOKEN}` };
 const api = async (method, path, body) => {
-  const res = await fetch(base + path, { method, headers: { "content-type": "application/json" }, body: body && JSON.stringify(body) });
+  const res = await fetch(base + path, { method, headers, body: body && JSON.stringify(body) });
   if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
   return res.json();
 };

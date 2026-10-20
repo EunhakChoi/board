@@ -1,6 +1,6 @@
 {
   "cli.version": "charet {version}",
-  "cli.usage": "사용법: charet <명령> [옵션]\n\n시작:\n  setup [--yes]                  첫 설치 안내: server 확인, skill 설치\n  doctor                         node · git · server · 내부 service 점검\n  serve [--server-only]          charet-server 실행 (charet-workspace · charet-render 함께)\n  skill install [--claude] [--codex]\n                                 coding agent 용 charet skill 설치\n  login [--token t]              관리자에게 받은 token 으로 공유 charet 로그인\n  logout                         이 PC 에 저장된 token 삭제\n  whoami                         CLI 가 누구로 동작하는지\n\n프로젝트:\n  projects                       프로젝트 목록\n  delete <프로젝트> [--yes]       프로젝트를 버전 · 캡처 · 댓글과 함께 삭제\n  init <key> [폴더] [--template recommended] [--title t]\n                                 template 으로 프로젝트를 만들고 checkout\n  import [경로] [--key k] [--title t] [--include 폴더]... [--dry-run]\n                                 앱 (과 그 앱이 쓰는 workspace package) 을 프로젝트로 가져오기\n  checkout <프로젝트> [폴더] [--rev main|vN] [--branch N]\n                                 프로젝트 (또는 수정안 1개) 를 폴더로 내려받기\n  status                         이 checkout 의 기준 · 최신 버전 · 로컬 변경\n  push [-m 메시지] [--merge]     변경 보내기: main 에서는 새 수정안 (임시), 수정안에서는 그 수정안에\n                                 (--merge: 바로 채택하고 main 으로 돌아옴)\n  pull                           이 checkout 을 수정안 또는 main 의 최신으로 갱신\n  dev                            이 checkout 에서 앱 dev server 실행\n  versions                       버전 목록\n  diff <from> [to]               버전 사이에 바뀐 경로\n  restore vN                     vN 을 되돌리는 새 버전\n\nproduct repo (관리자):\n  handoff [status]               기준점 · 반영할 것 · (repo 안에서) repo 변경\n  handoff export [--since vN] [--with-mocks] [--out f]\n                                 기준점 이후 main 의 patch (`git apply` 용)\n  handoff mark vN [--commit sha] vN 을 product repo 에 반영됨으로 표시 (기본: 여기 HEAD)\n  import --update [path]         product repo 의 파일을 새 버전으로 다시 가져오기\n\n수정안:\n  branches [--all]               임시 수정안 · 검토 중 수정안 (--all: 채택 · 보관 포함)\n  branch [n]                     수정안 1개: 변경 · 충돌 · 기록\n  branch review|approve|merge|archive|reopen|duplicate|catch-up [n]\n                                 검토 요청 · 보호 파일 승인 (관리자) · 채택 · 보관 · 되살리기 · 내 것으로 복제 ·\n                                 최신 main 받기\n\n구조:\n  ls [--stale]                   화면 · story · flow (--stale: 캡처가 필요한 id)\n  show <id>                      화면 · story · page · flow · component · 댓글 (c12)\n  url [id]                       웹 도구 링크\n  connections [--from s] [--to s] [--page p]\n                                 화면 사이 전환\n  path <from> <to> [--sheet f.jpg]\n                                 한 화면에서 다른 화면으로 가는 길\n  map [--format text|mermaid]    page · 화면 · 연결 전체\n  flows | flow <id> [--sheet f.jpg]\n                                 flow 와 단계 (계획만 된 단계 포함)\n  sheet <id>... --out f.jpg      캡처를 한 장으로 나란히\n  source <경로[:줄]|id> [--context n]\n                                 main 의 파일, 또는 화면이 그려진 파일 목록\n\n검사 · 캡처:\n  check [id...] [--theme light|dark|both]\n                                 화면을 열어 오류 · console 오류 · mock 누락 보고\n  capture [id...] [--theme ...] [--force] [--out 폴더]\n                                 웹 도구 화면 갱신 (댓글 위치도 따라감)\n\n댓글:\n  comments [--all|--resolved] [--on id] [--branch N]\n                                 댓글 목록 (열린 댓글이 있으면 exit 1)\n  comments show <c12> [--out 폴더]\n  comments add <id> --at x,y|selector -m 내용 [--theme dark]\n  comments reply|resolve|reopen <c12> [-m 내용]\n  inbox [--all]                  내 알림 (새 댓글 · 답글)\n  inbox read [id...]             읽음 처리 (id 없으면 전부)\n\n옵션: -p <프로젝트> (또는 checkout 안에서 실행), --server <url> (또는 CHARET_URL), --json, --version",
+  "cli.usage": "사용법: charet <명령> [옵션]\n\n시작:\n  setup [--yes]                  첫 설치 안내: server 확인, 관리자 link, skill 설치\n  doctor                         node · git · server · 내부 service 점검\n  serve [--server-only]          charet-server 실행 (charet-workspace · charet-render 함께)\n  skill install [--claude] [--codex]\n                                 coding agent 용 charet skill 설치\n  login [--token t]              관리자에게 받은 token 으로 공유 charet 로그인\n  logout                         이 PC 에 저장된 token 삭제\n  whoami                         CLI 가 누구로 동작하는지\n\n프로젝트:\n  projects                       프로젝트 목록\n  delete <프로젝트> [--yes]       프로젝트를 버전 · 캡처 · 댓글과 함께 삭제\n  init <key> [폴더] [--template recommended] [--title t]\n                                 template 으로 프로젝트를 만들고 checkout\n  import [경로] [--key k] [--title t] [--include 폴더]... [--dry-run]\n                                 앱 (과 그 앱이 쓰는 workspace package) 을 프로젝트로 가져오기\n  checkout <프로젝트> [폴더] [--rev main|vN] [--branch N]\n                                 프로젝트 (또는 수정안 1개) 를 폴더로 내려받기\n  status                         이 checkout 의 기준 · 최신 버전 · 로컬 변경\n  push [-m 메시지] [--merge]     변경 보내기: main 에서는 새 수정안 (임시), 수정안에서는 그 수정안에\n                                 (--merge: 바로 채택하고 main 으로 돌아옴)\n  pull                           이 checkout 을 수정안 또는 main 의 최신으로 갱신\n  dev                            이 checkout 에서 앱 dev server 실행\n  versions                       버전 목록\n  diff <from> [to]               버전 사이에 바뀐 경로\n  restore vN                     vN 을 되돌리는 새 버전\n\nproduct repo (관리자):\n  handoff [status]               기준점 · 반영할 것 · (repo 안에서) repo 변경\n  handoff export [--since vN] [--with-mocks] [--out f]\n                                 기준점 이후 main 의 patch (`git apply` 용)\n  handoff mark vN [--commit sha] vN 을 product repo 에 반영됨으로 표시 (기본: 여기 HEAD)\n  import --update [path]         product repo 의 파일을 새 버전으로 다시 가져오기\n\n수정안:\n  branches [--all]               임시 수정안 · 검토 중 수정안 (--all: 채택 · 보관 포함)\n  branch [n]                     수정안 1개: 변경 · 충돌 · 기록\n  branch review|approve|merge|archive|reopen|duplicate|catch-up [n]\n                                 검토 요청 · 보호 파일 승인 (관리자) · 채택 · 보관 · 되살리기 · 내 것으로 복제 ·\n                                 최신 main 받기\n\n구조:\n  ls [--stale]                   화면 · story · flow (--stale: 캡처가 필요한 id)\n  show <id>                      화면 · story · page · flow · component · 댓글 (c12)\n  url [id]                       웹 도구 링크\n  connections [--from s] [--to s] [--page p]\n                                 화면 사이 전환\n  path <from> <to> [--sheet f.jpg]\n                                 한 화면에서 다른 화면으로 가는 길\n  map [--format text|mermaid]    page · 화면 · 연결 전체\n  flows | flow <id> [--sheet f.jpg]\n                                 flow 와 단계 (계획만 된 단계 포함)\n  sheet <id>... --out f.jpg      캡처를 한 장으로 나란히\n  source <경로[:줄]|id> [--context n]\n                                 main 의 파일, 또는 화면이 그려진 파일 목록\n\n검사 · 캡처:\n  check [id...] [--theme light|dark|both]\n                                 화면을 열어 오류 · console 오류 · mock 누락 보고\n  capture [id...] [--theme ...] [--force] [--out 폴더]\n                                 웹 도구 화면 갱신 (댓글 위치도 따라감)\n\n댓글:\n  comments [--all|--resolved] [--on id] [--branch N]\n                                 댓글 목록 (열린 댓글이 있으면 exit 1)\n  comments show <c12> [--out 폴더]\n  comments add <id> --at x,y|selector -m 내용 [--theme dark]\n  comments reply|resolve|reopen <c12> [-m 내용]\n  inbox [--all]                  내 알림 (새 댓글 · 답글)\n  inbox read [id...]             읽음 처리 (id 없으면 전부)\n\n옵션: -p <프로젝트> (또는 checkout 안에서 실행), --server <url> (또는 CHARET_URL), --json, --version",
   "cli.usage.checkout": "사용법: charet checkout <project> [dir] [--rev main|vN] [--branch N]",
   "cli.usage.diff": "사용법: charet diff <from> [to] [-p 프로젝트]",
   "cli.projects.none": "아직 프로젝트 없음. `charet import <경로>` 로 가져오기.",
@@ -175,12 +175,10 @@
   "web.team.role.commenter": "댓글",
   "web.team.role.viewer": "보기",
   "web.team.remove": "{name} 내보내기",
-  "cli.login.local": "{server} 는 로컬 모드: 이 PC 의 CLI 는 이미 관리자라 token 불필요.",
   "cli.login.badToken": "server 가 이 token 을 받지 않음.",
   "cli.login.done": "{server} 에 {name} ({role}) 로 로그인함.",
   "cli.logout.done": "이 PC 에서 {server} 로그아웃함 (token 자체는 유효. 막으려면 관리자가 재발급).",
   "cli.logout.none": "{server} 에 로그인되어 있지 않음.",
-  "cli.whoami.local": "{server} 의 이 PC 관리자 (로컬 모드, token 불필요).",
   "cli.whoami.user": "{name}, {server} 에서 {role}.",
   "cli.whoami.out": "{server} 에 로그인 안 됨. charet login --token <token> 실행.",
   "web.access.title": "공개 범위",
@@ -239,7 +237,7 @@
   "web.sharing.address": "사람들이 여는 주소",
   "web.sharing.start": "공유 켜기",
   "web.sharing.openAt": "공유 주소",
-  "web.sharing.onLead": "link (팀원 token link, 알림) 는 이제 이 주소를 써요. 이 PC 는 token 없이 계속 관리자예요.",
+  "web.sharing.onLead": "이제 link (팀 token · 알림) 는 이 주소를 써요.",
   "web.sharing.stop": "공유 끄기",
   "web.sharing.mode": "접속 방식",
   "web.sharing.mode.address": "내 주소",
@@ -275,7 +273,7 @@
   "web.team.namePlaceholder": "이름, 예: 김세정",
   "web.team.add": "팀원 추가",
   "web.team.rename": "{name} 이름",
-  "web.team.owner": "이 PC 관리자",
+  "web.team.owner": "소유자",
   "web.team.used": "마지막 접속 {when}",
   "web.team.unused": "아직 사용 안 함",
   "web.team.token": "{name} token",
@@ -462,5 +460,8 @@
   "web.agentAdmin.tokens": "Token 입력 / 출력",
   "web.agentAdmin.cost": "비용",
   "web.agentAdmin.unpriced": "+{count}건 가격 미상",
-  "web.agentAdmin.unpricedHint": "가격을 모르는 model 로 실행된 건 (charet-agent 의 CHARET_AGENT_PRICES 로 설정)."
+  "web.agentAdmin.unpricedHint": "가격을 모르는 model 로 실행된 건 (charet-agent 의 CHARET_AGENT_PRICES 로 설정).",
+  "cli.setup.signedIn": "{name} ({role}) 로 로그인되어 있어요.",
+  "cli.setup.adminLink": "이 charet 의 관리자예요. 아래 link 를 browser 에서 한 번 여세요 (로그인이 유지돼요. 다른 사람에게 주지 마세요):\n  {link}\nCLI 에도 token 을 저장했어요.",
+  "cli.setup.noOwnerToken": "{server} 에 로그인되어 있지 않아요. `docker compose exec server charet-server admin-token` (또는 `charet-server admin-token`) 으로 관리자 token 을 확인한 뒤 `charet login --token <token>` 을 실행하고, browser 에서 {server}/?t=<token> 을 여세요."
 }

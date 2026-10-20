@@ -24,6 +24,8 @@ async function freePort(): Promise<number> {
 let server: ChildProcess | undefined;
 let url = "";
 let work = "";
+/** The owner's token: nobody is the admin by address, the CLI here included. */
+let token = "";
 
 before(async () => {
   assert.ok(existsSync(SERVER_BIN), `build charet-server first (${SERVER_BIN})`);
@@ -32,22 +34,23 @@ before(async () => {
   const previewPort = await freePort();
   const remotePort = await freePort();
   url = `http://127.0.0.1:${port}`;
-  server = spawn(SERVER_BIN, [], {
-    env: {
-      ...process.env,
-      CHARET_HOME: join(work, "home"),
-      CHARET_BIND: `127.0.0.1:${port}`,
-      CHARET_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
-      CHARET_REMOTE_BIND: `127.0.0.1:${remotePort}`,
-      CHARET_UPDATE_CHECK: "false",
-      // No build service here to check merges with.
-      CHARET_MERGE_CHECK: "false",
-    },
-    stdio: "ignore",
-  });
+  const serverEnv = {
+    ...process.env,
+    CHARET_HOME: join(work, "home"),
+    CHARET_BIND: `127.0.0.1:${port}`,
+    CHARET_PREVIEW_BIND: `127.0.0.1:${previewPort}`,
+    CHARET_REMOTE_BIND: `127.0.0.1:${remotePort}`,
+    CHARET_UPDATE_CHECK: "false",
+    // No build service here to check merges with.
+    CHARET_MERGE_CHECK: "false",
+  };
+  server = spawn(SERVER_BIN, [], { env: serverEnv, stdio: "ignore" });
   for (let i = 0; i < 100; i++) {
     try {
-      if ((await fetch(`${url}/api/health`)).ok) return;
+      if ((await fetch(`${url}/api/health`)).ok) {
+        token = execFileSync(SERVER_BIN, ["admin-token"], { env: serverEnv }).toString().trim();
+        return;
+      }
     } catch {}
     await new Promise((r) => setTimeout(r, 50));
   }
@@ -62,7 +65,7 @@ after(() => {
 async function charet(
   args: string[],
   cwd = work,
-  env: Record<string, string> = { CHARET_URL: url },
+  env: Record<string, string> = { CHARET_URL: url, CHARET_TOKEN: token },
 ) {
   const out: string[] = [];
   const err: string[] = [];
@@ -155,7 +158,10 @@ test("import, checkout, push, pull, versions and diff", async () => {
   assert.ok(existsSync(join(a, "charet.json")));
   assert.match((await charet(["push"], a)).out, /Nothing to push/);
   // Inside a checkout, commands talk to its server, whatever CHARET_URL says.
-  const listed = await charet(["versions"], a, { CHARET_URL: "http://127.0.0.1:9" });
+  const listed = await charet(["versions"], a, {
+    CHARET_URL: "http://127.0.0.1:9",
+    CHARET_TOKEN: token,
+  });
   assert.equal(listed.code, 0, listed.err);
   assert.match(listed.out, /v1/);
 

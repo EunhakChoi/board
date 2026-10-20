@@ -101,8 +101,8 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
         .with_merge_check(config.merge_check)
         .with_secret(secret);
     let engine = with_agents(engine, &config);
-    // The owner: the local door acts as them; on a public server their token is the way in.
-    let created = engine.ensure_owner().map_err(|e| e.to_string())?;
+    // The owner: the first admin. Their token (the admin link) is the way in everywhere.
+    engine.ensure_owner().map_err(|e| e.to_string())?;
     if admin_token {
         let token = engine
             .owner_token()
@@ -111,7 +111,7 @@ async fn run(config: Config, admin_token: bool) -> Result<(), String> {
         println!("{token}");
         return Ok(());
     }
-    let first_token = created.filter(|_| !config.local_mode());
+    let first_token = engine.owner_announcement().map_err(|e| e.to_string())?;
     let engine = with_sharing(engine, &config).await?;
     if config.update_check {
         update::spawn(engine.clone());
@@ -228,7 +228,7 @@ fn announce(config: &Config, admin_token: Option<String>) {
         charet_model::VERSION,
         config.tool_url(),
         if config.local_mode() {
-            "local mode: this machine is the admin"
+            "local"
         } else {
             "public"
         },
@@ -246,9 +246,10 @@ fn announce(config: &Config, admin_token: Option<String>) {
         );
     }
     if let Some(token) = admin_token {
-        // Printed once; `charet-server admin-token` prints it again.
+        // Printed once; `charet-server admin-token` (or `charet setup`) shows it again.
         println!(
-            "Admin token (enter it in the web tool; `charet-server admin-token` shows it again):\n  {token}"
+            "Admin link (open it once; the browser stays signed in):\n  {}/?t={token}\nAdmin token (for the CLI: `charet login --token …`; `charet-server admin-token` shows it again):\n  {token}",
+            config.tool_url()
         );
     }
 }

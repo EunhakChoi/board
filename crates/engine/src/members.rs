@@ -2,9 +2,9 @@
 //!
 //! A member is a name, a role and a token an admin hands over. The token signs a browser in once
 //! (a session cookie follows) and is what the CLI sends. Someone without a token is a visitor, a
-//! viewer with a made-up name, unless an admin turned visitors off. The person at the machine
-//! that runs a local charet needs no token: the local door acts as the owner, an admin member
-//! made at first start.
+//! viewer with a made-up name, unless an admin turned visitors off. The owner is an admin member
+//! made at first start; their token is printed once as an admin link (`/?t=<token>`) and
+//! `charet-server admin-token` prints it again. No address grants anything without a token.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,8 +20,9 @@ use crate::{Engine, EngineError, Kick, NewUser};
 pub const SESSION_SECS: u64 = 365 * 24 * 3600;
 /// Longest member name.
 const MAX_NAME: usize = 60;
-/// The member the local door acts as.
+/// The owner member: the first admin, who cannot be removed or demoted.
 pub(crate) const OWNER: &str = "sharing.owner";
+const OWNER_ANNOUNCED: &str = "owner.announced";
 /// `false` when an admin turned visitors off, `comment` when they may comment; else they look.
 const VISITORS: &str = "access.visitors";
 
@@ -270,7 +271,17 @@ impl Engine {
         }
     }
 
-    /// Who a request through the local door acts as: the owner once there is one.
+    /// The owner's token, the first time the server asks after it was made (or after an upgrade
+    /// from when this machine's address was the admin): the server prints the admin link once.
+    pub fn owner_announcement(&self) -> Result<Option<String>, EngineError> {
+        if self.ports.settings.get(OWNER_ANNOUNCED)?.as_deref() == Some("true") {
+            return Ok(None);
+        }
+        self.ports.settings.set(OWNER_ANNOUNCED, "true")?;
+        self.owner_token()
+    }
+
+    /// The owner as an actor (tests, and the server's own housekeeping).
     pub fn local_actor(&self) -> Actor {
         self.read_live().owner.clone().unwrap_or(Actor::Local)
     }
@@ -286,7 +297,7 @@ impl Engine {
         Ok(self.ports.settings.get(OWNER)?.filter(|id| !id.is_empty()))
     }
 
-    /// Reloads the owner the local door acts as (after a rename).
+    /// Reloads the owner actor (after a rename).
     fn refresh_owner(&self) -> Result<(), EngineError> {
         let owner = self.owner()?.map(|u| u.actor());
         self.write_live(|live| live.owner = owner);

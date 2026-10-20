@@ -150,9 +150,9 @@ pub fn app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
     app.merge(preview::preview_routes(engine, &origin))
 }
 
-/// The remote door of a local charet: what a tunnel or reverse proxy points at. Nobody is the
-/// owner here (members bring their token), and previews are served sandboxed under the same
-/// address.
+/// The remote door of a local charet: what a tunnel or reverse proxy points at. The same rules as
+/// the tool's own address (members bring their token), and previews are served sandboxed under
+/// the same address.
 pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router {
     let origin = PreviewOrigin {
         frame_ancestors: vec!["'self'".to_owned()],

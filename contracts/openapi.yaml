@@ -94,8 +94,7 @@ paths:
       operationId: getMe
       summary: Who is calling
       description: >-
-        Through the local door of a local charet, the owner. A browser without a session becomes
-        a visitor here (a cookie is set) while visitors are allowed; otherwise 401
+        A member by token or session. A browser without a session becomes a visitor here (a cookie is set) while visitors are allowed; otherwise 401
         `token_required`. 401 `replaced`: the token signed in on another browser since.
       responses:
         "200":
@@ -2464,7 +2463,7 @@ components:
               type: string
             owner:
               type: boolean
-              description: This machine's admin (the local door acts as them); cannot be removed or demoted
+              description: The first admin, made at first start; cannot be removed or demoted
     Access:
       type: object
       additionalProperties: false
@@ -2583,8 +2582,9 @@ components:
           type: string
           enum: [user, visitor, local]
           description: >-
-            `user` is a member (by token, or the owner at this machine); `visitor` has no token
-            and does what the server or the project lets visitors do (look, or also comment); `local` is the built-in admin before the charet has an owner
+            `user` is a member (by token or session); `visitor` has no token and does what the
+            server or the project lets visitors do (look, or also comment); `local` is the built-in
+            admin before the charet has an owner (not handed to callers)
         id:
           type: string
           description: "A member's id, or a visitor's (the web tool shows the visitor's made-up name from it)"
@@ -2594,7 +2594,7 @@ components:
           $ref: "#/components/schemas/Role"
         localMode:
           type: boolean
-          description: True through the local door (this machine's admin, no token needed)
+          description: True on a local charet reached at its own address (not through sharing); grants nothing by itself
     Project:
       type: object
       required: [key, title, visibility, visitors, visitorAccess, origin, createdAt]
