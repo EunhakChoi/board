@@ -33,7 +33,7 @@ impl CommentStore {
 
 const COLUMNS: &str =
     "SELECT id, kind, target, theme, anchor, body, author_id, author_name, status,
-    created_commit, resolved_commit, rev, created_at, updated_at FROM comments";
+    created_commit, resolved_commit, rev, created_at, updated_at, branch FROM comments";
 
 /// SQLite integers are signed; ids are always positive.
 fn row_id(row: &Row<'_>, index: usize) -> rusqlite::Result<u64> {
@@ -90,6 +90,7 @@ fn comment_row(row: &Row<'_>) -> rusqlite::Result<(Comment, String)> {
             rev: row.get(11)?,
             created_at: row.get(12)?,
             updated_at: row.get(13)?,
+            branch: row.get(14)?,
             replies: Vec::new(),
         },
         row.get(4)?,
@@ -174,8 +175,8 @@ impl Comments for CommentStore {
             .lock()?
             .query_row(
                 "INSERT INTO comments (project, kind, target, theme, anchor, body, author_id, author_name,
-                   status, created_commit, rev)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'open', ?9, 1) RETURNING id",
+                   status, created_commit, rev, branch)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'open', ?9, 1, ?10) RETURNING id",
                 params![
                     project,
                     new.kind,
@@ -185,7 +186,8 @@ impl Comments for CommentStore {
                     new.body,
                     new.author.id,
                     new.author.name,
-                    new.commit
+                    new.commit,
+                    new.branch
                 ],
                 |row| row.get(0),
             )
@@ -351,6 +353,7 @@ mod tests {
             body: "Bigger".into(),
             author: me(),
             commit: "c1".into(),
+            branch: None,
         };
         let comment = store.add("web", &new, Some(b"jpeg")).unwrap();
         assert_eq!((comment.rev, comment.status), (1, CommentStatus::Open));

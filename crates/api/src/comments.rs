@@ -17,6 +17,8 @@ pub struct ListQuery {
     status: Option<String>,
     kind: Option<String>,
     target: Option<String>,
+    /// Comments on this branch's screens instead of main's.
+    branch: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -43,6 +45,7 @@ pub async fn list(
         }
     };
     let filter = CommentFilter {
+        branch: query.branch,
         status,
         kind: query.kind,
         target: query.target,
@@ -60,6 +63,8 @@ pub struct NewCommentInput {
     theme: String,
     at: AtInput,
     body: String,
+    /// On this branch's screen (a spot of its live preview) instead of main's capture.
+    branch: Option<u32>,
 }
 
 fn light() -> String {
@@ -83,8 +88,18 @@ pub async fn add(
         AtInput::Point { x, y } => At::Point { x, y },
         AtInput::Selector { selector } => At::Selector(selector),
     };
-    let comment = blocking(move || {
-        engine.add_comment(
+    let comment = blocking(move || match input.branch {
+        Some(branch) => engine.add_branch_comment(
+            &actor,
+            &key,
+            branch,
+            &input.kind,
+            &input.target,
+            &input.theme,
+            &at,
+            &input.body,
+        ),
+        None => engine.add_comment(
             &actor,
             &key,
             &input.kind,
@@ -92,7 +107,7 @@ pub async fn add(
             &input.theme,
             &at,
             &input.body,
-        )
+        ),
     })
     .await?;
     Ok((StatusCode::CREATED, Json(comment)))

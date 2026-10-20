@@ -218,6 +218,7 @@ impl Comments for MemoryComments {
             rev: 1,
             created_at: "now".into(),
             updated_at: "now".into(),
+            branch: new.branch,
             replies: Vec::new(),
         };
         all.push((

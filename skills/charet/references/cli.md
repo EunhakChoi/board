@@ -68,7 +68,7 @@ No ids = every screen and story.
 
 | Command | Does |
 |---|---|
-| `charet comments [--all\|--resolved] [--on id]` | Lists open comments (exit 1 while any listed one is open) |
+| `charet comments [--all\|--resolved] [--on id] [--branch N]` | Lists open comments (exit 1 while any listed one is open); `--branch N` lists the comments reviewers left on branch N's screens instead of main's |
 | `charet comments show c12 [--out dir]` | Body, box, element, components, source, replies; saves the snapshot image and prints its path |
 | `charet comments add <id> --at x,y\|selector -m text [--theme dark]` | Pins a comment to the smallest element at the point (or the selector) |
 | `charet comments reply c12 -m text` | Replies |

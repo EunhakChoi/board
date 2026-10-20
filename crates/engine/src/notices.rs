@@ -3,6 +3,8 @@
 //!
 //! - A new comment: everyone who can see the project.
 //! - A reply, resolve or reopen: the people in that thread.
+//! - A branch up for review: everyone who can see the project.
+//! - A branch merged by someone else, or clashing with main: its author.
 //!
 //! The one who acted is never told about their own action. Visitors have no inbox. Webhooks get
 //! the events they chose; a private project's events only reach webhooks set to that project.
@@ -25,6 +27,9 @@ pub const WEBHOOK_EVENTS: &[&str] = &[
     "comment.resolved",
     "comment.reopened",
     "version.created",
+    "branch.review",
+    "branch.merged",
+    "branch.clash",
 ];
 
 /// Waits between delivery attempts; three attempts in all.
@@ -283,6 +288,61 @@ impl Engine {
         });
     }
 
+    /// A branch went up for review (`branch.review`), was merged (`branch.merged`) or clashed with
+    /// main (`branch.clash`).
+    pub(crate) fn branch_event(
+        &self,
+        actor: &Actor,
+        project: &Project,
+        branch: &charet_model::Branch,
+        kind: &'static str,
+    ) {
+        let (text, people) = match kind {
+            "branch.review" => (
+                format!(
+                    "{} asks to review #{}: {}",
+                    actor.name(),
+                    branch.number,
+                    quote(&branch.title)
+                ),
+                self.audience(project).into_iter().map(|u| u.id).collect(),
+            ),
+            "branch.merged" => (
+                format!(
+                    "{} merged #{} {} as v{}",
+                    actor.name(),
+                    branch.number,
+                    quote(&branch.title),
+                    branch.merged_version.unwrap_or_default()
+                ),
+                vec![branch.author.id.clone()],
+            ),
+            _ => (
+                format!(
+                    "#{} {} clashes with main in {}",
+                    branch.number,
+                    quote(&branch.title),
+                    branch.conflicts.join(", ")
+                ),
+                vec![branch.author.id.clone()],
+            ),
+        };
+        self.announce(&Event {
+            kind,
+            project: Some(project),
+            actor,
+            text,
+            link: format!("/p/{}/branches/{}", project.key, branch.number),
+            data: serde_json::json!({
+                "branch": branch.number,
+                "title": branch.title,
+                "conflicts": branch.conflicts,
+                "version": branch.merged_version,
+            }),
+            people,
+        });
+    }
+
     /// Stores the notifications, nudges the people connected, and starts webhook deliveries.
     /// The command that caused it has already happened: failures here do not undo it.
     fn announce(&self, event: &Event<'_>) {
@@ -448,10 +508,16 @@ fn quote(text: &str) -> String {
 }
 
 fn comment_link(key: &str, comment: &Comment) -> String {
-    format!(
-        "/p/{key}/t/{}/{}?comment={}",
-        comment.kind, comment.target, comment.id
-    )
+    match comment.branch {
+        Some(number) => format!(
+            "/p/{key}/branches/{number}?target={}:{}&comment={}",
+            comment.kind, comment.target, comment.id
+        ),
+        None => format!(
+            "/p/{key}/t/{}/{}?comment={}",
+            comment.kind, comment.target, comment.id
+        ),
+    }
 }
 
 fn comment_data(comment: &Comment, body: &str) -> serde_json::Value {
@@ -552,6 +618,97 @@ mod tests {
 
         assert_eq!(engine.mark_read(&bob.actor(), None).unwrap(), 0);
         assert_eq!(engine.inbox(&bob.actor(), true, 50).unwrap().unread, 0);
+    }
+
+    #[test]
+    fn branches_tell_the_team_then_their_author() {
+        let (engine, _) = engine_with_fakes();
+        let boss = join(&engine, "boss");
+        let ann = join(&engine, "ann");
+        let bob = join(&engine, "bob");
+        project(&engine, &boss.actor());
+        let base = engine.checkout(&ann.actor(), "web", None).unwrap().commit;
+        let draft = engine
+            .propose(
+                &ann.actor(),
+                "web",
+                &base,
+                "Calmer colors",
+                &[file("a.txt", "b")],
+            )
+            .unwrap();
+        assert_eq!(
+            kinds(&engine, &bob),
+            Vec::<String>::new(),
+            "a draft is quiet"
+        );
+        engine
+            .request_review(&ann.actor(), "web", draft.number)
+            .unwrap();
+        let inbox = engine.inbox(&bob.actor(), true, 50).unwrap();
+        assert_eq!(
+            inbox.notifications[0].text,
+            "ann asks to review #1: Calmer colors"
+        );
+        assert_eq!(inbox.notifications[0].link, "/p/web/branches/1");
+        assert_eq!(kinds(&engine, &ann), Vec::<String>::new());
+
+        // A comment on the branch's screen links to the branch.
+        let at = At::Point { x: 5, y: 5 };
+        let c = engine
+            .add_branch_comment(
+                &bob.actor(),
+                "web",
+                1,
+                "screen",
+                "home",
+                "light",
+                &at,
+                "Too pale",
+            )
+            .unwrap();
+        assert_eq!(c.branch, Some(1));
+        let n = &engine.inbox(&ann.actor(), true, 50).unwrap().notifications[0];
+        assert_eq!(
+            n.link,
+            format!("/p/web/branches/1?target=screen:home&comment={}", c.id)
+        );
+        let on_main = engine
+            .comments(&ann.actor(), "web", &crate::CommentFilter::default())
+            .unwrap();
+        assert!(on_main.iter().all(|c| c.branch.is_none()), "kept off main");
+        let on_branch = crate::CommentFilter {
+            branch: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(
+            engine
+                .comments(&ann.actor(), "web", &on_branch)
+                .unwrap()
+                .len(),
+            1
+        );
+
+        engine.merge_branch(&bob.actor(), "web", 1).unwrap();
+        assert_eq!(kinds(&engine, &ann)[0], "branch.merged");
+        assert_eq!(
+            kinds(&engine, &boss)
+                .iter()
+                .filter(|k| *k == "branch.merged")
+                .count(),
+            0
+        );
+
+        // Two drafts on the same line: once one is in, the other's author hears of the clash.
+        let main = engine.checkout(&ann.actor(), "web", None).unwrap().commit;
+        engine
+            .propose(&ann.actor(), "web", &main, "one", &[file("a.txt", "1")])
+            .unwrap();
+        engine
+            .propose(&bob.actor(), "web", &main, "two", &[file("a.txt", "2")])
+            .unwrap();
+        engine.merge_branch(&ann.actor(), "web", 2).unwrap();
+        assert_eq!(kinds(&engine, &bob)[0], "branch.clash");
     }
 
     #[test]

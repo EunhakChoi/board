@@ -284,6 +284,34 @@
           "createdAt": "2026-10-18T10:08:00Z"
         }
       ]
+    },
+    {
+      "id": 3,
+      "branch": 2,
+      "kind": "screen",
+      "target": "tasks-list",
+      "theme": "light",
+      "anchor": {
+        "x": 320,
+        "y": 40,
+        "w": 800,
+        "h": 56,
+        "chain": ["App", "Header"],
+        "sel": "header",
+        "tag": "header",
+        "text": "Tasks",
+        "src": "src/main.tsx:12:5",
+        "detached": false
+      },
+      "body": "Calmer header on this branch?",
+      "author": { "id": "local", "name": "Local admin" },
+      "status": "open",
+      "createdCommit": "7d1e0aa",
+      "resolvedCommit": null,
+      "rev": 1,
+      "createdAt": "2026-10-19T09:00:00Z",
+      "updatedAt": "2026-10-19T09:00:00Z",
+      "replies": []
     }
   ],
   "check": {

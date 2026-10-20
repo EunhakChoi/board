@@ -182,7 +182,22 @@ export type NewComment = {
   theme: Theme;
   at: { x: number; y: number } | { selector: string };
   body: string;
+  /** On this branch's screen instead of main's. */
+  branch?: number;
 };
+
+/** Comments on a branch's screens. */
+export function useBranchComments(key: string, number: number) {
+  return useQuery({
+    queryKey: ["comments", key, "branch", number],
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/comments", {
+          params: { path: { key }, query: { branch: number } },
+        }),
+      ),
+  });
+}
 
 export function useAddComment(key: string) {
   const client = useQueryClient();

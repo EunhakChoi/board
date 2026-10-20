@@ -329,7 +329,12 @@ async function commentsCommand(
           ? "resolved"
           : "open";
       const on = str(args, "--on");
-      return notes.list(ctx, project(), { status, ...(on ? { on } : {}) });
+      const branch = branchFlag(str(args, "--branch"), ctx.locale);
+      return notes.list(ctx, project(), {
+        status,
+        ...(on ? { on } : {}),
+        ...(branch ? { branch } : {}),
+      });
     }
     case "show":
       await notes.showComment(
