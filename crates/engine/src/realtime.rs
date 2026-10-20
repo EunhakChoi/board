@@ -61,6 +61,7 @@ mod tests {
                 Some(crate::Import {
                     files: vec![file("a.txt", "a")],
                     source: "t".into(),
+                    commit: None,
                 }),
             )
             .unwrap();

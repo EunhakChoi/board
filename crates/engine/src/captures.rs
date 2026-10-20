@@ -251,10 +251,13 @@ impl Engine {
         let mut problems = Vec::new();
         for r in results {
             let known = stored.get(&format!("{}:{}", r.kind, r.target));
+            // A page can log the same problem twice (React renders twice in development).
             let mut own: Vec<String> = r
                 .issues
                 .into_iter()
                 .filter(|i| known.is_none_or(|k| !k.contains(i)))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
                 .collect();
             if own.is_empty() && r.ready.is_none() && known.is_none() {
                 own.push("never got ready".into());
@@ -591,6 +594,7 @@ mod tests {
                 file("web/src/api.ts", "api"),
             ],
             source: "test".into(),
+            commit: None,
         };
         engine
             .create_project(&Actor::Local, "shop", "Shop", Some(import))

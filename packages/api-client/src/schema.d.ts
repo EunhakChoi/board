@@ -448,6 +448,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** Where the project stands against the product repo */
+        get: operations["handoffStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/handoff/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /** The patch from a version (default the baseline) to the newest, for the product repo (admins) */
+        get: operations["exportHandoff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/versions/{number}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark this version (and every one before it) as in the product repo (admins) */
+        post: operations["markHandoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring the product repo's files in again as an import version (admins)
+         * @description The files (the whole imported scope) are laid on the baseline and joined into main, so merged work not handed off stays. charet's own `.charet/` files are kept. Files changed on both sides answer `clash`.
+         */
+        post: operations["updateImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{key}/versions/{number}/restore": {
         parameters: {
             query?: never;
@@ -1312,8 +1392,46 @@ export interface components {
             branch?: number;
             /** @description The version a restore version undid */
             restored?: number;
+            /** @description For an import, the product repo commit its files came from */
+            sourceCommit?: string;
+            /** @description For an import joined with work not handed off, the commit with only the repo's files */
+            sourceTree?: string;
+            handoff?: components["schemas"]["Handoff"];
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description The version (and every one before it) is in the product repo at this commit */
+        Handoff: {
+            commit: string;
+            actor: string;
+            at: string;
+        };
+        /** @description The newest version that matches a product repo commit */
+        Baseline: {
+            version: number;
+            /** @description Its commit in the project store */
+            commit: string;
+            repoCommit?: string;
+            /** @enum {string} */
+            kind: "import" | "handoff";
+        };
+        HandoffStatus: {
+            baseline?: components["schemas"]["Baseline"];
+            /** @description Versions after the baseline, oldest first */
+            pending: number[];
+            /** @description Product files main changed since the baseline (what a handoff carries) */
+            changed: components["schemas"]["Change"][];
+        };
+        Export: {
+            fromVersion: number;
+            toVersion: number;
+            from: string;
+            to: string;
+            /** @description The product repo commit the patch applies to */
+            repoCommit?: string;
+            changes: components["schemas"]["Change"][];
+            /** @description `git apply` input; empty when nothing changed */
+            patch: string;
         };
         Branch: {
             number: number;
@@ -1378,11 +1496,14 @@ export interface components {
         CreateProject: {
             key: string;
             title?: string;
-            import?: {
-                /** @description Where the files came from, shown on version 1 */
-                source: string;
-                files: components["schemas"]["FileInput"][];
-            };
+            import?: components["schemas"]["ImportInput"];
+        };
+        ImportInput: {
+            /** @description Where the files came from, shown on the version */
+            source: string;
+            /** @description The product repo commit the files came from */
+            commit?: string;
+            files: components["schemas"]["FileInput"][];
         };
     };
     responses: {
@@ -2339,6 +2460,122 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    handoffStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Baseline and what a handoff would carry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffStatus"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportHandoff: {
+        parameters: {
+            query?: {
+                since?: number;
+                /** @description Include charet's own files (`.charet/`, `charet.json`) */
+                withMocks?: boolean;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Export"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markHandoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The product repo commit that has it */
+                    commit: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The marked version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportInput"];
+            };
+        };
+        responses: {
+            /** @description The new (import) version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Clash"];
         };
     };
     restoreVersion: {

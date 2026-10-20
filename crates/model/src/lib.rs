@@ -111,7 +111,27 @@ pub struct Version {
     /// The version a `restore` version undid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restored: Option<u32>,
+    /// For an `import` version: the product repo commit its files came from, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_commit: Option<String>,
+    /// For an `import` joined with work not handed off yet: the store commit with exactly the
+    /// repo's files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_tree: Option<String>,
+    /// Set when an admin marked this version (and every one before it) as in the product repo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handoff: Option<Handoff>,
     pub created_at: String,
+}
+
+/// A version marked as in the product repo, at `commit` there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Handoff {
+    /// The product repo commit that has it.
+    pub commit: String,
+    pub actor: String,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

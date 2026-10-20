@@ -28,8 +28,17 @@ are in) and `--server <url>` (default: the checkout's server, else `CHARET_URL`,
 | `charet push [-m msg] [--merge]` | From a checkout of main: starts a branch (draft) titled `msg` with the changes and the checkout follows it. From a branch checkout: adds to it (fails if someone pushed to it first: `charet pull`, then push). `--merge` merges it at once and brings the checkout back to main |
 | `charet pull` | Updates the checkout to its branch's head or main (refuses with unpushed changes); a merged or archived branch hands the checkout back to main |
 | `charet dev` | Runs the app's vite dev server in the checkout |
-| `charet versions` · `charet diff <from> [to]` | Version list (kind push / merge / restore) · changed paths |
+| `charet versions` · `charet diff <from> [to]` | Version list (kind import / merge / restore) · changed paths |
 | `charet restore vN` | A new version undoing vN (clashes with later changes are refused) |
+
+## Product repo (admins)
+
+| Command | What it does |
+|---|---|
+| `charet handoff [status] -p <project>` | Baseline (last import or handoff, with its repo commit), the files main changed since then, and — run inside the product repo — the repo's own commits and uncommitted edits to the imported files since the baseline (drift). `charet status -p <project>` outside a checkout shows the same |
+| `charet handoff export [--since vN] [--with-mocks] [--out f]` | The patch of main since the baseline (or vN), for `git apply` in the product repo. Without `--out` the patch alone goes to stdout. `.charet/` and `charet.json` are left out unless `--with-mocks` |
+| `charet handoff mark vN [--commit sha]` | Records vN (and every version before it) as in the product repo at that commit (default: HEAD of the repo you run it in). The web tool shows it on Versions |
+| `charet import --update [path] -p <project> [--dry-run]` | Brings the product repo's files in again as an import version. They are laid on the baseline and joined into main, so merged work not handed off yet stays; `.charet/` stays as it is. A file both sides changed is refused |
 | `charet branches [--all]` | Drafts and branches in review (`--all`: merged, archived): `#n status author title [clash: files]` |
 | `charet branch [n]` | One branch: status, head, clash, link, changed files, history (defaults to the checkout's branch) |
 | `charet branch review [n]` | Asks the team to review a draft (author or admin) |

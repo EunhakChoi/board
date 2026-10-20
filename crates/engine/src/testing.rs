@@ -1,6 +1,7 @@
 //! In-memory ports for engine tests.
 
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
 use charet_model::{
@@ -490,6 +491,9 @@ impl Records for MemoryRecords {
             note: new.note.clone(),
             branch: new.branch,
             restored: new.restored,
+            source_commit: new.source_commit.clone(),
+            source_tree: new.source_tree.clone(),
+            handoff: None,
             created_at: String::new(),
         };
         versions.push((project.into(), version.clone()));
@@ -570,6 +574,27 @@ impl Records for MemoryRecords {
             .filter(|(p, n, _)| p == project && *n == number)
             .map(|(_, _, e)| e.clone())
             .collect())
+    }
+    fn mark_handoff(
+        &self,
+        project: &str,
+        number: u32,
+        commit: &str,
+        actor: &str,
+    ) -> Result<bool, StoreError> {
+        let mut versions = self.versions.lock().unwrap();
+        let found = versions
+            .iter_mut()
+            .find(|(p, v)| p == project && v.number == number);
+        Ok(found
+            .map(|(_, v)| {
+                v.handoff = Some(charet_model::Handoff {
+                    commit: commit.into(),
+                    actor: actor.into(),
+                    at: "now".into(),
+                });
+            })
+            .is_some())
     }
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError> {
         let mut found: Vec<_> = self
@@ -825,6 +850,22 @@ impl ProjectStore for MemoryStore {
     }
     fn archive(&self, _project: &str, commit: &str) -> Result<Vec<u8>, StoreError> {
         Ok(commit.as_bytes().to_vec())
+    }
+    /// One `<kind> <path>` line per change (enough for tests).
+    fn patch(
+        &self,
+        project: &str,
+        from: &str,
+        to: &str,
+        paths: &[String],
+    ) -> Result<Vec<u8>, StoreError> {
+        let mut out = String::new();
+        for change in self.diff(project, from, to)? {
+            if paths.is_empty() || paths.contains(&change.path) {
+                let _ = writeln!(out, "{:?} {}", change.kind, change.path);
+            }
+        }
+        Ok(out.into_bytes())
     }
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError> {
         let repos = self.0.lock().unwrap();
@@ -1225,6 +1266,8 @@ impl Engine {
                 note: message.to_owned(),
                 branch: None,
                 restored: None,
+                source_commit: None,
+                source_tree: None,
             },
         )?;
         self.ports.realtime.working(key, &actor.person(), false);

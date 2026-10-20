@@ -115,6 +115,25 @@ vite config, frame, project, mocks) in the checkout, push (with `--merge`) and c
 and lockfile stay exactly as in its repository. Follow `references/import.md` step by step — it
 covers getting the SDK, the files to write and the usual failures.
 
+## Workflow 5 · Hand changes to the product repo (admins)
+
+Merged versions live in charet until someone puts them in the product repo. Do it only when the
+user asks, and follow the repo's own rules (work branch, its checks, a PR — never push to its main).
+
+```bash
+cd <product repo>                            # on a fresh work branch
+charet handoff -p <project>                  # what is waiting, and whether the repo drifted
+charet handoff export -p <project> --out /tmp/charet.patch
+git apply /tmp/charet.patch                  # then the repo's checks, commit, PR
+charet handoff mark vN -p <project>          # after the PR is merged, at that commit (--commit sha)
+```
+
+- Drift first: if the repo changed the imported files since the baseline, `charet import --update -p
+  <project>` brings them in before you export, so the patch applies cleanly.
+- `git apply` fails: the repo moved on in the same lines. Import (`--update`) and export again rather
+  than editing the patch by hand.
+- Mark only what is really in the repo's main; the mark tells the team those versions are shipped.
+
 ## Understanding structure
 
 ```bash

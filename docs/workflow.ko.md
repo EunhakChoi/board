@@ -56,6 +56,23 @@ push ─▶ 임시 수정안 ─▶ 검토 중 ─▶ 채택 검사 ─▶ main 
 **Versions** 에 모든 버전 표시. 버전의 **Restore** (또는 `charet restore vN`) → 그 버전을 되돌리는
 새 버전 생성. 기록은 지우지 않음.
 
+## product repo
+
+charet 은 앱의 사본을 따로 가짐. 버전을 product repo 에 넣는 일 (반영) 과 repo 자체 변경을 다시
+들여오는 일 (가져오기) 은 관리자 CLI 로만 함. 웹 도구에는 결과만 표시.
+
+- **기준점**: repo commit 과 일치한다고 알려진 최신 버전 (마지막 가져오기, 또는 마지막으로 반영
+  표시한 버전).
+- **반영**: product repo 의 작업 branch 에서 `charet handoff export -p <project> --out p.patch` →
+  기준점 이후 `main` 변경 (`.charet/` · `charet.json` 제외) 저장. `git apply p.patch` → repo 검사 →
+  PR. merge 후 `charet handoff mark vN -p <project>` → vN 과 이전 버전 모두 그 commit 에 반영됨으로
+  기록. **Versions** 에 표시.
+- **drift**: repo 안에서 `charet handoff -p <project>` (또는 `charet status -p <project>`) → 기준점
+  이후 가져온 파일을 바꾼 repo commit · 미commit 변경 목록.
+- **다시 가져오기**: `charet import --update -p <project>` → repo 의 파일을 `import` 버전으로 가져옴.
+  기준점 위에 올린 뒤 `main` 과 합치므로 아직 반영 안 된 채택분은 유지. 양쪽에서 바뀐 파일은 거부.
+  열린 수정안은 채택 때처럼 자동으로 다시 맞춤.
+
 ## 설정
 
 | 설정 | 기본값 | |

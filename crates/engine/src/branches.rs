@@ -220,6 +220,8 @@ impl Engine {
                 note: branch.title.clone(),
                 branch: Some(number),
                 restored: None,
+                source_commit: None,
+                source_tree: None,
             },
         )?;
         branch.status = BranchStatus::Merged;
@@ -384,6 +386,8 @@ impl Engine {
                 note,
                 branch: None,
                 restored: Some(number),
+                source_commit: None,
+                source_tree: None,
             },
         )?;
         self.catch_up_all(actor, key)?;
@@ -435,7 +439,7 @@ impl Engine {
         Ok(branch)
     }
 
-    fn catch_up_all(&self, actor: &Actor, key: &str) -> Result<(), EngineError> {
+    pub(crate) fn catch_up_all(&self, actor: &Actor, key: &str) -> Result<(), EngineError> {
         for branch in self.ports.records.branches(key)? {
             if branch.status.active() {
                 self.catch_up_one(actor, key, branch)?;
@@ -622,6 +626,7 @@ mod tests {
                 Some(Import {
                     files: vec![file("a.txt", "1"), file("b.txt", "1")],
                     source: "local".into(),
+                    commit: None,
                 }),
             )
             .unwrap();

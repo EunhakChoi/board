@@ -12,6 +12,7 @@ import {
   unpack,
   writeState,
 } from "./checkout.ts";
+import { repoCommit } from "./handoff.ts";
 import { describeSource, listFiles, resolveScope } from "./scope.ts";
 
 export interface Context {
@@ -100,6 +101,7 @@ export async function importProject(ctx: Context, options: ImportOptions): Promi
   const files = listFiles(scope);
   const key = options.key ?? defaultKey(scope.app === "." ? scope.root : scope.app);
   const source = describeSource(scope.root);
+  const commit = repoCommit(scope.root);
   const charetJson = {
     source,
     app: scope.app,
@@ -131,7 +133,7 @@ export async function importProject(ctx: Context, options: ImportOptions): Promi
     body: {
       key,
       ...(options.title ? { title: options.title } : {}),
-      import: { source, files: payload },
+      import: { source, ...(commit ? { commit } : {}), files: payload },
     },
   });
   if (!data) fail(error, "import failed");

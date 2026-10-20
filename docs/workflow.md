@@ -58,6 +58,24 @@ author; clashes on other branches go to theirs.
 **Versions** lists every version. **Restore** on one (or `charet restore vN`) makes a new version
 that undoes it; history is never rewritten.
 
+## The product repo
+
+charet keeps its own copy of the app. Versions reach the product repo, and the repo's own changes
+come back, through an admin's CLI (the web tool only shows the result):
+
+- **Baseline**: the newest version known to match a repo commit (the last import, or the last
+  version marked as handed off).
+- **Hand off**: in the product repo, on a work branch, `charet handoff export -p <project> --out
+  p.patch` writes what `main` changed since the baseline (without `.charet/` and `charet.json`);
+  `git apply p.patch`, run the repo's checks and open a PR. Once it is merged,
+  `charet handoff mark vN -p <project>` records vN and every version before it as in the repo at that
+  commit. **Versions** shows the mark.
+- **Drift**: `charet handoff -p <project>` (or `charet status -p <project>`) run inside the repo
+  lists repo commits and uncommitted edits to the imported files since the baseline.
+- **Import again**: `charet import --update -p <project>` brings the repo's files in as an `import`
+  version. They are laid on the baseline and joined into `main`, so merged work not handed off yet
+  stays; a file changed on both sides is refused. Open branches catch up as after any merge.
+
 ## Settings
 
 | Setting | Default | |

@@ -249,6 +249,30 @@ impl ProjectStore for GitStore {
             .run(&["archive", "--format=tar.gz", commit], None)
     }
 
+    fn patch(
+        &self,
+        project: &str,
+        from: &str,
+        to: &str,
+        paths: &[String],
+    ) -> Result<Vec<u8>, StoreError> {
+        let mut args = vec![
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            from,
+            to,
+            "--",
+        ];
+        // Literal paths: no pathspec magic or globbing from file names.
+        let literal: Vec<String> = paths.iter().map(|p| format!(":(literal){p}")).collect();
+        args.extend(literal.iter().map(String::as_str));
+        self.git(project).run(&args, None)
+    }
+
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError> {
         let out = self.git(project).run(
             &["diff", "--name-status", "--no-renames", "-z", from, to],
@@ -592,6 +616,49 @@ mod tests {
 
         let archive = store.archive("web", &c2).unwrap();
         assert_eq!(&archive[..2], &[0x1f, 0x8b], "gzip magic");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn patches_only_the_paths_asked_for_and_detached_commits() {
+        let (store, root) = store("patch");
+        store.create("web").unwrap();
+        let c1 = store
+            .commit_main(
+                "web",
+                None,
+                &[write("src/a.tsx", "a1\n"), write(".charet/m.ts", "m1\n")],
+                &author(),
+                "first",
+            )
+            .unwrap()
+            .unwrap();
+        let c2 = store
+            .commit_detached(
+                "web",
+                &c1,
+                &[write("src/a.tsx", "a2\n"), write(".charet/m.ts", "m2\n")],
+                &author(),
+                "second",
+            )
+            .unwrap();
+        assert_eq!(
+            store.head("web").unwrap(),
+            Some(c1.clone()),
+            "no line moved"
+        );
+        let patch = String::from_utf8(
+            store
+                .patch("web", &c1, &c2, &["src/a.tsx".to_owned()])
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            patch.starts_with("diff --git a/src/a.tsx b/src/a.tsx\n"),
+            "{patch}"
+        );
+        assert!(patch.contains("-a1\n+a2\n"), "{patch}");
+        assert!(!patch.contains(".charet"), "{patch}");
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -8,6 +8,7 @@ import { findCheckout } from "./checkout.ts";
 import * as commands from "./commands.ts";
 import * as notes from "./comments.ts";
 import { type Theme, themesOf } from "./data.ts";
+import * as handoff from "./handoff.ts";
 import * as inbox from "./inbox.ts";
 import type { RenderOptions } from "./render.ts";
 import * as renders from "./render.ts";
@@ -44,6 +45,8 @@ const VALUE_FLAGS = new Set([
   "--on",
   "--token",
   "--branch",
+  "--since",
+  "--commit",
 ]);
 const LIST_FLAGS = new Set(["--include"]);
 
@@ -168,7 +171,33 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       case "dev":
         return await system.dev(ctx);
       case "status":
+        // Outside a checkout, `-p` asks how the project stands against the product repo here.
+        if (!findCheckout(cwd) && str(args, "-p", "--project")) {
+          return await handoff.status(ctx, project());
+        }
         return await system.status(ctx);
+      case "handoff":
+        switch (rest[0]) {
+          case undefined:
+          case "status":
+            return await handoff.status(ctx, project());
+          case "export": {
+            const since = str(args, "--since");
+            const out = str(args, "--out");
+            await handoff.exportPatch(ctx, project(), {
+              withMocks: args.flags.has("--with-mocks"),
+              ...(since ? { since } : {}),
+              ...(out ? { out } : {}),
+            });
+            break;
+          }
+          case "mark":
+            await handoff.mark(ctx, project(), rest[1], str(args, "--commit"));
+            break;
+          default:
+            throw new commands.CliError(t("cli.usage.handoff", {}, locale));
+        }
+        break;
       case "init":
         return await system.init(
           ctx,
@@ -246,6 +275,10 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
         await commands.deleteProject(ctx, rest[0], args.flags.has("--yes"));
         break;
       case "import":
+        if (args.flags.has("--update")) {
+          await handoff.updateImport(ctx, project(), rest[0] ?? ".", args.flags.has("--dry-run"));
+          break;
+        }
         await commands.importProject(ctx, {
           path: rest[0] ?? ".",
           ...(key ? { key } : {}),

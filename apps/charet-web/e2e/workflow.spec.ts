@@ -99,4 +99,18 @@ test("a branch is compared, merged and restored", async ({ page, request }) => {
     await request.get(`${base()}/api/projects/demo/file?path=${encodeURIComponent(FILE)}`)
   ).text();
   expect(restored).toBe(source);
+
+  // An admin hands the merge off to the product repo: Versions shows where it is.
+  const merge = (
+    await (await request.get(`${base()}/api/projects/demo/versions`)).json()
+  ).versions.find((v: { kind: string }) => v.kind === "merge");
+  const marked = await request.post(
+    `${base()}/api/projects/demo/versions/${merge.number}/handoff`,
+    {
+      data: { commit: "1234567abcdef" },
+    },
+  );
+  expect(marked.status()).toBe(200);
+  await page.reload();
+  await expect(page.getByText("In the repo · 1234567")).toBeVisible();
 });

@@ -33,6 +33,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0012_branches.sql"),
     include_str!("migrations/0013_branch_comments.sql"),
     include_str!("migrations/0014_merge_guards.sql"),
+    include_str!("migrations/0015_handoff.sql"),
 ];
 
 /// The charet database: one SQLite file in WAL mode.
@@ -227,9 +228,11 @@ impl Records for Db {
         // One statement picks the next number, so concurrent writers cannot collide.
         conn.query_row(
             &format!(
-                "INSERT INTO versions (project, number, git_commit, kind, actor, note, branch, restored)
+                "INSERT INTO versions
+                   (project, number, git_commit, kind, actor, note, branch, restored, source_commit,
+                    source_tree)
                  VALUES (?1, (SELECT COALESCE(MAX(number), 0) + 1 FROM versions WHERE project = ?1),
-                         ?2, ?3, ?4, ?5, ?6, ?7)
+                         ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  RETURNING {VERSION_FIELDS}"
             ),
             params![
@@ -239,7 +242,9 @@ impl Records for Db {
                 version.actor,
                 version.note,
                 version.branch,
-                version.restored
+                version.restored,
+                version.source_commit,
+                version.source_tree
             ],
             version_row,
         )
@@ -275,6 +280,25 @@ impl Records for Db {
         self.branch_event_rows(project, number)
     }
 
+    fn mark_handoff(
+        &self,
+        project: &str,
+        number: u32,
+        commit: &str,
+        actor: &str,
+    ) -> Result<bool, StoreError> {
+        let changed = self
+            .lock()?
+            .execute(
+                "UPDATE versions SET handoff_commit = ?3, handoff_actor = ?4,
+                   handoff_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE project = ?1 AND number = ?2",
+                params![project, number, commit, actor],
+            )
+            .map_err(err)?;
+        Ok(changed > 0)
+    }
+
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError> {
         let conn = self.lock()?;
         let mut statement = conn
@@ -290,7 +314,8 @@ impl Records for Db {
 }
 
 const PROJECT_COLUMNS: &str = "SELECT key, title, visibility, origin, created_at FROM projects";
-const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at, branch, restored";
+const VERSION_FIELDS: &str = "number, git_commit, kind, actor, note, created_at, branch, restored, \
+     source_commit, handoff_commit, handoff_actor, handoff_at, source_tree";
 
 fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     Ok(Project {
@@ -312,6 +337,16 @@ fn version_row(row: &Row<'_>) -> rusqlite::Result<Version> {
         created_at: row.get(5)?,
         branch: row.get(6)?,
         restored: row.get(7)?,
+        source_commit: row.get(8)?,
+        source_tree: row.get(12)?,
+        handoff: match row.get::<_, Option<String>>(9)? {
+            Some(commit) => Some(charet_model::Handoff {
+                commit,
+                actor: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                at: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+            }),
+            None => None,
+        },
     })
 }
 
@@ -411,7 +446,34 @@ mod tests {
             note: note.into(),
             branch: None,
             restored: None,
+            source_commit: None,
+            source_tree: None,
         }
+    }
+
+    #[test]
+    fn handoff_marks_and_import_sources() {
+        let db = Db::memory().unwrap();
+        db.insert_project(&project("a")).unwrap();
+        let v1 = db
+            .add_version(
+                "a",
+                &NewVersion {
+                    source_commit: Some("abc123".into()),
+                    ..nv("c1", VersionKind::Import, "first")
+                },
+            )
+            .unwrap();
+        assert_eq!(v1.source_commit.as_deref(), Some("abc123"));
+        assert_eq!(v1.handoff, None);
+        assert!(db.mark_handoff("a", 1, "def456", "Ann").unwrap());
+        assert!(!db.mark_handoff("a", 9, "def456", "Ann").unwrap());
+        let marked = db.versions("a").unwrap().remove(0).handoff.unwrap();
+        assert_eq!(
+            (marked.commit.as_str(), marked.actor.as_str()),
+            ("def456", "Ann")
+        );
+        assert!(marked.at.starts_with("20"), "{}", marked.at);
     }
 
     #[test]
