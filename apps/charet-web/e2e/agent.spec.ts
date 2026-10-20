@@ -36,7 +36,12 @@ test("asking the agent from a screen makes a draft the team can review", async (
     .fill("write notes/agent.txt: from the web\nsay I added a note.");
   await page.getByRole("button", { name: "Ask" }).click();
   await expect(page.getByText("I added a note.", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Done", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByTestId(/^agent-run-/)
+      .getByText("Done", { exact: true })
+      .first(),
+  ).toBeVisible();
 
   const open = page.getByRole("link", { name: /Open draft #\d+/ });
   await open.click();
