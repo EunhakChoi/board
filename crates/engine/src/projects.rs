@@ -11,6 +11,8 @@ pub struct Import {
     pub files: Vec<FileChange>,
     /// Shown on version 1, e.g. `git@host:org/repo.git @ 1a2b3c4`.
     pub source: String,
+    /// The product repo commit the files came from, when known.
+    pub commit: Option<String>,
 }
 
 /// A project's files at one commit.
@@ -43,16 +45,17 @@ impl Engine {
         } else {
             title.trim()
         };
-        let (origin, files, note) = match import {
+        let (origin, files, note, source_commit) = match import {
             Some(import) => {
                 check_files(&import.files)?;
                 (
                     Origin::Import,
                     import.files,
                     format!("Imported from {}", import.source),
+                    import.commit,
                 )
             }
-            None => (Origin::Empty, Vec::new(), "Created".to_owned()),
+            None => (Origin::Empty, Vec::new(), "Created".to_owned(), None),
         };
         let project = Project {
             key: key.to_owned(),
@@ -75,7 +78,20 @@ impl Engine {
         } else {
             VersionKind::Initial
         };
-        let version = self.record(key, &commit, kind, actor, &note)?;
+        let version = self.record_version(
+            key,
+            actor,
+            &NewVersion {
+                commit,
+                kind,
+                actor: actor.name().to_owned(),
+                note,
+                branch: None,
+                restored: None,
+                source_commit,
+                source_tree: None,
+            },
+        )?;
         let project = self
             .ports
             .records
@@ -246,28 +262,6 @@ impl Engine {
             .ok_or(EngineError::NotFound("revision"))
     }
 
-    fn record(
-        &self,
-        key: &str,
-        commit: &str,
-        kind: VersionKind,
-        actor: &Actor,
-        note: &str,
-    ) -> Result<Version, EngineError> {
-        self.record_version(
-            key,
-            actor,
-            &NewVersion {
-                commit: commit.to_owned(),
-                kind,
-                actor: actor.name().to_owned(),
-                note: note.to_owned(),
-                branch: None,
-                restored: None,
-            },
-        )
-    }
-
     /// Records a version of `main`, tags it and tells everyone.
     pub(crate) fn record_version(
         &self,
@@ -368,6 +362,7 @@ mod tests {
         let import = Import {
             files: vec![file("a.txt", "1")],
             source: "local".into(),
+            commit: None,
         };
         let (_, v1) = engine
             .create_project(&Actor::Local, "web", "", Some(import))
@@ -438,6 +433,7 @@ mod tests {
         let import = Import {
             files: vec![file("a.txt", "1")],
             source: "local".into(),
+            commit: None,
         };
         engine
             .create_project(&Actor::Local, "web", "", Some(import))

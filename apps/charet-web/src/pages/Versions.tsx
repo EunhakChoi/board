@@ -1,4 +1,4 @@
-import { GitBranch, Undo2 } from "lucide-react";
+import { GitBranch, PackageCheck, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,11 @@ export function Versions() {
   // Restoring asks once more on the same row before it runs.
   const [asking, setAsking] = useState<number>();
   if (!versions.data) return <Empty text={t("web.common.loading")} />;
+  // Marking a version handed off covers every version before it.
+  const handedOff = Math.max(
+    0,
+    ...versions.data.versions.filter((v) => v.handoff).map((v) => v.number),
+  );
   return (
     <div className="flex-1 overflow-auto p-6">
       <h1 className="mb-4 text-lg font-semibold">{t("web.versions.title")}</h1>
@@ -51,6 +56,24 @@ export function Versions() {
                 </Link>
               )}
             </span>
+            {version.handoff ? (
+              <Badge
+                variant="outline"
+                title={t("web.versions.handoffBy", {
+                  name: version.handoff.actor,
+                  when: when(version.handoff.at, locale),
+                })}
+              >
+                <PackageCheck className="size-3 text-success" />
+                {t("web.versions.handoff", { commit: version.handoff.commit.slice(0, 7) })}
+              </Badge>
+            ) : (
+              version.number < handedOff && (
+                <PackageCheck className="size-4 text-success" aria-label={t("web.versions.inRepo")}>
+                  <title>{t("web.versions.inRepo")}</title>
+                </PackageCheck>
+              )
+            )}
             <span className="text-muted-foreground">{version.actor}</span>
             <span className="font-mono text-xs text-muted-foreground">
               {version.commit.slice(0, 7)}

@@ -90,8 +90,11 @@ pub struct CreateProject {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportInput {
-    source: String,
-    files: Vec<FileInput>,
+    pub(crate) source: String,
+    /// The product repo commit the files came from.
+    #[serde(default)]
+    pub(crate) commit: Option<String>,
+    pub(crate) files: Vec<FileInput>,
 }
 
 #[derive(Serialize)]
@@ -106,25 +109,29 @@ pub async fn create(
     Json(body): Json<CreateProject>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
     let import = match body.import {
-        Some(import) => {
-            let files = decode(import.files)?;
-            if files.iter().any(|f| f.content.is_none()) {
-                return Err(ApiError::new(
-                    StatusCode::BAD_REQUEST,
-                    "invalid",
-                    "every imported file needs content",
-                ));
-            }
-            Some(Import {
-                files,
-                source: import.source,
-            })
-        }
+        Some(import) => Some(imported(import)?),
         None => None,
     };
     let (project, version) =
         blocking(move || engine.create_project(&actor, &body.key, &body.title, import)).await?;
     Ok((StatusCode::CREATED, Json(Created { project, version })))
+}
+
+/// An import's files; every one needs content.
+pub(crate) fn imported(import: ImportInput) -> Result<Import, ApiError> {
+    let files = decode(import.files)?;
+    if files.iter().any(|f| f.content.is_none()) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "every imported file needs content",
+        ));
+    }
+    Ok(Import {
+        files,
+        source: import.source,
+        commit: import.commit.filter(|c| !c.trim().is_empty()),
+    })
 }
 
 pub async fn get(

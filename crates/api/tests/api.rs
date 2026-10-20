@@ -1394,3 +1394,84 @@ async fn the_remote_door_goes_by_token_and_the_local_door_is_the_owner() {
     let (status, _) = remote(&engine, me()).await;
     assert_eq!(status, StatusCode::OK, "the remote door stays open");
 }
+
+#[tokio::test]
+async fn handoff_export_mark_and_import_again() {
+    let engine = engine(true);
+    let import = json!({ "key": "web", "import": { "source": "git@x:web.git", "commit": "aaaaaaa",
+    "files": [
+        { "path": "app/src/a.ts", "content": b64("a1\n") },
+        { "path": "app/.charet/mocks.ts", "content": b64("m1\n") }
+    ]}});
+    let (status, created) = post(engine.clone(), "/api/projects", &import).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["version"]["sourceCommit"], "aaaaaaa");
+    let v1 = created["version"]["commit"].as_str().unwrap().to_owned();
+
+    let proposal = json!({ "title": "edit", "from": v1, "files": [
+        { "path": "app/src/a.ts", "content": b64("a2\n") },
+        { "path": "app/.charet/mocks.ts", "content": b64("m2\n") }
+    ]});
+    post(engine.clone(), "/api/projects/web/branches", &proposal).await;
+    let (status, v2) = post(
+        engine.clone(),
+        "/api/projects/web/branches/1/merge",
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{v2}");
+
+    let (_, state) = call(engine.clone(), "/api/projects/web/handoff").await;
+    assert_eq!(state["baseline"]["version"], 1);
+    assert_eq!(state["baseline"]["repoCommit"], "aaaaaaa");
+    assert_eq!(state["pending"], json!([2]));
+    assert_eq!(
+        state["changed"],
+        json!([{ "path": "app/src/a.ts", "kind": "modified" }])
+    );
+
+    let (status, export) = call(engine.clone(), "/api/projects/web/handoff/export").await;
+    assert_eq!(status, StatusCode::OK, "{export}");
+    let patch = export["patch"].as_str().unwrap();
+    assert!(patch.contains("+a2"), "{patch}");
+    assert!(!patch.contains(".charet"), "{patch}");
+    let (_, mocks) = call(
+        engine.clone(),
+        "/api/projects/web/handoff/export?withMocks=true",
+    )
+    .await;
+    assert!(
+        mocks["patch"]
+            .as_str()
+            .unwrap()
+            .contains(".charet/mocks.ts")
+    );
+
+    let (status, marked) = post(
+        engine.clone(),
+        "/api/projects/web/versions/2/handoff",
+        &json!({ "commit": "bbbbbbb" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{marked}");
+    assert_eq!(marked["handoff"]["commit"], "bbbbbbb");
+
+    let again = json!({ "source": "git@x:web.git", "commit": "ccccccc", "files": [
+        { "path": "app/src/a.ts", "content": b64("a3\n") }
+    ]});
+    let (status, v3) = post(engine.clone(), "/api/projects/web/import", &again).await;
+    assert_eq!(status, StatusCode::CREATED, "{v3}");
+    assert_eq!(
+        (v3["number"].as_u64(), v3["kind"].as_str()),
+        (Some(3), Some("import"))
+    );
+    // charet's own files stay as they were.
+    let (_, kept, _) = send(
+        engine.clone(),
+        Request::get("/api/projects/web/file?path=app/.charet/mocks.ts")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(&kept[..], b"m2\n");
+}

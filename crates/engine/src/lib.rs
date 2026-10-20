@@ -6,6 +6,7 @@ mod captures;
 mod comments;
 mod error;
 mod guards;
+mod handoff;
 mod members;
 mod notices;
 pub mod policy;
@@ -24,6 +25,7 @@ pub use branches::BranchDetail;
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
 pub use comments::{At, CommentFilter};
 pub use error::EngineError;
+pub use handoff::{Baseline, Export, HandoffStatus, charet_only};
 pub use members::{
     MemberChange, SESSION_SECS, SessionState, SignedIn, new_visitor_id, visitor_name,
 };

@@ -45,6 +45,15 @@ pub trait Records: Send + Sync {
     fn branch_events(&self, project: &str, number: u32) -> Result<Vec<BranchEvent>, StoreError>;
     /// Newest first.
     fn versions(&self, project: &str) -> Result<Vec<Version>, StoreError>;
+    /// Marks version `number` as in the product repo at `commit`. False when there is no such
+    /// version.
+    fn mark_handoff(
+        &self,
+        project: &str,
+        number: u32,
+        commit: &str,
+        actor: &str,
+    ) -> Result<bool, StoreError>;
     /// Removes a project with its versions, captures and comments. False when there was none.
     fn delete_project(&self, key: &str) -> Result<bool, StoreError>;
     /// Renames a project and sets who can see it.
@@ -70,6 +79,10 @@ pub struct NewVersion {
     pub note: String,
     pub branch: Option<u32>,
     pub restored: Option<u32>,
+    /// For an import: the product repo commit.
+    pub source_commit: Option<String>,
+    /// For an import joined with other work: the commit with exactly the repo's files.
+    pub source_tree: Option<String>,
 }
 
 /// A branch to record.
@@ -206,6 +219,15 @@ pub trait ProjectStore: Send + Sync {
     fn read(&self, project: &str, commit: &str, path: &str) -> Result<Option<Vec<u8>>, StoreError>;
     /// The files of `commit` as a gzipped tar.
     fn archive(&self, project: &str, commit: &str) -> Result<Vec<u8>, StoreError>;
+    /// A patch (`git apply` input, binary-safe) from `from` to `to`, limited to `paths` (all when
+    /// empty).
+    fn patch(
+        &self,
+        project: &str,
+        from: &str,
+        to: &str,
+        paths: &[String],
+    ) -> Result<Vec<u8>, StoreError>;
     /// Paths that differ from `from` to `to`.
     fn diff(&self, project: &str, from: &str, to: &str) -> Result<Vec<Change>, StoreError>;
 }

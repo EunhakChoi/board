@@ -156,7 +156,7 @@ export function resolveScope(appPath: string, include: string[] = []): Scope {
     }
   }
   for (const extra of include) {
-    const rel = toPosix(relative(root, resolve(extra)));
+    const rel = toPosix(relative(root, resolve(extra))) || ".";
     if (rel.startsWith("..")) throw new Error(`${extra} is outside the workspace ${root}`);
     if (!packages.includes(rel)) packages.push(rel);
   }

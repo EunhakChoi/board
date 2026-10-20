@@ -315,6 +315,7 @@ mod tests {
                         file("web/src/empty.tsx", "empty"),
                     ],
                     source: "test".into(),
+                    commit: None,
                 }),
             )
             .unwrap();
@@ -445,7 +446,9 @@ mod tests {
             Some(vec!["screen:list".to_owned()])
         );
 
-        fakes.renderer.set_issues("list", &["console: boom"]);
+        fakes
+            .renderer
+            .set_issues("list", &["console: boom", "console: boom"]);
         assert!(matches!(
             engine.merge_branch(&ann(), "shop", 1),
             Err(EngineError::Pending(_))

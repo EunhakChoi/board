@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -260,4 +260,68 @@ test("init creates a project from a template and checks it out", async () => {
   assert.ok(existsSync(join(dir, "templates/recommended/.charet/project.tsx")));
   assert.match((await charet(["status"], dir)).out, /changes {2}0$/);
   assert.match((await charet(["init", "x", "--template", "nope"])).err, /No template called nope/);
+});
+
+test("hand off to the product repo, then import its own changes", async () => {
+  const repo = join(work, "product");
+  const sh = (...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: repo,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    })
+      .toString()
+      .trim();
+  write(repo, {
+    "package.json": JSON.stringify({ name: "shop" }),
+    "src/page.tsx": "export const title = 'one';\n",
+    "src/list.tsx": "export const rows = 1;\n",
+  });
+  sh("init", "-q", "-b", "main");
+  sh("add", ".");
+  sh("commit", "-qm", "start");
+  const start = sh("rev-parse", "HEAD");
+  assert.equal((await charet(["import", repo, "--key", "shop"])).code, 0);
+  const first = await charet(["status", "-p", "shop"], repo);
+  assert.match(first.out, /^baseline {2}v1 import · repo /m);
+  assert.match(first.out, /nothing to hand off/);
+  assert.match(first.out, /^drift {5}none/m);
+
+  // A change merged in charet (and a mock, which stays in charet).
+  const c = join(work, "shop-checkout");
+  await charet(["checkout", "shop", c]);
+  write(c, { "src/page.tsx": "export const title = 'two';\n", ".charet/mocks.ts": "export {};\n" });
+  assert.equal((await charet(["push", "-m", "Title", "--merge"], c)).code, 0);
+  assert.match((await charet(["handoff", "-p", "shop"], repo)).out, /to hand off: 1 file\(s\)/);
+
+  const patch = join(work, "shop.patch");
+  const exported = await charet(["handoff", "export", "-p", "shop", "--out", patch], repo);
+  assert.equal(exported.code, 0, exported.err);
+  assert.match(exported.out, /from v1 to v2 \(1 file\(s\)/);
+  assert.doesNotMatch(readFileSync(patch, "utf8"), /\.charet/);
+  sh("apply", patch);
+  sh("commit", "-qam", "From charet");
+  assert.equal(readFileSync(join(repo, "src/page.tsx"), "utf8"), "export const title = 'two';\n");
+  const marked = await charet(["handoff", "mark", "v2", "-p", "shop"], repo);
+  assert.equal(marked.code, 0, marked.err);
+  assert.match(marked.out, /Marked v2/);
+  assert.match((await charet(["handoff", "-p", "shop"], repo)).out, /baseline {2}v2 handoff/);
+
+  // Someone changes the repo directly: drift, then import it.
+  write(repo, { "src/list.tsx": "export const rows = 2;\n" });
+  sh("commit", "-qam", "More rows");
+  const drift = await charet(["status", "-p", "shop"], repo);
+  assert.match(drift.out, /1 commit\(s\), 0 uncommitted/);
+  assert.match(drift.out, /More rows/);
+  const updated = await charet(["import", "--update", "-p", "shop"], repo);
+  assert.equal(updated.code, 0, updated.err);
+  assert.match(updated.out, /as version 3/);
+  assert.match((await charet(["status", "-p", "shop"], repo)).out, /^drift {5}none/m);
+  assert.match((await charet(["versions", "-p", "shop"])).out, /^v3\timport/m);
+  assert.notEqual(start, sh("rev-parse", "HEAD"));
 });

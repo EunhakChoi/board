@@ -8,6 +8,7 @@ mod browse;
 mod captures;
 mod comments;
 mod error;
+mod handoff;
 mod members;
 mod notices;
 mod preview;
@@ -65,6 +66,10 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/projects/{key}/checkout"),
     ("get", "/api/projects/{key}/versions"),
     ("post", "/api/projects/{key}/versions/{number}/restore"),
+    ("post", "/api/projects/{key}/versions/{number}/handoff"),
+    ("get", "/api/projects/{key}/handoff"),
+    ("get", "/api/projects/{key}/handoff/export"),
+    ("post", "/api/projects/{key}/import"),
     ("get", "/api/projects/{key}/branches"),
     ("post", "/api/projects/{key}/branches"),
     ("get", "/api/projects/{key}/branches/{number}"),
@@ -153,6 +158,7 @@ pub fn remote_app(engine: Engine, web_dir: Option<std::path::PathBuf>) -> Router
 fn routes() -> Router<Engine> {
     Router::new()
         .merge(branches::routes())
+        .merge(handoff::routes())
         .route("/api/health", get(health))
         .route("/api/version", get(version))
         .route("/api/system", get(system))

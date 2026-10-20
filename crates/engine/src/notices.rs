@@ -556,6 +556,7 @@ mod tests {
                 Some(Import {
                     files: vec![file("a.txt", "a")],
                     source: "t".into(),
+                    commit: None,
                 }),
             )
             .unwrap();

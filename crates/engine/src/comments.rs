@@ -549,6 +549,7 @@ mod tests {
         let import = crate::Import {
             files: vec![file("src/list.tsx", "v1")],
             source: "test".into(),
+            commit: None,
         };
         engine
             .create_project(&Actor::Local, "shop", "Shop", Some(import))

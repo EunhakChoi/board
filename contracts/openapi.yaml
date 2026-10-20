@@ -18,6 +18,7 @@ tags:
   - name: branches
   - name: captures
   - name: comments
+  - name: handoff
   - name: inbox
   - name: settings
 paths:
@@ -732,6 +733,125 @@ paths:
                       $ref: "#/components/schemas/Version"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/handoff:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [handoff]
+      operationId: handoffStatus
+      summary: Where the project stands against the product repo
+      responses:
+        "200":
+          description: Baseline and what a handoff would carry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffStatus"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/handoff/export:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [handoff]
+      operationId: exportHandoff
+      summary: The patch from a version (default the baseline) to the newest, for the product repo (admins)
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: withMocks
+          in: query
+          description: Include charet's own files (`.charet/`, `charet.json`)
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Export"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/versions/{number}/handoff:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - name: number
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      tags: [handoff]
+      operationId: markHandoff
+      summary: Mark this version (and every one before it) as in the product repo (admins)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commit]
+              additionalProperties: false
+              properties:
+                commit:
+                  type: string
+                  description: The product repo commit that has it
+      responses:
+        "200":
+          description: The marked version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/import:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [handoff]
+      operationId: updateImport
+      summary: Bring the product repo's files in again as an import version (admins)
+      description: >-
+        The files (the whole imported scope) are laid on the baseline and joined into main, so
+        merged work not handed off stays. charet's own `.charet/` files are kept. Files changed on
+        both sides answer `clash`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInput"
+      responses:
+        "201":
+          description: The new (import) version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Clash"
   /api/projects/{key}/versions/{number}/restore:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -2286,9 +2406,81 @@ components:
         restored:
           type: integer
           description: The version a restore version undid
+        sourceCommit:
+          type: string
+          description: For an import, the product repo commit its files came from
+        sourceTree:
+          type: string
+          description: For an import joined with work not handed off, the commit with only the repo's files
+        handoff:
+          $ref: "#/components/schemas/Handoff"
         createdAt:
           type: string
           format: date-time
+    Handoff:
+      type: object
+      description: The version (and every one before it) is in the product repo at this commit
+      required: [commit, actor, at]
+      properties:
+        commit:
+          type: string
+        actor:
+          type: string
+        at:
+          type: string
+    Baseline:
+      type: object
+      description: The newest version that matches a product repo commit
+      required: [version, commit, kind]
+      properties:
+        version:
+          type: integer
+        commit:
+          type: string
+          description: Its commit in the project store
+        repoCommit:
+          type: string
+        kind:
+          type: string
+          enum: [import, handoff]
+    HandoffStatus:
+      type: object
+      required: [pending, changed]
+      properties:
+        baseline:
+          $ref: "#/components/schemas/Baseline"
+        pending:
+          type: array
+          items:
+            type: integer
+          description: Versions after the baseline, oldest first
+        changed:
+          type: array
+          items:
+            $ref: "#/components/schemas/Change"
+          description: Product files main changed since the baseline (what a handoff carries)
+    Export:
+      type: object
+      required: [fromVersion, toVersion, from, to, changes, patch]
+      properties:
+        fromVersion:
+          type: integer
+        toVersion:
+          type: integer
+        from:
+          type: string
+        to:
+          type: string
+        repoCommit:
+          type: string
+          description: The product repo commit the patch applies to
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Change"
+        patch:
+          type: string
+          description: "`git apply` input; empty when nothing changed"
     Branch:
       type: object
       required: [number, title, author, status, base, head, conflicts, createdAt, updatedAt]
@@ -2423,14 +2615,19 @@ components:
         title:
           type: string
         import:
-          type: object
-          required: [source, files]
-          additionalProperties: false
-          properties:
-            source:
-              type: string
-              description: Where the files came from, shown on version 1
-            files:
-              type: array
-              items:
-                $ref: "#/components/schemas/FileInput"
+          $ref: "#/components/schemas/ImportInput"
+    ImportInput:
+      type: object
+      required: [source, files]
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+          description: Where the files came from, shown on the version
+        commit:
+          type: string
+          description: The product repo commit the files came from
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileInput"
