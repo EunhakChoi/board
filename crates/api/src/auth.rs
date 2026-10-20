@@ -225,7 +225,7 @@ pub async fn me(
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "token_required",
-            "This charet needs a token; ask an admin for one",
+            "This server needs a token; ask an admin for one",
         ));
     };
     let mut response = Json(Me::new(actor, local)).into_response();

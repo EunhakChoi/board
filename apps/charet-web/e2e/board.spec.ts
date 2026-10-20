@@ -4,7 +4,7 @@ const base = () => process.env.CHARET_E2E_URL ?? "";
 
 test.describe.configure({ mode: "serial" });
 
-test("captures screens onto the charet", async ({ page }) => {
+test("captures screens onto the board", async ({ page }) => {
   await page.goto(`${base()}/`);
   await page.getByRole("link", { name: /demo/ }).click();
   await expect(page).toHaveURL(/\/p\/demo\/screens$/);

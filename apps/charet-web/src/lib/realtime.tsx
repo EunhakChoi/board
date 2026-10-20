@@ -32,7 +32,7 @@ export interface Presence {
   cursor?: { x: number; y: number } | null;
   /** The element they picked on a screen, in the capture's pixels. */
   selection?: { x: number; y: number; w: number; h: number } | null;
-  /** Pan and zoom of a charet view. */
+  /** Pan and zoom of a board view. */
   viewport?: { x: number; y: number; zoom: number } | null;
   /** A short message shown next to their cursor. */
   chat?: string | null;

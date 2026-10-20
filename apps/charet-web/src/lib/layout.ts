@@ -1,4 +1,4 @@
-// Pure layout math for the charet: where screens sit, how they connect, how the view fits.
+// Pure layout math for the board: where screens sit, how they connect, how the view fits.
 
 export interface Size {
   w: number;
@@ -16,7 +16,7 @@ export interface Placed<T> extends Box {
   item: T;
 }
 
-/** Thumbnail height on the charet; widths follow each screen's aspect ratio. */
+/** Thumbnail height on the board; widths follow each screen's aspect ratio. */
 export const CARD_HEIGHT = 220;
 export const CARD_GAP = 56;
 export const ROW_GAP = 96;

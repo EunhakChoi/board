@@ -62,7 +62,7 @@ test("an admin adds a member whose link signs them in; a second browser signs th
   await expect(phone.getByRole("button", { name: "Enter token" })).toBeVisible();
 });
 
-test("with visitors turned off the charet asks for a token", async ({ browser }) => {
+test("with visitors turned off the server asks for a token", async ({ browser }) => {
   const admin = await (await browser.newContext()).newPage();
   await enter(admin, adminToken());
   await admin.goto(`${base()}/team`);
@@ -72,7 +72,7 @@ test("with visitors turned off the charet asks for a token", async ({ browser })
   try {
     const outsider = await (await browser.newContext()).newPage();
     await outsider.goto(`${base()}/`);
-    await expect(outsider.getByText("This charet needs a token")).toBeVisible();
+    await expect(outsider.getByText("This server needs a token")).toBeVisible();
     const viewer = await addMember(admin, "Lee", "viewer");
     await outsider.getByRole("textbox", { name: "Token" }).fill(viewer);
     await outsider.getByRole("button", { name: "Sign in" }).click();
