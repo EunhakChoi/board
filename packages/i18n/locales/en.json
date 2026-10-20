@@ -7,7 +7,7 @@
   "cli.import.plan": "Would import {count} files as project {key} from {source}:",
   "cli.handoff.noBaseline": "none (not imported from a product repo)",
   "cli.handoff.nothing": "nothing to hand off",
-  "cli.handoff.pending": "to hand off: {files} file(s) (versions after the baseline: {versions})",
+  "cli.handoff.pending": "to hand off: {files} file(s) (versions not in the repo yet: {versions})",
   "cli.handoff.noRepo": "not found here; run this inside the product repo to see its changes",
   "cli.handoff.noRepoCommit": "unknown: the baseline has no repo commit (run `charet import --update` once)",
   "cli.handoff.unknownCommit": "unknown: {commit} is not in this repository (fetch it, or check the clone)",

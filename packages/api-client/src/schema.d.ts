@@ -1417,7 +1417,7 @@ export interface components {
         };
         HandoffStatus: {
             baseline?: components["schemas"]["Baseline"];
-            /** @description Versions after the baseline, oldest first */
+            /** @description Versions whose changes the repo does not have yet, oldest first (imports left out) */
             pending: number[];
             /** @description Product files main changed since the baseline (what a handoff carries) */
             changed: components["schemas"]["Change"][];
