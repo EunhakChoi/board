@@ -20,6 +20,7 @@ const TABS = [
   ["screens", "web.nav.screens"],
   ["flows", "web.nav.flows"],
   ["components", "web.nav.components"],
+  ["branches", "web.nav.branches"],
   ["versions", "web.nav.versions"],
   ["code", "web.nav.code"],
 ] as const;
@@ -73,8 +74,10 @@ export function ProjectLayout() {
             }
           >
             <ChevronRight className="size-4 text-muted-foreground" />
-            <span className="truncate font-medium">{project.data?.title ?? key}</span>
-            <nav className="ml-4 flex items-center gap-1">
+            <span className="max-w-48 shrink-0 truncate font-medium">
+              {project.data?.title ?? key}
+            </span>
+            <nav className="ml-4 flex min-w-0 items-center gap-1 overflow-x-auto">
               {TABS.map(([tab, label]) => (
                 <NavLink
                   key={tab}

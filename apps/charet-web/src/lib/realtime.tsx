@@ -139,9 +139,11 @@ export function RealtimeProvider({ project, children }: { project: string; child
     (kind: string) => {
       const keys: unknown[][] = [];
       if (kind.startsWith("comment.")) keys.push(["comments", project]);
+      if (kind === "branch.updated") keys.push(["branches", project], ["branch", project]);
       if (kind === "version.created")
         keys.push(
           ["versions", project],
+          ["branches", project],
           ["manifest", project],
           ["captures", project],
           ["preview", project],

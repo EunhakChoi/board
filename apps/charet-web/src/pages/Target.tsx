@@ -10,8 +10,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { CommentThread } from "@/components/CommentThread";
+import { Live } from "@/components/Live";
 import { Cursors, Selections, usePointerShare } from "@/components/Presence";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +19,7 @@ import { type Anchor, captureImage, type Element, HttpError, type TargetKind } f
 import { useT } from "@/lib/i18n";
 import { elementAt, parseSource, repoPath } from "@/lib/layout";
 import { useProjectContext } from "@/lib/project";
-import { useAddComment, useAppDir, useCapture, useElements, usePreview } from "@/lib/queries";
+import { useAddComment, useAppDir, useCapture, useElements } from "@/lib/queries";
 import { useRoom } from "@/lib/realtime";
 import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
@@ -424,60 +424,5 @@ function Composer({
         </Button>
       </div>
     </form>
-  );
-}
-
-/** The real page on the preview origin, scaled to fit. */
-function Live({
-  projectKey,
-  kind,
-  id,
-  theme,
-  size,
-}: {
-  projectKey: string;
-  kind: TargetKind;
-  id: string;
-  theme: "light" | "dark";
-  size: { w: number; h: number };
-}) {
-  const t = useT();
-  const preview = usePreview(projectKey);
-  const holder = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(size.w);
-  useEffect(() => {
-    const el = holder.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => setWidth(el.clientWidth));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  const base = preview.data?.baseUrl;
-  const scale = Math.min(1, width / size.w);
-  return (
-    <div ref={holder} className="mx-auto w-full" style={{ maxWidth: size.w }}>
-      {base ? (
-        <div
-          className="overflow-hidden rounded-lg border bg-background shadow-sm"
-          style={{ height: size.h * scale }}
-        >
-          <iframe
-            title={id}
-            // Previews on the tool's own address run in an opaque origin (the server says so
-            // too): project code must not reach the tool or its session.
-            sandbox={
-              new URL(base, window.location.href).origin === window.location.origin
-                ? "allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-pointer-lock"
-                : undefined
-            }
-            src={`${base}.charet/frame.html?${kind}=${encodeURIComponent(id)}&theme=${theme}`}
-            className="origin-top-left border-0"
-            style={{ width: size.w, height: size.h, transform: `scale(${scale})` }}
-          />
-        </div>
-      ) : (
-        <Badge variant="secondary">{t("web.build.running")}</Badge>
-      )}
-    </div>
   );
 }
