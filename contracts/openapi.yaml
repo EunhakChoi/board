@@ -2453,7 +2453,7 @@ components:
           type: array
           items:
             type: integer
-          description: Versions after the baseline, oldest first
+          description: Versions whose changes the repo does not have yet, oldest first (imports left out)
         changed:
           type: array
           items:

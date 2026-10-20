@@ -40,10 +40,10 @@ pub struct Baseline {
 pub struct HandoffStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub baseline: Option<Baseline>,
-    /// Versions after the baseline, oldest first.
+    /// Versions whose changes the repo does not have yet, oldest first: those after the last one
+    /// wholly in the repo, imports left out. An import that kept merged work leaves it here.
     pub pending: Vec<u32>,
-    /// Product files `main` changed since the baseline: what a handoff would carry. Can be more
-    /// than `pending` shows, when an import kept merged work the repo does not have yet.
+    /// Product files `main` changed since the baseline: what a handoff would carry.
     pub changed: Vec<Change>,
 }
 
@@ -68,14 +68,7 @@ impl Engine {
         self.visible(actor, key, Command::ProjectView)?;
         let versions = self.ports.records.versions(key)?;
         let baseline = baseline(&versions);
-        let after = baseline.as_ref().map_or(0, |b| b.version);
-        let mut pending: Vec<u32> = versions
-            .iter()
-            .map(|v| v.number)
-            .filter(|n| *n > after)
-            .collect();
-        pending.sort_unstable();
-        let changed = match (&baseline, versions.first()) {
+        let changed: Vec<Change> = match (&baseline, versions.first()) {
             (Some(base), Some(latest)) => self
                 .ports
                 .store
@@ -85,6 +78,24 @@ impl Engine {
                 .collect(),
             _ => Vec::new(),
         };
+        // Everything up to the newest version wholly in the repo (a handoff, or an import that
+        // joined no other work) is there; later merges are not, even when an import came after.
+        let covered = versions
+            .iter()
+            .find(|v| {
+                v.handoff.is_some() || (v.kind == VersionKind::Import && v.source_tree.is_none())
+            })
+            .map_or(0, |v| v.number);
+        let mut pending: Vec<u32> = if changed.is_empty() {
+            Vec::new()
+        } else {
+            versions
+                .iter()
+                .filter(|v| v.number > covered && v.kind != VersionKind::Import)
+                .map(|v| v.number)
+                .collect()
+        };
+        pending.sort_unstable();
         Ok(HandoffStatus {
             baseline,
             pending,
@@ -441,7 +452,7 @@ mod tests {
     fn update_import_keeps_merged_work_not_handed_off() {
         let (engine, _) = setup();
         // Merged here, not in the repo yet.
-        merged(&engine, "Rows", &[file("web/src/a.tsx", "a2")]);
+        let rows = merged(&engine, "Rows", &[file("web/src/a.tsx", "a2")]);
         // Meanwhile the repo changed b, removed nothing, added d; its copy of .charet is ignored.
         let update = import(
             vec![
@@ -474,7 +485,7 @@ mod tests {
         // The import is the new baseline, but the merged change to a is still to hand off.
         let status = engine.handoff_status(&Actor::Local, "shop").unwrap();
         assert_eq!(status.baseline.map(|b| b.version), Some(version.number));
-        assert_eq!(status.pending, Vec::<u32>::new());
+        assert_eq!(status.pending, [rows.number]);
         let still: Vec<&str> = status.changed.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(still, ["web/src/a.tsx"]);
         let export = engine.export(&Actor::Local, "shop", None, false).unwrap();

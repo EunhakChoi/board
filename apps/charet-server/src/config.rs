@@ -158,6 +158,17 @@ impl Config {
     /// Origins the tool is opened at, which may frame previews.
     pub fn tool_origins(&self) -> Vec<String> {
         if let Some(url) = &self.public_url {
+            // Local mode on a loopback address (the compose default): this machine opens the tool
+            // by either name, so previews frame under both.
+            let loopback = ["http://localhost:", "http://127.0.0.1:"]
+                .iter()
+                .find_map(|prefix| url.strip_prefix(prefix));
+            if let (true, Some(port)) = (self.local_mode(), loopback) {
+                return vec![
+                    format!("http://localhost:{port}"),
+                    format!("http://127.0.0.1:{port}"),
+                ];
+            }
             return vec![url.clone()];
         }
         let port = self.bind.port();
@@ -325,6 +336,23 @@ mod tests {
         .unwrap();
         assert!(config.local_mode());
         assert_eq!(config.workspace_token.as_deref(), Some("abc"));
+        // compose sets the tool address to localhost; 127.0.0.1 opens it too.
+        let named = self::config(
+            &[],
+            &[
+                env.as_slice(),
+                &[
+                    ("CHARET_CONTAINER", "true"),
+                    ("CHARET_PUBLIC_URL", "http://localhost:5280"),
+                ],
+            ]
+            .concat(),
+        )
+        .unwrap();
+        assert_eq!(
+            named.tool_origins(),
+            ["http://localhost:5280", "http://127.0.0.1:5280"]
+        );
         assert_eq!(config.render_token.as_deref(), Some("abc"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
