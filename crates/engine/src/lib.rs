@@ -5,6 +5,7 @@ mod branches;
 mod browse;
 mod captures;
 mod comments;
+mod design;
 mod error;
 mod guards;
 mod handoff;
@@ -28,7 +29,9 @@ pub use agents::{
 };
 pub use branches::BranchDetail;
 pub use captures::{CaptureStatus, RenderResult, Rendered, THEMES};
+pub use charet_design::{Edit, Element as DesignElement, Moves, Value as DesignValue, Variant};
 pub use comments::{At, CommentFilter};
+pub use design::{DesignInfo, DesignTarget, EditCheck, EditState, Edited, HandEdit};
 pub use error::EngineError;
 pub use handoff::{Baseline, Export, HandoffStatus, charet_only};
 pub use members::{

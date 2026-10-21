@@ -16,6 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio = { version = "1.53.3", default-features = false, features = ["sync"] }
+charet-design = { path = "../design" }
 charet-model = { path = "../model" }
 
 [lints]

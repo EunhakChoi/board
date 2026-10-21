@@ -7,6 +7,15 @@ import { parse } from "@babel/parser";
 import MagicString from "magic-string";
 
 export const SOURCE_ATTRIBUTE = "data-src";
+/**
+ * Where a component is used (`<Button …>` in a page). The render reads it from the component's
+ * props (React keeps them even when the component does not pass them on), so a hand edit can
+ * change that instance rather than the component itself.
+ */
+export const USE_ATTRIBUTE = "data-charet-use";
+/** Components that warn about, or pass on, props they do not know. */
+const NO_USE =
+  /^(?:(?:React\.)?(?:Fragment|StrictMode|Suspense|Profiler)|.*\.(?:Provider|Consumer))$/;
 
 interface Node {
   type: string;
@@ -30,8 +39,8 @@ export interface SourceOptions {
 /**
  * Adds `data-src` to host elements in `code` (a module at `path`, relative to the project root) and
  * rebases public file paths. Returns undefined when nothing changed. Components (`<Button>`,
- * `<ui.Card>`) are left alone: they may not forward unknown props, and the host elements they
- * render get marked instead.
+ * `<ui.Card>`) get `data-charet-use` instead: the host elements they render carry their own
+ * `data-src`.
  */
 export function addSourceLocations(
   code: string,
@@ -78,17 +87,23 @@ export function addSourceLocations(
     }
     if (!locations || node.type !== "JSXOpeningElement") return;
     const name = node.name as Node;
-    if (name.type !== "JSXIdentifier" || !/^[a-z]/.test(name.name as string)) return;
+    const host = name.type === "JSXIdentifier" && /^[a-z]/.test(name.name as string);
+    const component =
+      (name.type === "JSXIdentifier" && /^[A-Z]/.test(name.name as string)) ||
+      name.type === "JSXMemberExpression";
+    if (!host && !component) return;
+    if (component && NO_USE.test(code.slice(name.start ?? 0, name.end ?? 0))) return;
+    const attribute = host ? SOURCE_ATTRIBUTE : USE_ATTRIBUTE;
     const attributes = node.attributes as Node[];
     const already = attributes.some(
-      (a) => a.type === "JSXAttribute" && (a.name as Node).name === SOURCE_ATTRIBUTE,
+      (a) => a.type === "JSXAttribute" && (a.name as Node).name === attribute,
     );
     if (already || name.end == null || !node.loc) return;
+    // A type argument (`<Select<string> …>`) comes before the attributes.
+    const after = (node.typeArguments ?? node.typeParameters) as Node | undefined;
+    const at = after?.end ?? name.end;
     const { line, column } = node.loc.start;
-    out.appendLeft(
-      name.end,
-      ` ${SOURCE_ATTRIBUTE}="${escapeAttribute(path)}:${line}:${column + 1}"`,
-    );
+    out.appendLeft(at, ` ${attribute}="${escapeAttribute(path)}:${line}:${column + 1}"`);
     changed = true;
   });
   if (!changed) return undefined;

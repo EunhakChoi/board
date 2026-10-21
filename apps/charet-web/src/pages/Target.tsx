@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { AgentPanel } from "@/components/AgentPanel";
 import { CommentThread } from "@/components/CommentThread";
+import { DesignPanel, type Located } from "@/components/DesignPanel";
 import { Live } from "@/components/Live";
 import { Cursors, Selections, usePointerShare } from "@/components/Presence";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,16 @@ import { type Anchor, captureImage, type Element, HttpError, type TargetKind } f
 import { useT } from "@/lib/i18n";
 import { elementAt, parseSource, repoPath } from "@/lib/layout";
 import { useProjectContext } from "@/lib/project";
-import { useAddComment, useAgent, useAppDir, useCapture, useElements } from "@/lib/queries";
+import {
+  useAddComment,
+  useAgent,
+  useAppDir,
+  useBranches,
+  useCapture,
+  useElements,
+  useLook,
+  useMe,
+} from "@/lib/queries";
 import { useRoom } from "@/lib/realtime";
 import { useCan } from "@/lib/role";
 import { useScreenTheme } from "@/lib/theme";
@@ -39,9 +49,24 @@ export function Target() {
   const [mode, setMode] = useState<"capture" | "live">("capture");
   const [pick, setPick] = useState<Selection | undefined>();
   const [focus, setFocus] = useState<number | undefined>();
-  const [side, setSide] = useState<"comments" | "agent">("comments");
+  const [side, setSide] = useState<"comments" | "agent" | "design">("comments");
   const canEdit = useCan("editor");
   const agent = useAgent(canEdit);
+  const app = useAppDir(key);
+  const me = useMe();
+  const branches = useBranches(key);
+  const drafts = useMemo(
+    () =>
+      (branches.data?.branches ?? []).filter(
+        (b) => (b.status === "open" || b.status === "in_review") && b.author.id === me.data?.id,
+      ),
+    [branches.data, me.data],
+  );
+  // Hand edits work on a draft: its picture replaces main's while the Design panel is open.
+  const [draft, setDraft] = useState<number | "new">("new");
+  const [want, setWant] = useState<Located | undefined>();
+  const head = draft === "new" ? undefined : drafts.find((d) => d.number === draft)?.head;
+  const designing = side === "design" && canEdit;
   // `?comment=12` (from a notification) opens on that comment.
   const [search] = useSearchParams();
   const linked = Number(search.get("comment")) || undefined;
@@ -64,12 +89,23 @@ export function Target() {
   }, [manifest, kind, id]);
   const capture = captureOf(kind, id, theme);
   const elements = useElements(key, kind, id, theme, !!capture);
+  const look = useLook(key, head, id, theme, designing && !!head);
+  const onDraft = designing && !!head;
   const comments = commentsOn(kind, id);
   const recapture = useCapture(key);
 
   // A new theme or capture invalidates what was picked on the old picture.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on these changes only
   useEffect(() => setPick(undefined), [theme, capture?.capturedAt]);
+  // After a hand edit, pick the same element again on the draft's new picture.
+  useEffect(() => {
+    if (!want || !look.data) return;
+    const found = look.data.elements.find(
+      (e) => (want.use && e.use === want.use) || (want.src && e.src === want.src),
+    );
+    if (found) setPick({ kind: "element", element: found });
+    setWant(undefined);
+  }, [want, look.data]);
 
   if (!manifest) return <Empty text={t("web.common.loading")} />;
   if (!item) return <Empty text={`${kind} ${id}?`} />;
@@ -128,6 +164,27 @@ export function Target() {
         <div className="flex-1 overflow-auto bg-canvas p-6">
           {mode === "live" ? (
             <Live projectKey={key} kind={kind} id={id} theme={theme} size={item.size} />
+          ) : onDraft ? (
+            look.data ? (
+              <CaptureView
+                src={look.data.image}
+                size={item.size}
+                elements={look.data.elements}
+                anchors={[]}
+                pick={pick}
+                focus={focus}
+                onPick={setPick}
+                onFocus={setFocus}
+              />
+            ) : (
+              <Empty
+                text={
+                  look.error && !(look.error instanceof HttpError && look.error.code === "pending")
+                    ? look.error.message
+                    : t("web.design.building")
+                }
+              />
+            )
           ) : capture ? (
             <CaptureView
               src={captureImage(key, capture)}
@@ -160,7 +217,7 @@ export function Target() {
         </div>
       </section>
       <aside className="flex w-96 shrink-0 flex-col overflow-y-auto border-l">
-        {canEdit && agent.data?.enabled && (
+        {canEdit && (
           <div className="border-b px-4 py-2">
             <Segmented
               label={t("web.target.side")}
@@ -168,13 +225,31 @@ export function Target() {
               onChange={setSide}
               options={[
                 { value: "comments", label: t("web.comments.title") },
-                { value: "agent", label: t("web.agent.title") },
+                { value: "design", label: t("web.design.title") },
+                ...(agent.data?.enabled
+                  ? [{ value: "agent" as const, label: t("web.agent.title") }]
+                  : []),
               ]}
             />
           </div>
         )}
-        <Inspector projectKey={key} pick={pick} />
-        {side === "agent" && canEdit && agent.data?.enabled ? (
+        {!designing && <Inspector projectKey={key} pick={pick} />}
+        {designing ? (
+          <DesignPanel
+            projectKey={key}
+            screen={item.title}
+            app={app}
+            drafts={drafts}
+            draft={draft}
+            onDraft={(next) => {
+              if (next !== draft) setPick(undefined);
+              setDraft(next);
+            }}
+            pick={pick?.kind === "element" ? pick.element : undefined}
+            onEdited={setWant}
+            onAskAgent={() => setSide("agent")}
+          />
+        ) : side === "agent" && canEdit && agent.data?.enabled ? (
           <AgentPanel
             projectKey={key}
             context={agentContext(kind, id, theme, pick)}
