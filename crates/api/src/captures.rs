@@ -24,6 +24,9 @@ pub struct RenderInput {
     /// Capture only: render again although the stored capture is at this commit.
     #[serde(default)]
     force: bool,
+    /// Check only: return each picture (JPEG, base64); still nothing is stored.
+    #[serde(default)]
+    image: bool,
 }
 
 pub async fn check(
@@ -33,8 +36,14 @@ pub async fn check(
     Json(input): Json<RenderInput>,
 ) -> Result<Json<Rendered>, ApiError> {
     let rev = input.rev.unwrap_or_else(|| "main".into());
-    let rendered =
-        blocking(move || engine.check(&actor, &key, &rev, &input.targets, &input.themes)).await?;
+    let rendered = blocking(move || {
+        if input.image {
+            engine.look(&actor, &key, &rev, &input.targets, &input.themes)
+        } else {
+            engine.check(&actor, &key, &rev, &input.targets, &input.themes)
+        }
+    })
+    .await?;
     Ok(Json(rendered))
 }
 

@@ -1340,6 +1340,8 @@ export interface components {
             themes?: ("light" | "dark")[];
             /** @description Capture only. Render again although already captured at this commit */
             force?: boolean;
+            /** @description Check only. Return each picture (`image`, JPEG base64) — how a branch is seen without touching the board's captures */
+            image?: boolean;
         };
         RenderResult: {
             /** @enum {string} */
@@ -1353,6 +1355,8 @@ export interface components {
             issues: string[];
             /** @description Capture only. False when the stored capture was already at this commit */
             captured: boolean;
+            /** @description A check with `image`. The picture, JPEG base64 */
+            image?: string;
         };
         Capture: {
             /** @enum {string} */

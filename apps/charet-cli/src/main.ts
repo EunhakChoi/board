@@ -136,7 +136,8 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
     const message = str(args, "-m", "--message");
     const theme = str(args, "--theme");
     const render = (onBranch = false): RenderOptions => {
-      // `check` in a branch checkout looks at that branch; captures follow main.
+      // `check` in a branch checkout looks at that branch; captures follow main, except pictures
+      // saved with `--out`, which show the branch.
       const branch = onBranch ? findCheckout(cwd)?.state.branch : undefined;
       const rev = str(args, "--rev") ?? (branch ? `b${branch}` : undefined);
       const out = str(args, "--out");
@@ -250,7 +251,7 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
       case "check":
         return await renders.check(ctx, project(), render(true));
       case "capture":
-        return await renders.capture(ctx, project(), render());
+        return await renders.capture(ctx, project(), render(Boolean(str(args, "--out"))));
       case "comments":
         return await commentsCommand(ctx, rest, args, project, message, single);
       case "inbox":

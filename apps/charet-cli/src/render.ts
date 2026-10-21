@@ -15,9 +15,12 @@ export interface RenderOptions {
   themes: Theme[];
   rev?: string;
   force?: boolean;
-  /** Capture only: also save the pictures into this folder. */
+  /** Capture only: also save the pictures into this folder (on a branch: only that). */
   out?: string;
 }
+
+/** A branch revision (`b<number>`): its pictures are looked at, never stored on the board. */
+const onBranch = (rev: string | undefined) => rev !== undefined && /^b\d+$/.test(rev);
 
 function problems(r: Result): string[] {
   if (r.ready === "true" || r.issues.length > 0) return r.issues;
@@ -104,6 +107,46 @@ export async function check(
   return failed ? 1 : 0;
 }
 
+/** A branch's pictures into `dir`, through a check: the board's captures stay main's. */
+async function look(
+  ctx: Context,
+  project: string,
+  options: RenderOptions,
+  dir: string,
+): Promise<number> {
+  let failed = 0;
+  const data = await batches(
+    ctx,
+    project,
+    options,
+    (body) =>
+      client(ctx).POST("/api/projects/{key}/check", {
+        params: { path: { key: project } },
+        body: { ...body, image: true },
+      }),
+    (r) => {
+      if (!ctx.json && line(ctx, r, "")) failed++;
+      else if (problems(r).length) failed++;
+    },
+  );
+  mkdirSync(dir, { recursive: true });
+  const saved: string[] = [];
+  for (const r of data.results) {
+    if (!r.image) continue;
+    const file = join(dir, `${r.target}${r.theme === "dark" ? ".dark" : ""}.jpg`);
+    writeFileSync(file, Buffer.from(r.image, "base64"));
+    saved.push(file);
+  }
+  const results = data.results.map(({ image: _, ...r }) => r);
+  if (ctx.json) {
+    ctx.out(JSON.stringify({ ...data, results, saved }, null, 2));
+    return failed ? 1 : 0;
+  }
+  summary(ctx, failed, data.results.length);
+  for (const file of saved) ctx.out(file);
+  return failed ? 1 : 0;
+}
+
 export async function capture(
   ctx: Context,
   project: string,
@@ -112,6 +155,7 @@ export async function capture(
   let failed = 0;
   const dir = options.out ? resolve(ctx.cwd, options.out) : undefined;
   const saved: string[] = [];
+  if (dir && onBranch(options.rev)) return look(ctx, project, options, dir);
   const data = await batches(
     ctx,
     project,

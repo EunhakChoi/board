@@ -79,14 +79,17 @@ A flow written before the code is the plan the team can review; planned steps ar
 ```bash
 charet push -m "what and why"       # from main: a new branch #n; in a branch checkout: adds to it
 charet check <id…>                  # renders this checkout's branch: errors, console, missing mocks
+charet capture <id…> --out /tmp/cv  # in a branch checkout: pictures of the branch, for you to look at
 charet branch review                # ask the team to look (the push printed the branch link)
 charet branch merge                 # once agreed (or `charet push -m … --merge` when working alone)
-charet capture <id…> --out /tmp/cv  # after merging: update what the team sees on main
+charet capture <id…>                # on main after merging: update what the team sees
 charet ls --stale                   # screens whose capture is older than the code
 ```
 
 - Push first: `check` builds and renders what was pushed (the checkout's branch), so an unpushed
-  fix is invisible to it. `capture` stores what everyone sees, so it only runs on main.
+  fix is invisible to it. `capture` stores what everyone sees, so it only stores on main; on a
+  branch `--out` saves the branch's pictures and leaves the board alone. Look at them before
+  saying a change is done.
 - Merge only when the user (or the team, in review) agreed; a draft is the safe default. When the
   user asked for the change outright and works alone, `charet push -m "…" --merge` does both.
 - Merge refused with a clash: someone changed the same lines on main. `charet branch catch-up`,
