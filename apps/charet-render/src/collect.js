@@ -1,6 +1,8 @@
 // Runs in the page: the element map. One entry per element worth pointing at (a component's root
-// element, a shadcn `data-slot`, or something interactive), with its box, component chain (from
+// element, a shadcn `data-slot`, something interactive, or anything the app's code wrote), with its box, component chain (from
 // React fibers), source location (`data-src`, added by @charet/sdk/vite), selector, tag and text.
+// A component's root element also gets where that component was used (`data-charet-use`, kept in
+// the component's props), so a hand edit can change the instance instead of the component.
 (() => {
   // Wrappers that say nothing about the UI: routers, providers, Radix internals.
   const SKIP =
@@ -41,7 +43,9 @@
     const interactive = el.matches(
       "button,a[href],input,select,textarea,label,[role=button],[role=tab],[role=menuitem],[role=checkbox],[role=switch],[role=row]",
     );
-    if (!componentRoot && !slot && !interactive) continue;
+    // Elements written in the app's code (`data-src`) count too: a hand edit can change them.
+    const written = el.hasAttribute("data-src");
+    if (!componentRoot && !slot && !interactive && !written) continue;
     const r = el.getBoundingClientRect();
     const x = Math.max(0, r.left);
     const y = Math.max(0, r.top);
@@ -61,6 +65,9 @@
       .trim()
       .slice(0, 80);
     const src = el.getAttribute("data-src") ?? undefined;
+    const use = componentRoot
+      ? (parent.memoizedProps?.["data-charet-use"] ?? el.getAttribute("data-charet-use"))
+      : undefined;
     out.push({
       x: Math.round(x),
       y: Math.round(y),
@@ -71,6 +78,7 @@
       tag: el.tagName.toLowerCase(),
       text,
       ...(src ? { src } : {}),
+      ...(typeof use === "string" && use !== src ? { use } : {}),
       ...(slot ? { slot } : {}),
     });
   }

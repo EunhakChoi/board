@@ -47,6 +47,9 @@ pub struct RenderResult {
     /// For a check that asked for pictures: the JPEG, base64. Nothing is stored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// With the picture: its element map, to point at things on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elements: Option<serde_json::Value>,
 }
 
 /// A stored capture and whether `main` has moved past it in a way that can change it.
@@ -132,6 +135,7 @@ impl Engine {
             let shot = self.shoot(settings, key, &commit, target, theme, kind)?;
             let mut out = result(target, theme, &shot, false);
             out.image = shot.image.as_deref().map(|bytes| STANDARD.encode(bytes));
+            out.elements = shot.elements.filter(|_| pictures);
             Ok(out)
         });
         Ok(Rendered { commit, results })
@@ -184,6 +188,7 @@ impl Engine {
                     issues: old.issues.clone(),
                     captured: false,
                     image: None,
+                    elements: None,
                 });
             }
             let shot = self.shoot(settings, key, &commit, target, theme, Some(ImageKind::Jpeg))?;
@@ -528,6 +533,7 @@ impl Engine {
                             issues: vec![error.to_string()],
                             captured: false,
                             image: None,
+                            elements: None,
                         });
                         results
                             .lock()
@@ -559,6 +565,7 @@ fn result(target: &Target, theme: &str, shot: &Shot, captured: bool) -> RenderRe
         issues,
         captured,
         image: None,
+        elements: None,
     }
 }
 
@@ -579,7 +586,7 @@ fn sources(elements: &serde_json::Value) -> Vec<String> {
 }
 
 /// The app directory from `charet.json` (`app`), `""` for the project root.
-fn app_dir(charet_json: Option<&[u8]>) -> String {
+pub(crate) fn app_dir(charet_json: Option<&[u8]>) -> String {
     charet_json
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok())
         .and_then(|v| v.get("app")?.as_str().map(str::to_owned))

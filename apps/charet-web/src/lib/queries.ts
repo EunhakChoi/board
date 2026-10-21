@@ -1,11 +1,13 @@
 // Server state for the web tool (TanStack Query over the typed API client).
 
+import type { Schemas } from "@charet/api-client";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AgentKind,
   type AgentRun,
   api,
   type Comment,
+  type Element,
   HttpError,
   type Role,
   type ShareMode,
@@ -674,4 +676,94 @@ export function useAgentCosts(enabled: boolean) {
     enabled,
     queryFn: () => unwrap(api.GET("/api/admin/costs")),
   });
+}
+
+export type Look = { image: string; elements: Element[]; issues: string[] };
+
+/**
+ * A screen of a revision as a picture with its element map, rendered on demand (nothing stored):
+ * how a draft looks while it is hand-edited. Waits while the revision builds.
+ */
+export function useLook(
+  key: string,
+  rev: string | undefined,
+  target: string,
+  theme: Theme,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["look", key, rev, target, theme],
+    enabled: enabled && !!rev,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: (count, error) => error instanceof HttpError && error.code === "pending" && count < 120,
+    retryDelay: 2000,
+    queryFn: async (): Promise<Look> => {
+      const data = await unwrap(
+        api.POST("/api/projects/{key}/check", {
+          ...path(key),
+          body: { ...(rev ? { rev } : {}), targets: [target], themes: [theme], image: true },
+        }),
+      );
+      const result = data.results[0];
+      return {
+        image: result?.image ? `data:image/jpeg;base64,${result.image}` : "",
+        elements: result?.elements ?? [],
+        issues: result?.issues ?? [],
+      };
+    },
+  });
+}
+
+/** What a hand edit can change on an element (`src` / `use` as the element map has them). */
+export function useDesign(
+  key: string,
+  rev: string | undefined,
+  src: string | undefined,
+  use: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["design", key, rev, src, use],
+    enabled: !!src || !!use,
+    queryFn: () =>
+      unwrap(
+        api.GET("/api/projects/{key}/design", {
+          params: {
+            path: { key },
+            query: { ...(rev ? { rev } : {}), ...(src ? { src } : {}), ...(use ? { use } : {}) },
+          },
+        }),
+      ),
+  });
+}
+
+export type HandEditInput = Schemas["HandEditInput"];
+
+/** Hand edits: apply one, check it (asking again while the draft builds), undo / redo. */
+export function useDesignActions(key: string) {
+  const client = useQueryClient();
+  const settled = () => {
+    void client.invalidateQueries({ queryKey: ["branches", key] });
+    void client.invalidateQueries({ queryKey: ["branch", key] });
+    void client.invalidateQueries({ queryKey: ["design", key] });
+  };
+  return {
+    edit: useMutation({
+      mutationFn: (body: HandEditInput) =>
+        unwrap(api.POST("/api/projects/{key}/design/edits", { ...path(key), body })),
+      onSettled: settled,
+    }),
+    check: useMutation({
+      mutationFn: (body: { branch: number; path: string; before: string; commit: string }) =>
+        unwrap(api.POST("/api/projects/{key}/design/check", { ...path(key), body })),
+      retry: (count, error) =>
+        error instanceof HttpError && error.code === "pending" && count < 120,
+      retryDelay: 2000,
+      onSettled: settled,
+    }),
+    restore: useMutation({
+      mutationFn: (body: { branch: number; path: string; to: string; expect: string }) =>
+        unwrap(api.POST("/api/projects/{key}/design/restore", { ...path(key), body })),
+      onSettled: settled,
+    }),
+  };
 }

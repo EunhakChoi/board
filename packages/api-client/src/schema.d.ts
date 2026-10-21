@@ -828,6 +828,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{key}/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a hand edit can change on an element (editors)
+         * @description `src` and `use` as the element map gives them (relative to the app). `instance` is the component as used on the screen (`use`), `original` the element as written (`src`, maybe inside a shared component).
+         */
+        get: operations["getDesign"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/design/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply one hand edit on the caller's draft (a new draft when `branch` is absent) */
+        post: operations["handEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/design/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check an edit like a merge; a failing one is taken back
+         * @description The draft builds and the screens the edit can reach open without new problems. 409 `pending` while it builds: ask again.
+         */
+        post: operations["checkEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{key}/design/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo or redo — put a file back as it was at `to`, if it is still as at `expect` */
+        post: operations["restoreEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{key}/captures": {
         parameters: {
             query?: never;
@@ -1357,6 +1439,8 @@ export interface components {
             captured: boolean;
             /** @description A check with `image`. The picture, JPEG base64 */
             image?: string;
+            /** @description A check with `image`. The picture's element map */
+            elements?: components["schemas"]["Element"][];
         };
         Capture: {
             /** @enum {string} */
@@ -1387,6 +1471,8 @@ export interface components {
             src?: string;
             /** @description shadcn `data-slot` */
             slot?: string;
+            /** @description `path:line:col` where the component whose root this is was used (hand edits of that instance) */
+            use?: string;
         };
         Preview: {
             commit: string;
@@ -1596,6 +1682,89 @@ export interface components {
             changes: components["schemas"]["Change"][];
             /** @description `git apply` input; empty when nothing changed */
             patch: string;
+        };
+        /** @description `literal` (written out, editable), `computed` (an expression) or `absent` */
+        DesignValue: {
+            /** @enum {string} */
+            state: "absent" | "literal" | "computed";
+            value?: string;
+        };
+        DesignElement: {
+            name: string;
+            component: boolean;
+            text: components["schemas"]["DesignValue"];
+            className: components["schemas"]["DesignValue"];
+            props: {
+                [key: string]: components["schemas"]["DesignValue"];
+            };
+            /** @description Inside a list (`.map`); a change applies to every item */
+            inList: boolean;
+            moves: {
+                up: boolean;
+                down: boolean;
+            };
+        };
+        DesignTarget: {
+            /** @description `path:line:col` (project path); send it back as `at` */
+            at: string;
+            element: components["schemas"]["DesignElement"];
+            /** @description `cva` variants of the component (shadcn `variant`, `size`) */
+            variants: {
+                [key: string]: {
+                    options: string[];
+                    default?: string;
+                };
+            };
+            /** @description Stored screens rendered from this file */
+            screens: number;
+        };
+        DesignInfo: {
+            commit: string;
+            instance?: components["schemas"]["DesignTarget"];
+            original?: components["schemas"]["DesignTarget"];
+        };
+        HandEditInput: {
+            /** @description The draft; absent starts a new one called `title` */
+            branch?: number;
+            title?: string;
+            at: string;
+            edit: {
+                /** @enum {string} */
+                kind: "text";
+                text: string;
+            } | {
+                /** @enum {string} */
+                kind: "className";
+                /** @description The whole class list; empty removes `className` */
+                value: string;
+            } | {
+                /** @enum {string} */
+                kind: "prop";
+                name: string;
+                /** @description Absent removes the attribute */
+                value?: string;
+            } | {
+                /** @enum {string} */
+                kind: "move";
+                /** @enum {integer} */
+                by: -1 | 1;
+            };
+        };
+        Edited: {
+            branch: components["schemas"]["Branch"];
+            path: string;
+            /** @description The draft's head before; undo puts the file back as it was here */
+            before: string;
+            commit: string;
+            /** @description Where the element is now (empty after undo / redo) */
+            at: string;
+        };
+        EditCheck: {
+            /** @enum {string} */
+            state: "passed" | "failed";
+            issues: string[];
+            /** @description The edit was taken back */
+            reverted: boolean;
         };
         Branch: {
             number: number;
@@ -3299,6 +3468,150 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Pending"];
             503: components["responses"]["Unavailable"];
+        };
+    };
+    getDesign: {
+        parameters: {
+            query?: {
+                /** @description `main` (default), `b<number>`, `v<number>` or a commit */
+                rev?: string;
+                src?: string;
+                use?: string;
+            };
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The edit choices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignInfo"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    handEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandEditInput"];
+            };
+        };
+        responses: {
+            /** @description The edit, saved as one commit on the draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Edited"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The draft or the file moved meanwhile; `detail.head` is the draft's head */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    checkEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    branch: number;
+                    path: string;
+                    before: string;
+                    commit: string;
+                };
+            };
+        };
+        responses: {
+            /** @description How the check went */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditCheck"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Pending"];
+        };
+    };
+    restoreEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["ProjectKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    branch: number;
+                    path: string;
+                    to: string;
+                    expect: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved as one commit on the draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Edited"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            403: components["responses"]["Forbidden"];
+            /** @description The draft or the file moved meanwhile; `detail.head` is the draft's head */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listCaptures: {

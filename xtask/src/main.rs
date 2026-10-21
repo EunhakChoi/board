@@ -9,6 +9,7 @@ use std::process::ExitCode;
 /// Layer of every charet crate. A crate may depend only on crates in strictly lower layers.
 const LAYERS: &[(&str, u8)] = &[
     ("charet-model", 0),
+    ("charet-design", 0),
     ("charet-engine", 1),
     ("charet-store", 2),
     ("charet-db", 2),

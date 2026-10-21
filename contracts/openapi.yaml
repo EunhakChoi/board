@@ -18,6 +18,7 @@ tags:
   - name: branches
   - name: captures
   - name: comments
+  - name: design
   - name: handoff
   - name: inbox
   - name: settings
@@ -1284,6 +1285,157 @@ paths:
           $ref: "#/components/responses/Pending"
         "503":
           $ref: "#/components/responses/Unavailable"
+  /api/projects/{key}/design:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [design]
+      operationId: getDesign
+      summary: What a hand edit can change on an element (editors)
+      description: >-
+        `src` and `use` as the element map gives them (relative to the app). `instance` is the
+        component as used on the screen (`use`), `original` the element as written (`src`, maybe
+        inside a shared component).
+      parameters:
+        - name: rev
+          in: query
+          schema:
+            type: string
+          description: "`main` (default), `b<number>`, `v<number>` or a commit"
+        - name: src
+          in: query
+          schema:
+            type: string
+        - name: use
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The edit choices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesignInfo"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{key}/design/edits:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [design]
+      operationId: handEdit
+      summary: Apply one hand edit on the caller's draft (a new draft when `branch` is absent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandEditInput"
+      responses:
+        "200":
+          description: The edit, saved as one commit on the draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Edited"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "The draft or the file moved meanwhile; `detail.head` is the draft's head"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/projects/{key}/design/check:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [design]
+      operationId: checkEdit
+      summary: Check an edit like a merge; a failing one is taken back
+      description: >-
+        The draft builds and the screens the edit can reach open without new problems. 409
+        `pending` while it builds: ask again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch, path, before, commit]
+              additionalProperties: false
+              properties:
+                branch:
+                  type: integer
+                path:
+                  type: string
+                before:
+                  type: string
+                commit:
+                  type: string
+      responses:
+        "200":
+          description: How the check went
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EditCheck"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Pending"
+  /api/projects/{key}/design/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [design]
+      operationId: restoreEdit
+      summary: Undo or redo — put a file back as it was at `to`, if it is still as at `expect`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch, path, to, expect]
+              additionalProperties: false
+              properties:
+                branch:
+                  type: integer
+                path:
+                  type: string
+                to:
+                  type: string
+                expect:
+                  type: string
+      responses:
+        "200":
+          description: Saved as one commit on the draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Edited"
+        "400":
+          $ref: "#/components/responses/Invalid"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "The draft or the file moved meanwhile; `detail.head` is the draft's head"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/projects/{key}/captures:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -2286,6 +2438,11 @@ components:
         image:
           type: string
           description: A check with `image`. The picture, JPEG base64
+        elements:
+          type: array
+          description: A check with `image`. The picture's element map
+          items:
+            $ref: "#/components/schemas/Element"
     Capture:
       type: object
       required: [kind, target, theme, commit, width, height, issues, sources, capturedAt, stale]
@@ -2346,6 +2503,9 @@ components:
         slot:
           type: string
           description: shadcn `data-slot`
+        use:
+          type: string
+          description: "`path:line:col` where the component whose root this is was used (hand edits of that instance)"
     Preview:
       type: object
       required: [commit, state, steps, error]
@@ -2724,6 +2884,163 @@ components:
         patch:
           type: string
           description: "`git apply` input; empty when nothing changed"
+    DesignValue:
+      type: object
+      required: [state]
+      description: "`literal` (written out, editable), `computed` (an expression) or `absent`"
+      properties:
+        state:
+          type: string
+          enum: [absent, literal, computed]
+        value:
+          type: string
+    DesignElement:
+      type: object
+      required: [name, component, text, className, props, inList, moves]
+      properties:
+        name:
+          type: string
+        component:
+          type: boolean
+        text:
+          $ref: "#/components/schemas/DesignValue"
+        className:
+          $ref: "#/components/schemas/DesignValue"
+        props:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/DesignValue"
+        inList:
+          type: boolean
+          description: Inside a list (`.map`); a change applies to every item
+        moves:
+          type: object
+          required: [up, down]
+          properties:
+            up:
+              type: boolean
+            down:
+              type: boolean
+    DesignTarget:
+      type: object
+      required: [at, element, variants, screens]
+      properties:
+        at:
+          type: string
+          description: "`path:line:col` (project path); send it back as `at`"
+        element:
+          $ref: "#/components/schemas/DesignElement"
+        variants:
+          type: object
+          description: "`cva` variants of the component (shadcn `variant`, `size`)"
+          additionalProperties:
+            type: object
+            required: [options]
+            properties:
+              options:
+                type: array
+                items:
+                  type: string
+              default:
+                type: string
+        screens:
+          type: integer
+          description: Stored screens rendered from this file
+    DesignInfo:
+      type: object
+      required: [commit]
+      properties:
+        commit:
+          type: string
+        instance:
+          $ref: "#/components/schemas/DesignTarget"
+        original:
+          $ref: "#/components/schemas/DesignTarget"
+    HandEditInput:
+      type: object
+      required: [at, edit]
+      additionalProperties: false
+      properties:
+        branch:
+          type: integer
+          description: The draft; absent starts a new one called `title`
+        title:
+          type: string
+        at:
+          type: string
+        edit:
+          oneOf:
+            - type: object
+              required: [kind, text]
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  enum: [text]
+                text:
+                  type: string
+            - type: object
+              required: [kind, value]
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  enum: [className]
+                value:
+                  type: string
+                  description: The whole class list; empty removes `className`
+            - type: object
+              required: [kind, name]
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  enum: [prop]
+                name:
+                  type: string
+                value:
+                  type: string
+                  description: Absent removes the attribute
+            - type: object
+              required: [kind, by]
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  enum: [move]
+                by:
+                  type: integer
+                  enum: [-1, 1]
+    Edited:
+      type: object
+      required: [branch, path, before, commit, at]
+      properties:
+        branch:
+          $ref: "#/components/schemas/Branch"
+        path:
+          type: string
+        before:
+          type: string
+          description: The draft's head before; undo puts the file back as it was here
+        commit:
+          type: string
+        at:
+          type: string
+          description: Where the element is now (empty after undo / redo)
+    EditCheck:
+      type: object
+      required: [state, issues, reverted]
+      properties:
+        state:
+          type: string
+          enum: [passed, failed]
+        issues:
+          type: array
+          items:
+            type: string
+        reverted:
+          type: boolean
+          description: The edit was taken back
     Branch:
       type: object
       required: [number, title, author, status, base, head, conflicts, createdAt, updatedAt]

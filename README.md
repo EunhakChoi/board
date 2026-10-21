@@ -19,6 +19,7 @@ docker compose up -d     # then open the admin link from `docker compose logs se
 Settings, the CLI, running without Docker and security notes: [docs/local.md](docs/local.md).
 How a change goes from a draft to a version: [docs/workflow.md](docs/workflow.md).
 Asking a coding agent for changes from the web tool: [docs/agent.md](docs/agent.md).
+Changing text, variants, spacing and order by hand: [docs/hand-edits.md](docs/hand-edits.md).
 
 ## License
 

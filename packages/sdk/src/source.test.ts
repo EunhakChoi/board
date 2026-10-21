@@ -18,16 +18,19 @@ test("marks host elements with their line and column", () => {
   assert.ok(result);
   assert.match(result.code, /<section data-src="src\/Card.tsx:3:5" className="card">/);
   assert.match(result.code, /<h2 data-src="src\/Card.tsx:4:7">/);
-  // Components and member expressions stay untouched.
-  assert.match(result.code, /<Button variant="primary" \/>/);
-  assert.match(result.code, /<ui.Icon \/>/);
+  // Components and member expressions get where they are used, for hand edits of an instance.
+  assert.match(result.code, /<Button data-charet-use="src\/Card.tsx:5:7" variant="primary" \/>/);
+  assert.match(result.code, /<ui.Icon data-charet-use="src\/Card.tsx:6:7" \/>/);
   assert.equal(result.map.sources[0], "src/Card.tsx");
 });
 
 test("keeps an existing data-src and skips files without JSX", () => {
   assert.equal(addSourceLocations('const a = <div data-src="x:1:1" />;', "a.tsx"), undefined);
   assert.equal(addSourceLocations("export const n = 1 < 2;", "a.ts"), undefined);
-  assert.equal(addSourceLocations("const a = <Foo />;", "a.tsx"), undefined);
+  assert.equal(
+    addSourceLocations('const a = <Foo data-charet-use="x:1:1" />;', "a.tsx"),
+    undefined,
+  );
 });
 
 test("handles generics, fragments and quotes in paths", () => {
@@ -74,4 +77,13 @@ test("points absolute public paths at the build's base", () => {
     addSourceLocations('const a = "/x.png";', "a.ts", { isPublic: () => false }),
     undefined,
   );
+});
+
+test("leaves components alone that warn about unknown props", () => {
+  const code =
+    "const a = <React.Fragment><Fragment><Suspense><Ctx.Provider value={1}><Select<string> /></Ctx.Provider></Suspense></Fragment></React.Fragment>;";
+  const result = addSourceLocations(code, "a.tsx");
+  assert.ok(result);
+  assert.match(result.code, /<React.Fragment><Fragment><Suspense><Ctx.Provider value=\{1\}>/);
+  assert.match(result.code, /<Select<string> data-charet-use="a.tsx:1:\d+" \/>/);
 });

@@ -18,6 +18,7 @@ docker compose up -d     # 이후 `docker compose logs server` 의 관리자 lin
 설정 · CLI · Docker 없이 실행 · 보안 참고: [docs/local.ko.md](docs/local.ko.md).
 변경이 임시 수정안에서 버전이 되기까지: [docs/workflow.ko.md](docs/workflow.ko.md).
 Web tool 에서 coding agent 에게 변경 요청: [docs/agent.ko.md](docs/agent.ko.md).
+텍스트 · variant · 간격 · 순서 직접 수정: [docs/hand-edits.ko.md](docs/hand-edits.ko.md).
 
 ## License
 

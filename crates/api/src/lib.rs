@@ -8,6 +8,7 @@ mod branches;
 mod browse;
 mod captures;
 mod comments;
+mod design;
 mod error;
 mod handoff;
 mod members;
@@ -90,6 +91,10 @@ pub const ROUTES: &[(&str, &str)] = &[
     ("get", "/api/projects/{key}/diff"),
     ("get", "/api/projects/{key}/preview"),
     ("post", "/api/projects/{key}/check"),
+    ("get", "/api/projects/{key}/design"),
+    ("post", "/api/projects/{key}/design/edits"),
+    ("post", "/api/projects/{key}/design/check"),
+    ("post", "/api/projects/{key}/design/restore"),
     ("get", "/api/projects/{key}/captures"),
     ("post", "/api/projects/{key}/captures"),
     (
@@ -215,6 +220,10 @@ fn routes() -> Router<Engine> {
         .route("/api/projects/{key}/files", get(browse::files))
         .route("/api/projects/{key}/file", get(browse::file))
         .route("/api/projects/{key}/check", post(captures::check))
+        .route("/api/projects/{key}/design", get(design::design))
+        .route("/api/projects/{key}/design/edits", post(design::edit))
+        .route("/api/projects/{key}/design/check", post(design::check))
+        .route("/api/projects/{key}/design/restore", post(design::restore))
         .route("/api/projects/{key}/sheet", get(captures::sheet))
         .route(
             "/api/projects/{key}/captures",
