@@ -1,6 +1,7 @@
 import { Bot, ImagePlus, LoaderCircle, Send, Square, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
+import { Markdown } from "@/components/Markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -203,9 +204,11 @@ function RunView({
         }
         if (message.kind === "assistant") {
           return (
-            <p key={message.seq} className="whitespace-pre-wrap rounded-lg bg-muted px-3 py-2">
-              {message.text}
-            </p>
+            <Markdown
+              key={message.seq}
+              text={message.text}
+              className="rounded-lg bg-muted px-3 py-2"
+            />
           );
         }
         if (message.kind === "tool") {
