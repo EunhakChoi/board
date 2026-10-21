@@ -2255,6 +2255,11 @@ components:
         force:
           type: boolean
           description: Capture only. Render again although already captured at this commit
+        image:
+          type: boolean
+          description: >-
+            Check only. Return each picture (`image`, JPEG base64) — how a branch is seen without
+            touching the board's captures
     RenderResult:
       type: object
       required: [kind, target, theme, issues, captured]
@@ -2278,6 +2283,9 @@ components:
         captured:
           type: boolean
           description: Capture only. False when the stored capture was already at this commit
+        image:
+          type: string
+          description: A check with `image`. The picture, JPEG base64
     Capture:
       type: object
       required: [kind, target, theme, commit, width, height, issues, sources, capturedAt, stale]

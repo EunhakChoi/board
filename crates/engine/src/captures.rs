@@ -9,6 +9,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::sync::Mutex;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use charet_model::Actor;
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +44,9 @@ pub struct RenderResult {
     pub issues: Vec<String>,
     /// For captures: false when the stored capture was already at this commit.
     pub captured: bool,
+    /// For a check that asked for pictures: the JPEG, base64. Nothing is stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 /// A stored capture and whether `main` has moved past it in a way that can change it.
@@ -94,12 +99,40 @@ impl Engine {
         requested: &[String],
         themes: &[String],
     ) -> Result<Rendered, EngineError> {
+        self.render_check(actor, key, rev, requested, themes, false)
+    }
+
+    /// A check that also returns each picture, for any revision a branch included: how an agent
+    /// or a reviewer sees a draft without touching the board's captures.
+    pub fn look(
+        &self,
+        actor: &Actor,
+        key: &str,
+        rev: &str,
+        requested: &[String],
+        themes: &[String],
+    ) -> Result<Rendered, EngineError> {
+        self.render_check(actor, key, rev, requested, themes, true)
+    }
+
+    fn render_check(
+        &self,
+        actor: &Actor,
+        key: &str,
+        rev: &str,
+        requested: &[String],
+        themes: &[String],
+        pictures: bool,
+    ) -> Result<Rendered, EngineError> {
         self.visible(actor, key, Command::BranchEdit)?;
         let (commit, settings) = self.ready_build(actor, key, rev)?;
         let jobs = self.jobs(key, &commit, requested, themes)?;
+        let kind = pictures.then_some(ImageKind::Jpeg);
         let results = Self::run_parallel(&jobs, |(target, theme)| {
-            let shot = self.shoot(settings, key, &commit, target, theme, None)?;
-            Ok(result(target, theme, &shot, false))
+            let shot = self.shoot(settings, key, &commit, target, theme, kind)?;
+            let mut out = result(target, theme, &shot, false);
+            out.image = shot.image.as_deref().map(|bytes| STANDARD.encode(bytes));
+            Ok(out)
         });
         Ok(Rendered { commit, results })
     }
@@ -122,7 +155,9 @@ impl Engine {
         {
             // Stored captures are what everyone sees for main; a branch is checked, not captured.
             return Err(EngineError::Invalid(
-                "captures follow main: use check for a branch".into(),
+                "captures follow main: on a branch, `charet capture --out <dir>` saves pictures \
+                 without touching the board (or use check)"
+                    .into(),
             ));
         }
         let (commit, settings) = self.ready_build(actor, key, rev)?;
@@ -148,6 +183,7 @@ impl Engine {
                     ready: Some("true".into()),
                     issues: old.issues.clone(),
                     captured: false,
+                    image: None,
                 });
             }
             let shot = self.shoot(settings, key, &commit, target, theme, Some(ImageKind::Jpeg))?;
@@ -491,6 +527,7 @@ impl Engine {
                             ready: None,
                             issues: vec![error.to_string()],
                             captured: false,
+                            image: None,
                         });
                         results
                             .lock()
@@ -521,6 +558,7 @@ fn result(target: &Target, theme: &str, shot: &Shot, captured: bool) -> RenderRe
         ready: shot.ready.clone(),
         issues,
         captured,
+        image: None,
     }
 }
 
@@ -612,6 +650,21 @@ mod tests {
             .iter()
             .map(|r| format!("{}:{}:{}:{}", r.kind, r.target, r.theme, r.captured))
             .collect()
+    }
+
+    #[test]
+    fn a_look_returns_the_pictures_and_stores_nothing() {
+        let (engine, _fakes) = setup();
+        let looked = engine
+            .look(&Actor::Local, "shop", "main", &["list".into()], &[])
+            .unwrap();
+        let images: Vec<_> = looked.results.iter().map(|r| r.image.clone()).collect();
+        assert_eq!(images, [Some(STANDARD.encode("jpeg:list"))]);
+        assert_eq!(engine.captures(&Actor::Local, "shop").unwrap(), []);
+        let checked = engine
+            .check(&Actor::Local, "shop", "main", &["list".into()], &[])
+            .unwrap();
+        assert_eq!(checked.results[0].image, None);
     }
 
     #[test]
