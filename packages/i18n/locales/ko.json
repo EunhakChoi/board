@@ -466,7 +466,7 @@
   "cli.setup.noOwnerToken": "{server} 에 로그인되어 있지 않아요. `docker compose exec server charet-server admin-token` (또는 `charet-server admin-token`) 으로 관리자 token 을 확인한 뒤 `charet login --token <token>` 을 실행하고, browser 에서 {server}/?t=<token> 을 여세요.",
   "web.design.title": "디자인",
   "web.design.lead": "화면에서 요소를 클릭하면 텍스트 · variant · 간격 · 순서를 직접 바꿀 수 있음. 바꿀 때마다 수정안에 저장 후 검사, 화면이 깨지면 자동으로 되돌림.",
-  "web.design.noSource": "이 요소는 코드에서 고칠 위치가 없음 (package 에서 옴).",
+  "web.design.noSource": "이 요소는 코드에서 고칠 위치가 없음. package 에서 왔거나, app 의 @charet/sdk 가 손수정 이전 version 임.",
   "web.design.building": "수정안 build 중…",
   "web.design.draftTitle": "{screen} 손 편집",
   "web.design.scope": "바꿀 위치",

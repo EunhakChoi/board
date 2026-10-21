@@ -477,7 +477,7 @@
   "cli.setup.noOwnerToken": "Not signed in to {server}. Get the admin token with `docker compose exec server charet-server admin-token` (or `charet-server admin-token`), then `charet login --token <token>` and open {server}/?t=<token> in the browser.",
   "web.design.title": "Design",
   "web.design.lead": "Click an element on the screen to change its text, variant, spacing or order by hand. Every change is saved on a draft and checked; one that breaks a screen is taken back.",
-  "web.design.noSource": "This element has no place in the code to edit (it comes from a package).",
+  "web.design.noSource": "This element has no place in the code to edit. It comes from a package, or the app uses an @charet/sdk older than hand edits.",
   "web.design.building": "Building the draft…",
   "web.design.draftTitle": "Hand edits on {screen}",
   "web.design.scope": "Change where",
