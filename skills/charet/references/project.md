@@ -85,6 +85,24 @@ the app's own `public/`. The MSW worker comes from the `msw` package unless the 
 `mockServiceWorker.js`. Previews are served under a sub path, so string literals naming a public
 file (`"/logo.png"`) are rewritten to `import.meta.env.BASE_URL` at build time.
 
+## frame.html
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./frame.tsx"></script>
+  </body>
+</html>
+```
+
+`startFrame` renders into `#root` (another id: `rootId`).
+
 ## frame.tsx
 
 ```tsx
@@ -103,7 +121,8 @@ void startFrame({
 });
 ```
 
-Wrap screens in whatever providers the app needs (query client, theme, auth stubs). The frame
+Wrap screens in whatever providers the app needs (query client, theme, auth stubs), and in
+`<StrictMode>` when the app's `main.tsx` uses it. The frame
 reads `?screen=` / `?story=` and `?theme=dark` (it sets the `dark` class on `<html>`).
 
 ## charet.json

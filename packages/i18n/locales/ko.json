@@ -5,6 +5,7 @@
   "cli.usage.diff": "사용법: charet diff <from> [to] [-p 프로젝트]",
   "cli.projects.none": "아직 프로젝트 없음. `charet import <경로>` 로 가져오기.",
   "cli.import.plan": "{source} 에서 파일 {count}개를 프로젝트 {key} 로 가져올 예정:",
+  "cli.import.planMore": "(folder · root 파일만 표시. --json 은 모든 파일)",
   "cli.handoff.noBaseline": "없음 (product repo 에서 가져온 프로젝트 아님)",
   "cli.handoff.nothing": "반영할 것 없음",
   "cli.handoff.pending": "반영할 파일 {files}개 (repo 에 아직 없는 버전: {versions})",

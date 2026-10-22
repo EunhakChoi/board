@@ -34,7 +34,9 @@ charet ls                # screens, stories, flows and whether their captures ar
   (and `--server <url>` when the server is not the default `http://127.0.0.1:5280`).
 - No checkout yet: `charet projects`, then `charet checkout <project> <dir>`.
 - If `charet status` says main moved, `charet pull` before editing — it saves a refused push later.
-- "Cannot reach the charet server" → `charet doctor` says which part is down.
+- "Cannot reach the charet server" → `charet doctor` says which part is down. No charet at all
+  yet: in a clone of the charet repository, `./start.sh` starts it with Docker (ask the user before
+  installing anything; the first build takes minutes).
 - "Enter your token first" / "token was reissued or removed" → the CLI is not signed in. When the
   server runs on this machine (`charet doctor` reaches it at localhost), run `charet setup --yes`
   yourself: it reads the owner's token from the server and keeps it — no need to ask anyone. Its
@@ -84,7 +86,7 @@ A flow written before the code is the plan the team can review; planned steps ar
 charet push -m "what and why"       # from main: a new branch #n; in a branch checkout: adds to it
 charet check <id…>                  # renders this checkout's branch: errors, console, missing mocks
 charet capture <id…> --out /tmp/cv  # in a branch checkout: pictures of the branch, for you to look at
-charet branch review                # ask the team to look (the push printed the branch link)
+charet branch review                # ask the team to look (a push without --merge printed the branch link)
 charet branch merge                 # once agreed (or `charet push -m … --merge` when working alone)
 charet capture <id…>                # on main after merging: update what the team sees
 charet ls --stale                   # screens whose capture is older than the code
@@ -92,8 +94,8 @@ charet ls --stale                   # screens whose capture is older than the co
 
 - Push first: `check` builds and renders what was pushed (the checkout's branch), so an unpushed
   fix is invisible to it. `capture` stores what everyone sees, so it only stores on main; on a
-  branch `--out` saves the branch's pictures and leaves the board alone. Look at them before
-  saying a change is done.
+  branch `--out` saves the branch's pictures and leaves the board alone. On main, `--out` stores
+  as usual and also saves a copy to look at. Look at them before saying a change is done.
 - Merge only when the user (or the team, in review) agreed; a draft is the safe default. When the
   user asked for the change outright and works alone, `charet push -m "…" --merge` does both.
 - Merge refused with a clash: someone changed the same lines on main. `charet branch catch-up`,

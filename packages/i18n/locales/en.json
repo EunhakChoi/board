@@ -5,6 +5,7 @@
   "cli.usage.diff": "Usage: charet diff <from> [to] [-p project]",
   "cli.projects.none": "No projects yet. Import one with `charet import <path>`.",
   "cli.import.plan": "Would import {count} files as project {key} from {source}:",
+  "cli.import.planMore": "(folders and root files shown; --json lists every file)",
   "cli.handoff.noBaseline": "none (not imported from a product repo)",
   "cli.handoff.nothing": "nothing to hand off",
   "cli.handoff.pending": "to hand off: {files} file(s) (versions not in the repo yet: {versions})",
