@@ -13,7 +13,8 @@ hand, and accept them as versions — so the design never drifts from the code.
 ## Run it
 
 ```bash
-docker compose up -d     # then open the admin link from `docker compose logs server`
+git clone https://github.com/EunhakChoi/charet.git && cd charet
+./start.sh     # starts it with Docker, prints the admin link and opens it the first time
 ```
 
 Settings, the CLI, running without Docker and security notes: [docs/local.md](docs/local.md).

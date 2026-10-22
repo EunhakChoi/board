@@ -1,9 +1,10 @@
-# charet in local mode: `docker compose up -d`, then open http://localhost:5280.
+# charet in local mode: `./start.sh` (or `docker compose up -d`), then open the admin link it prints.
 #
-# Ports are published on this machine's loopback only; everyone who can reach them acts as the
-# built-in admin (no sign-in). Change them with CHARET_PORT / CHARET_PREVIEW_PORT.
-# CHARET_REMOTE_PORT (5284) is the remote door: closed until sharing is turned on in Settings, then
-# it signs everyone in. Point tunnels and reverse proxies there, never at 5280.
+# Ports are published on this machine's loopback only. Nobody is the admin by address: the owner
+# comes in with the admin link, members with their token, everyone else is a visitor. Change the
+# ports with CHARET_PORT / CHARET_PREVIEW_PORT.
+# CHARET_REMOTE_PORT (5284) is the remote door: closed until sharing is turned on in Settings. Point
+# tunnels and reverse proxies there, never at 5280.
 
 name: charet
 

@@ -14,13 +14,17 @@ Docker · Compose v2 필요.
 ```bash
 git clone https://github.com/EunhakChoi/charet.git
 cd charet
-docker compose up -d
+./start.sh
 ```
 
-server 첫 시작 시 log 에 **관리자 link** (`http://localhost:5280/?t=<token>`) 1회 출력. 이 link 를
-열면 (`127.0.0.1` 아닌 `localhost`) 그 브라우저는 소유자 (첫 관리자) 로 계속 로그인. 잃어버리면
-`charet setup` (CLI 로그인 + link 재출력) 또는 `docker compose exec server charet-server admin-token`
-(token 만 출력). link 없이 **http://localhost:5280** 접속 시 방문자 (기본: 보기만).
+`start.sh` 가 `docker compose up -d` 실행 → server 준비 대기 → **관리자 link**
+(`http://localhost:5280/?t=<token>`) 출력. 설치 직후에는 브라우저로 열기까지. 이 link 를 한 번 열면
+(`127.0.0.1` 아닌 `localhost`) 그 브라우저는 소유자 (첫 관리자) 로 계속 로그인. 언제든 `./start.sh` 를
+다시 실행하면 시작 + link 재출력. `charet setup` (CLI 로그인) · `docker compose exec server charet-server
+admin-token` (token 만) 으로도 확인 가능. link 없이 **http://localhost:5280** 접속 시 방문자 (기본:
+보기만), 소유자가 처음 들어오기 전까지 그 화면에 link 찾는 방법 안내. `docker compose up -d` 만 써도
+동작 — server 첫 시작 시 log (`docker compose logs server`) 에 link 1회 출력. Windows 는 WSL · Git Bash
+에서 `start.sh` 실행, 또는 위 명령 직접 사용.
 
 미리보기는 다른 site 인 `127.0.0.1:5281` 에서 제공 → 프로젝트 코드가 도구의 cookie 를 읽을 수 없음.
 

@@ -184,6 +184,7 @@ impl Engine {
             tool_url: self.tool_url(),
             preview_url: self.preview.as_ref().map(|p| p.origin.clone()),
             local_mode: self.local_mode,
+            owner_signed_in: self.owner_signed_in(),
             workspace: state(self.ports.workspace.health()),
             render: state(self.ports.renderer.health()),
         })
@@ -230,6 +231,8 @@ pub struct System {
     pub tool_url: Option<String>,
     pub preview_url: Option<String>,
     pub local_mode: bool,
+    /// The owner has come in with their token at least once.
+    pub owner_signed_in: bool,
     pub workspace: ServiceState,
     pub render: ServiceState,
 }

@@ -615,6 +615,38 @@ async fn system_reports_services() {
 }
 
 #[tokio::test]
+async fn the_first_run_shows_at_this_machine_until_the_owner_comes_in() {
+    let engine = engine(true);
+    let token = engine.ensure_owner().unwrap().expect("made now");
+    // A browser without a token (`send` would bring the owner's).
+    let visitor = |engine: Engine| async move {
+        let response = charet_api::router(engine)
+            .oneshot(Request::get("/api/system").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice::<Value>(&bytes).unwrap()
+    };
+    assert_eq!(visitor(engine.clone()).await["firstRun"], true);
+    let (_, shared) = remote(
+        &engine,
+        Request::get("/api/system").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(shared["firstRun"], false, "not through the remote door");
+    let (status, _, _) = send(
+        engine.clone(),
+        Request::get("/api/auth/me")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(visitor(engine).await["firstRun"], false);
+}
+
+#[tokio::test]
 async fn sheet_of_placeholders() {
     let engine = engine(true).with_preview(preview_settings());
     post(engine.clone(), "/api/projects", &json!({ "key": "web" })).await;

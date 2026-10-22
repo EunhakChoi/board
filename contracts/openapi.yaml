@@ -2571,7 +2571,7 @@ components:
           description: Latest released version; null when unknown or update checks are off
     SystemInfo:
       type: object
-      required: [version, latest, toolUrl, previewUrl, localMode, services]
+      required: [version, latest, toolUrl, previewUrl, localMode, firstRun, services]
       properties:
         version:
           type: string
@@ -2585,6 +2585,11 @@ components:
           type: [string, "null"]
         localMode:
           type: boolean
+        firstRun:
+          type: boolean
+          description: >-
+            At this machine (the local door), before the owner first came in with their token.
+            The page then says where the admin link is (never the link itself).
         services:
           type: object
           required: [workspace, render]

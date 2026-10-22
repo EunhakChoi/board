@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { AuthCard } from "@/components/AuthCard";
+import { FirstRun } from "@/components/FirstRun";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HttpError } from "@/lib/api";
@@ -14,7 +15,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (me.error) {
     const error = me.error;
     if (error instanceof HttpError && error.status === 401) {
-      return <TokenPage reason={error.code} />;
+      return (
+        <>
+          <FirstRun />
+          <TokenPage reason={error.code} />
+        </>
+      );
     }
     return (
       <AuthCard title={t("web.auth.tokenTitle")}>
@@ -24,7 +30,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </AuthCard>
     );
   }
-  return <>{children}</>;
+  return (
+    <>
+      {me.data.kind === "visitor" && <FirstRun />}
+      {children}
+    </>
+  );
 }
 
 /** `reason`: why the charet asks (`token_required`, `replaced`, …). */

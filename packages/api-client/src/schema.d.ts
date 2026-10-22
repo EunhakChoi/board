@@ -1519,6 +1519,8 @@ export interface components {
             toolUrl: string | null;
             previewUrl: string | null;
             localMode: boolean;
+            /** @description At this machine (the local door), before the owner first came in with their token. The page then says where the admin link is (never the link itself). */
+            firstRun: boolean;
             services: {
                 workspace: components["schemas"]["ServiceState"];
                 render: components["schemas"]["ServiceState"];
