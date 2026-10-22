@@ -36,6 +36,7 @@
   "cli.error.noCheckout": "checkout 폴더가 아님. 먼저 `charet checkout <프로젝트>`.",
   "cli.error.notEmpty": "{dir} 가 비어 있지 않음.",
   "cli.error.unreachable": "charet server 에 연결할 수 없음. 실행 중인지 확인 (CHARET_URL 또는 --server).",
+  "cli.error.signIn": "로그인 필요: charet 이 도는 machine 에서는 `charet setup` (소유자), 다른 곳에서는 관리자에게 받은 token 으로 `charet login --token <token>`.",
   "web.nav.projects": "프로젝트",
   "web.nav.screens": "화면",
   "web.nav.flows": "흐름",
