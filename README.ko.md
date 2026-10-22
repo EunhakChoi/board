@@ -12,7 +12,8 @@
 ## 실행
 
 ```bash
-docker compose up -d     # 이후 `docker compose logs server` 의 관리자 link 접속
+git clone https://github.com/EunhakChoi/charet.git && cd charet
+./start.sh     # Docker 로 시작, 관리자 link 출력 (처음엔 브라우저로 열기까지)
 ```
 
 설정 · CLI · Docker 없이 실행 · 보안 참고: [docs/local.ko.md](docs/local.ko.md).

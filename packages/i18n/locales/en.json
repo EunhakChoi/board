@@ -269,6 +269,8 @@
   "cli.doctor.sharedUnreachable": "shared at {url}, but that address does not answer",
   "cli.doctor.sharedHint": "Check the tunnel or proxy points at the remote door (127.0.0.1:5284), or pick another way in Team › Sharing.",
   "web.sharing.apply": "Apply",
+  "web.firstRun.title": "Just installed charet?",
+  "web.firstRun.body": "You are looking as a visitor. To come in as the admin, open the admin link printed in the terminal where you started the server. Either command prints it again:",
   "web.auth.tokenTitle": "Enter your token",
   "web.auth.tokenRequired": "This server needs a token to look around.",
   "web.auth.replaced": "Your token was used on another browser, so this one was signed out.",

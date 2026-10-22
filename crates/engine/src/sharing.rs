@@ -91,6 +91,8 @@ pub(crate) struct Live {
     pub sharing: Option<Sharing>,
     /// The owner as an actor.
     pub owner: Option<Actor>,
+    /// The owner has used their token (browser or CLI) at least once.
+    pub owner_signed_in: bool,
     pub warning: Option<String>,
 }
 

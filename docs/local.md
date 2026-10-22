@@ -14,14 +14,18 @@ Needs Docker with Compose v2.
 ```bash
 git clone https://github.com/EunhakChoi/charet.git
 cd charet
-docker compose up -d
+./start.sh
 ```
 
-On its first start the server prints the **admin link** (`http://localhost:5280/?t=<token>`) to its
-log, once. Open it — `localhost`, not `127.0.0.1` — and the browser stays signed in as the owner, the
-first admin. Lost it? `charet setup` signs the CLI in and prints it again, as does
-`docker compose exec server charet-server admin-token` (the token alone). Opening
-**http://localhost:5280** without it makes you a visitor (by default: look only).
+`start.sh` runs `docker compose up -d`, waits for the server and prints the **admin link**
+(`http://localhost:5280/?t=<token>`); right after install it also opens it in the browser. Open it
+once — `localhost`, not `127.0.0.1` — and the browser stays signed in as the owner, the first admin.
+Run `./start.sh` again any time to start charet and see the link; `charet setup` (signs the CLI in) and
+`docker compose exec server charet-server admin-token` (the token alone) show it too. Opening
+**http://localhost:5280** without it makes you a visitor (by default: look only); until the owner
+first comes in, the page there says where the link is. Plain `docker compose up -d` works as well —
+the server prints the link to its log (`docker compose logs server`) on its first start. On Windows,
+run `start.sh` from WSL or Git Bash, or use the plain commands.
 
 Previews are served from `127.0.0.1:5281`, a different site, so a project's code can never read the
 tool's cookies.

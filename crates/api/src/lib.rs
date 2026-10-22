@@ -294,6 +294,8 @@ struct SystemInfo {
     tool_url: Option<String>,
     preview_url: Option<String>,
     local_mode: bool,
+    /// At this machine, before the owner first came in: the page says where the admin link is.
+    first_run: bool,
     services: Services,
 }
 
@@ -341,6 +343,7 @@ async fn system(
             system.preview_url
         },
         local_mode: local,
+        first_run: local && !system.owner_signed_in,
         services: Services {
             workspace: service(system.workspace),
             render: service(system.render),

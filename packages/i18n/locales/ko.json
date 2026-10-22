@@ -258,6 +258,8 @@
   "cli.doctor.sharedUnreachable": "공유 중: {url}, 하지만 그 주소가 응답 없음",
   "cli.doctor.sharedHint": "tunnel · proxy 가 원격 문 (127.0.0.1:5284) 을 가리키는지 확인하거나, 팀 › 공유 에서 다른 방식 선택.",
   "web.sharing.apply": "적용",
+  "web.firstRun.title": "charet 을 방금 설치했나요?",
+  "web.firstRun.body": "지금은 방문자로 보고 있어요. 관리자로 들어가려면 서버를 시작한 터미널에 나온 관리자 link 를 여세요. 아래 명령 중 하나로 다시 볼 수 있어요:",
   "web.auth.tokenTitle": "token 입력",
   "web.auth.tokenRequired": "이 서버는 token 이 있어야 볼 수 있어요.",
   "web.auth.replaced": "같은 token 으로 다른 브라우저에서 들어와서 이 브라우저는 로그아웃됐어요.",

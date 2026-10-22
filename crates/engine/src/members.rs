@@ -23,6 +23,7 @@ const MAX_NAME: usize = 60;
 /// The owner member: the first admin, who cannot be removed or demoted.
 pub(crate) const OWNER: &str = "sharing.owner";
 const OWNER_ANNOUNCED: &str = "owner.announced";
+const OWNER_SIGNED_IN: &str = "owner.signed_in";
 /// `false` when an admin turned visitors off, `comment` when they may comment; else they look.
 const VISITORS: &str = "access.visitors";
 
@@ -130,6 +131,7 @@ impl Engine {
             .accounts
             .user_by_token(token.trim())?
             .ok_or(EngineError::NotFound("token"))?;
+        self.note_sign_in(&user.id)?;
         let session = random_token();
         let session_hash = hash(&session);
         self.ports
@@ -145,17 +147,14 @@ impl Engine {
 
     /// Who a browser session belongs to, or `None` for an unknown or expired one.
     pub fn session(&self, session: &str) -> Result<Option<SessionState>, EngineError> {
-        Ok(self
-            .ports
-            .accounts
-            .session(&hash(session), now())?
-            .map(|row| {
-                if row.replaced {
-                    SessionState::Replaced
-                } else {
-                    SessionState::Active(row.user.actor())
-                }
-            }))
+        let Some(row) = self.ports.accounts.session(&hash(session), now())? else {
+            return Ok(None);
+        };
+        if row.replaced {
+            return Ok(Some(SessionState::Replaced));
+        }
+        self.note_sign_in(&row.user.id)?;
+        Ok(Some(SessionState::Active(row.user.actor())))
     }
 
     pub fn sign_out(&self, session: &str) -> Result<(), EngineError> {
@@ -164,11 +163,31 @@ impl Engine {
 
     /// The member behind a token the CLI sent.
     pub fn token_actor(&self, token: &str) -> Result<Option<Actor>, EngineError> {
-        Ok(self
-            .ports
-            .accounts
-            .user_by_token(token.trim())?
-            .map(|u| u.actor()))
+        let Some(user) = self.ports.accounts.user_by_token(token.trim())? else {
+            return Ok(None);
+        };
+        self.note_sign_in(&user.id)?;
+        Ok(Some(user.actor()))
+    }
+
+    /// True once the owner has come in with their token. Until then the visitor's page says
+    /// where the admin link is (never the link itself).
+    pub fn owner_signed_in(&self) -> bool {
+        self.read_live().owner_signed_in
+    }
+
+    /// Remembers the owner's first use of their token.
+    fn note_sign_in(&self, id: &str) -> Result<(), EngineError> {
+        let first = {
+            let live = self.read_live();
+            !live.owner_signed_in
+                && matches!(&live.owner, Some(Actor::User { id: owner, .. }) if owner == id)
+        };
+        if first {
+            self.ports.settings.set(OWNER_SIGNED_IN, "true")?;
+            self.write_live(|live| live.owner_signed_in = true);
+        }
+        Ok(())
     }
 
     /// What people without a token may do, unless a project says otherwise.
@@ -300,7 +319,11 @@ impl Engine {
     /// Reloads the owner actor (after a rename).
     fn refresh_owner(&self) -> Result<(), EngineError> {
         let owner = self.owner()?.map(|u| u.actor());
-        self.write_live(|live| live.owner = owner);
+        let signed_in = self.ports.settings.get(OWNER_SIGNED_IN)?.as_deref() == Some("true");
+        self.write_live(|live| {
+            live.owner = owner;
+            live.owner_signed_in = signed_in;
+        });
         Ok(())
     }
 
@@ -497,6 +520,25 @@ mod tests {
         };
         engine.change_member(&actor, id, &rename).unwrap();
         assert_eq!(engine.local_actor().name(), "Dana");
+    }
+
+    #[test]
+    fn the_first_run_ends_when_the_owner_uses_their_token() {
+        let engine = engine();
+        let token = engine.ensure_owner().unwrap().expect("made now");
+        assert!(!engine.owner_signed_in());
+        // Another member coming in does not end it.
+        let ann = engine
+            .add_member(&engine.local_actor(), "Ann", Role::Admin)
+            .unwrap();
+        engine.sign_in_with_token(&ann.token).unwrap();
+        engine.token_actor(&ann.token).unwrap();
+        assert!(!engine.owner_signed_in());
+        // The CLI (or a browser) with the owner's token does, and it is kept.
+        engine.token_actor(&token).unwrap();
+        assert!(engine.owner_signed_in());
+        engine.ensure_owner().unwrap();
+        assert!(engine.owner_signed_in(), "kept across a restart");
     }
 
     #[test]
