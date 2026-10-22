@@ -30,6 +30,8 @@ function fakeServer() {
           role: "viewer",
           localMode: false,
         });
+      case "/api/projects":
+        return json({ code: "unauthorized", message: "Enter your token first" }, 401);
       default:
         return json({ code: "not_found", message: path }, 404);
     }
@@ -106,6 +108,18 @@ test("CHARET_TOKEN wins and login --token checks the token first", async () => {
       server.fetch,
     );
     assert.equal(who.code, 0, who.err);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a refused command says how to sign in", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "charet-auth-"));
+  try {
+    const refused = await charet(["projects"], { CHARET_CONFIG_DIR: dir }, fakeServer().fetch);
+    assert.equal(refused.code, 1);
+    assert.match(refused.err, /Enter your token first \(unauthorized\)/);
+    assert.match(refused.err, /`charet setup`.*`charet login --token <token>`/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

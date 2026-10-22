@@ -35,8 +35,12 @@ charet ls                # screens, stories, flows and whether their captures ar
 - No checkout yet: `charet projects`, then `charet checkout <project> <dir>`.
 - If `charet status` says main moved, `charet pull` before editing — it saves a refused push later.
 - "Cannot reach the charet server" → `charet doctor` says which part is down.
-- "Enter your token first" / "token was reissued or removed" → a team server: ask the person for
-  the token an admin gave them and run `charet login --token <token>`; CI uses `CHARET_TOKEN`.
+- "Enter your token first" / "token was reissued or removed" → the CLI is not signed in. When the
+  server runs on this machine (`charet doctor` reaches it at localhost), run `charet setup --yes`
+  yourself: it reads the owner's token from the server and keeps it — no need to ask anyone. Its
+  output contains the admin link with the token; don't repeat it. Otherwise (a team server
+  elsewhere) ask the person for the token an admin gave them and have them run
+  `charet login --token <token>`; CI uses `CHARET_TOKEN`.
 - On a team server, `charet inbox` lists what concerns the person (new comments, answers in their
   threads) with links — a quick way to find what to handle first.
 - Every command takes `--json` when you need to parse the output.

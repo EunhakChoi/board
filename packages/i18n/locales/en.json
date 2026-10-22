@@ -36,6 +36,7 @@
   "cli.error.noCheckout": "Not inside a checkout. Run `charet checkout <project>` first.",
   "cli.error.notEmpty": "{dir} is not empty.",
   "cli.error.unreachable": "Cannot reach the charet server. Is it running? (set CHARET_URL or --server)",
+  "cli.error.signIn": "Sign in: on the machine that runs charet, `charet setup` (as its owner); elsewhere `charet login --token <token>` with the token an admin gave you.",
   "web.nav.projects": "Projects",
   "web.nav.screens": "Screens",
   "web.nav.flows": "Flows",

@@ -327,6 +327,9 @@ export async function run(argv: string[], options: RunOptions = {}): Promise<num
   } catch (error) {
     if (error instanceof commands.CliError) {
       err(`charet: ${error.message}`);
+      if (/\((unauthorized|invalid_token)\)$/.test(error.message)) {
+        err(t("cli.error.signIn", {}, locale));
+      }
       return 1;
     }
     if (error instanceof TypeError && /fetch failed/.test(error.message)) {
