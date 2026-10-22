@@ -14,10 +14,14 @@ charet import ../product/apps/web --key web --title "Web"            # version 1
 charet checkout web ~/charet/web                                        # your working copy
 ```
 
+- Without `--key` the key is the app folder's name (lowercased, other characters as `-`).
 - The import copies the app, the workspace packages it uses and the root files a build needs
   (lockfile, workspace config). `--include dir` adds anything it missed. Ignored files
   (`node_modules`, `dist`) never travel.
-- The checkout remembers its server; commands run inside it need no `--server`.
+- The checkout remembers its server and project in `.charet/checkout.json`, which stays local
+  (never pushed); commands run inside it need no `--server`. A checkout of main sits on the git
+  branch `charet-base` — that is normal, push from there. `charet push` sends the work tree as it
+  is: no `git commit` needed.
 
 ## 2. Add `.charet/` next to the app's `package.json`
 
@@ -62,7 +66,8 @@ allowBuilds:
 
 - `"type": "module"` matters: without it vite loads `.charet/vite.config.ts` as CommonJS and fails
   with "is not a function" errors.
-- The SDK is not on npm yet. Pack it from the charet repository and vendor it under a name that
+- The SDK is not on npm yet. Pack it from the charet repository (it needs that repository's
+  `pnpm install` done; packing builds `packages/sdk/dist`) and vendor it under a name that
   changes with its content, so the lockfile notices a new SDK:
 
   ```bash
@@ -72,7 +77,9 @@ allowBuilds:
   ```
 
 - Mock helpers the project needs (e.g. `openapi-msw`) go here too, never into the app.
-- Then `pnpm install` inside `.charet/` (commit the lockfile it writes).
+- Then `pnpm install` inside `.charet/` and keep the lockfile it writes (it is pushed with
+  `.charet/`). A peer-dependency warning there is expected — react and vite come from the app; do
+  not add them.
 - With npm instead of pnpm: same `package.json`, `npm install` inside `.charet/`, keep
   `package-lock.json`.
 
@@ -97,7 +104,7 @@ a plugin here, because charet calls vite directly.
 
 ### frame.html, frame.tsx
 
-`frame.html` is a plain page loading `./frame.tsx` (see `project.md`). `frame.tsx` renders a
+`frame.html` is a plain page with a `#root` element loading `./frame.tsx` (example in `project.md`). `frame.tsx` renders a
 screen the way the app does: same providers (query client, theme, i18n, auth stub) and the app's
 routes in a memory router at the screen's route. Read the app's `main.tsx` and copy its provider
 tree; leave out anything that talks to a real backend on start.
@@ -114,15 +121,16 @@ components: `const Viewer = lazy(() => import("@/features/pdf/Viewer"))`.
 ## 3. Try it, push, check
 
 ```bash
-charet dev          # installs .charet/ and runs vite with .charet/vite.config.ts
-                   # → open /.charet/frame.html?screen=<id> on the printed port
+charet dev          # installs the app's and .charet/'s dependencies, runs vite with
+                   # .charet/vite.config.ts → open /.charet/frame.html?screen=<id> on its port
 charet push -m "charet: first screens" --merge
 charet check        # every screen and story; fix each missing mock and console error
 charet capture --theme both
 charet url <id>     # links for the team
 ```
 
-`check` and `capture` run on what was pushed (and merged, for `capture`), so push before
+`charet dev` keeps running and is for a person with a browser; an agent can skip it and go
+straight to push and `check`, which reports more. `check` and `capture` run on what was pushed (and merged, for `capture`), so push before
 checking: an unpushed fix is invisible to them. Later fixes: `charet push -m "…" --merge` again.
 
 ## Common problems

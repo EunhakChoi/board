@@ -143,6 +143,8 @@ test("import, checkout, push, pull, versions and diff", async () => {
   const planned = JSON.parse(plan.out);
   assert.equal(planned.key, "web");
   assert.deepEqual(planned.packages, ["apps/web", "packages/api"]);
+  const dry = await charet(["import", join(repo, "apps/web"), "--dry-run"]);
+  assert.match(dry.out, /^ {2}apps\/web\/src\/page\.tsx$/m, "a small app lists every file");
 
   const imported = await charet(["import", join(repo, "apps/web"), "--key", "demo"]);
   assert.equal(imported.code, 0, imported.err);

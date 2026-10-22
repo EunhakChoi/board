@@ -111,8 +111,14 @@ export async function importProject(ctx: Context, options: ImportOptions): Promi
   if (options.dryRun) {
     emit(ctx, { key, ...charetJson, files }, () => {
       say(ctx, "cli.import.plan", { key, count: String(files.length), source });
-      for (const dir of scope.packages) ctx.out(`  ${dir}/`);
-      for (const file of scope.rootFiles) ctx.out(`  ${file}`);
+      // Small apps: every file. Large ones: the folders and root files (`--json` has them all).
+      if (files.length <= 50) {
+        for (const file of files) ctx.out(`  ${file}`);
+      } else {
+        for (const dir of scope.packages) ctx.out(`  ${dir}/`);
+        for (const file of scope.rootFiles) ctx.out(`  ${file}`);
+        say(ctx, "cli.import.planMore");
+      }
     });
     return;
   }
